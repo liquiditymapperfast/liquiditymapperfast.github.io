@@ -3036,5 +3036,9 @@
  "Maximize this panel": "このペインを最大化",
  "Restore the panels (or double-click the chart)": "ペインを元に戻す（チャートをダブルクリックでも可）",
  "Maximize the chart to the whole screen (or double-click it)": "チャートを画面全体に最大化（ダブルクリックでも可）",
- "Maximize the panel under the pointer, or restore the panels": "ポインターの下のペインを最大化、またはペインを元に戻す"
+ "Maximize the panel under the pointer, or restore the panels": "ポインターの下のペインを最大化、またはペインを元に戻す",
+ "Ratio": "倍率",
+ "longs": "ロング",
+ "shorts": "ショート",
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "表の×は、大きい側が小さい側の何倍かを、その側の色で示します。2.50×はその側が2.5倍あること、∞は反対側がゼロであることを表します。"
 }

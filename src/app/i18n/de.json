@@ -3205,5 +3205,9 @@
  "Maximize this panel": "Diesen Bereich maximieren",
  "Restore the panels (or double-click the chart)": "Bereiche wiederherstellen (oder auf den Chart doppelklicken)",
  "Maximize the chart to the whole screen (or double-click it)": "Den Chart auf den ganzen Bildschirm maximieren (oder doppelklicken)",
- "Maximize the panel under the pointer, or restore the panels": "Den Bereich unter dem Zeiger maximieren oder die Bereiche wiederherstellen"
+ "Maximize the panel under the pointer, or restore the panels": "Den Bereich unter dem Zeiger maximieren oder die Bereiche wiederherstellen",
+ "Ratio": "Verhältnis",
+ "longs": "Longs",
+ "shorts": "Shorts",
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "× in der Tabelle ist, wie oft die größere Seite die kleinere übertrifft, in ihrer Farbe: 2.50× ist zweieinhalbmal so viel auf dieser Seite; ∞, die andere Seite hat nichts."
 }

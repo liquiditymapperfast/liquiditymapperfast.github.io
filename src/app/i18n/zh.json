@@ -3036,5 +3036,9 @@
  "Maximize this panel": "最大化此窗格",
  "Restore the panels (or double-click the chart)": "恢复各窗格（或双击图表）",
  "Maximize the chart to the whole screen (or double-click it)": "把图表最大化到整个屏幕（或双击它）",
- "Maximize the panel under the pointer, or restore the panels": "最大化指针下方的窗格，或恢复各窗格"
+ "Maximize the panel under the pointer, or restore the panels": "最大化指针下方的窗格，或恢复各窗格",
+ "Ratio": "倍数",
+ "longs": "多头",
+ "shorts": "空头",
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "表中的 × 表示较大一侧是较小一侧的几倍，以该侧的颜色显示：2.50× 表示该侧是另一侧的 2.5 倍；∞ 表示另一侧为零。"
 }

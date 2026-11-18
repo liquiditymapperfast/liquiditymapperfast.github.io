@@ -3262,5 +3262,9 @@
  "Maximize this panel": "Maximizar este painel",
  "Restore the panels (or double-click the chart)": "Restaurar os painéis (ou clique duas vezes no gráfico)",
  "Maximize the chart to the whole screen (or double-click it)": "Maximizar o gráfico para a tela inteira (ou clique duas vezes nele)",
- "Maximize the panel under the pointer, or restore the panels": "Maximizar o painel sob o ponteiro, ou restaurar os painéis"
+ "Maximize the panel under the pointer, or restore the panels": "Maximizar o painel sob o ponteiro, ou restaurar os painéis",
+ "Ratio": "Proporção",
+ "longs": "longs",
+ "shorts": "shorts",
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "× na tabela é quantas vezes o lado maior é o menor, na sua cor: 2.50× é duas vezes e meia mais nesse lado; ∞, o outro lado não tem nada."
 }

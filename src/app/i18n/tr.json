@@ -3199,5 +3199,9 @@
  "Maximize this panel": "Bu bölmeyi büyüt",
  "Restore the panels (or double-click the chart)": "Bölmeleri geri getir (veya grafiğe çift tıkla)",
  "Maximize the chart to the whole screen (or double-click it)": "Grafiği tüm ekrana büyüt (veya çift tıkla)",
- "Maximize the panel under the pointer, or restore the panels": "İşaretçinin altındaki bölmeyi büyüt veya bölmeleri geri getir"
+ "Maximize the panel under the pointer, or restore the panels": "İşaretçinin altındaki bölmeyi büyüt veya bölmeleri geri getir",
+ "Ratio": "Oran",
+ "longs": "long'lar",
+ "shorts": "short'lar",
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "Tablodaki ×, büyük tarafın küçük tarafın kaç katı olduğunu o tarafın renginde gösterir: 2.50× o tarafta iki buçuk kat fazlası demektir; ∞, diğer tarafta hiç yok demektir."
 }

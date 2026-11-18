@@ -3036,5 +3036,9 @@
  "Maximize this panel": "이 창 최대화",
  "Restore the panels (or double-click the chart)": "창 복원(차트를 더블 클릭해도 됨)",
  "Maximize the chart to the whole screen (or double-click it)": "차트를 화면 전체로 최대화(더블 클릭해도 됨)",
- "Maximize the panel under the pointer, or restore the panels": "포인터 아래의 창 최대화 또는 창 복원"
+ "Maximize the panel under the pointer, or restore the panels": "포인터 아래의 창 최대화 또는 창 복원",
+ "Ratio": "배율",
+ "longs": "롱",
+ "shorts": "숏",
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "표의 ×는 큰 쪽이 작은 쪽의 몇 배인지를 그쪽 색으로 보여 줍니다. 2.50×는 그쪽이 2.5배라는 뜻이고, ∞는 반대쪽이 0이라는 뜻입니다."
 }

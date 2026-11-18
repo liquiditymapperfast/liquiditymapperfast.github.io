@@ -44,6 +44,27 @@ export const tableRowCap = (h: number): number => Math.max(0, Math.min(8, Math.f
 /** A figure of a table in a side's colour, a little towards the text colour so that it reads at this size. */
 export const tableInk = (side: string, p: Pick<Palette, 'text'>): string => mixHex(side, p.text, 0.2);
 
+/**
+ * How many times the larger of two sides (bids and asks, longs and shorts, buys and sells) is the smaller, and which one leads: 1 the first, -1
+ * the second, 0 where they round to the same (under 1.005×). Null where there is nothing to compare (both empty, or a side not read); Infinity
+ * where only one side has something.
+ */
+export function sideRatio(first: number, second: number): { ratio: number; lead: 1 | -1 | 0 } | null {
+  if (!Number.isFinite(first) || !Number.isFinite(second) || first < 0 || second < 0 || (first <= 0 && second <= 0)) return null;
+  const big = Math.max(first, second), small = Math.min(first, second), ratio = small > 0 ? big / small : Infinity;
+  return { ratio, lead: ratio < 1.005 ? 0 : first > second ? 1 : -1 };
+}
+
+/** A ratio as the tables write it: two decimals under 10, one under 100, whole above; ∞ where the other side has none. */
+export const ratioFigure = (ratio: number): string => !Number.isFinite(ratio) ? '∞' : `${ratio < 9.995 ? ratio.toFixed(2) : ratio < 99.95 ? ratio.toFixed(1) : Math.round(ratio)}×`;
+
+/** The × cell of a table: the ratio in the leading side's colour (the first side's is `p.bid`), muted where neither leads, a dash where there is nothing to compare. */
+export function ratioCell(first: number, second: number, p: Pick<Palette, 'bid' | 'ask' | 'text' | 'muted'>): TableCell {
+  const r = sideRatio(first, second);
+  if (!r) return { text: '–', color: p.muted };
+  return { text: ratioFigure(r.ratio), color: r.lead ? tableInk(r.lead > 0 ? p.bid : p.ask, p) : p.muted };
+}
+
 /** Where a table goes in `room`, or null where it does not fit. `measure` is the width of a text in the pane's font. */
 export function placeTable(measure: (text: string) => number, room: TableRoom, spec: Pick<TableSpec, 'heads' | 'rows' | 'minCols'>): TablePlace | null {
   const k = spec.rows.length, n = spec.heads.length;

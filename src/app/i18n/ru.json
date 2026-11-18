@@ -3309,5 +3309,9 @@
  "Maximize this panel": "Развернуть эту панель",
  "Restore the panels (or double-click the chart)": "Восстановить панели (или дважды щёлкнуть по графику)",
  "Maximize the chart to the whole screen (or double-click it)": "Развернуть график на весь экран (или дважды щёлкнуть по нему)",
- "Maximize the panel under the pointer, or restore the panels": "Развернуть панель под указателем или восстановить панели"
+ "Maximize the panel under the pointer, or restore the panels": "Развернуть панель под указателем или восстановить панели",
+ "Ratio": "Соотношение",
+ "longs": "лонги",
+ "shorts": "шорты",
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "× в таблице показывает, во сколько раз бо́льшая сторона больше меньшей, её цветом: 2.50× — в два с половиной раза больше на этой стороне; ∞ — на другой стороне ничего нет."
 }

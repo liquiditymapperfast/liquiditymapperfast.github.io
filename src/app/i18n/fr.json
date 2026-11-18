@@ -3262,5 +3262,9 @@
  "Maximize this panel": "Agrandir ce volet",
  "Restore the panels (or double-click the chart)": "Rétablir les volets (ou double-cliquer sur le graphique)",
  "Maximize the chart to the whole screen (or double-click it)": "Agrandir le graphique à tout l’écran (ou double-cliquer dessus)",
- "Maximize the panel under the pointer, or restore the panels": "Agrandir le volet sous le pointeur, ou rétablir les volets"
+ "Maximize the panel under the pointer, or restore the panels": "Agrandir le volet sous le pointeur, ou rétablir les volets",
+ "Ratio": "Rapport",
+ "longs": "longs",
+ "shorts": "shorts",
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "× dans le tableau indique combien de fois le côté le plus grand fait le plus petit, dans sa couleur : 2.50× signifie deux fois et demie plus de ce côté ; ∞, l'autre côté n'a rien."
 }

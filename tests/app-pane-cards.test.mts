@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { barAt, columnAt, depthCardLines, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from '../src/app/panes/pane-cards.ts';
+import { barAt, columnAt, depthCardLines, liqCardLines, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from '../src/app/panes/pane-cards.ts';
 import { layoutInfo } from '../src/app/infobox.ts';
 
 const MIN = 60_000;
@@ -44,6 +44,7 @@ test('the depth popup gives every band, the watched one in bold with how its sid
   assert.deepEqual(['±0.31%', '±1.25%', '±5%'].map(label => by(lines, label)!.bold), [false, false, true], 'the watched band is the bold one');
   assert.equal(by(lines, 'Δ')!.text, '+$20M'); assert.equal(by(lines, 'Δ')!.color, 'below', 'bids lead in the watched band');
   assert.deepEqual([by(lines, 'Imbalance')!.text, by(lines, 'Imbalance')!.color], ['bids +50.0%', 'below']);
+  assert.deepEqual([by(lines, 'Ratio')!.text, by(lines, 'Ratio')!.color], ['bids 3.00×', 'below'], 'how many times the larger side is the smaller');
   assert.equal(by(lines, 'Rank in view')!.text, '3 of 120');
   const last = lines.at(-1)!;
   assert.deepEqual([last.color, last.wrap, last.rule], ['muted', true, true], 'the last line says what the numbers are');
@@ -62,9 +63,11 @@ test('the Liquidity Tracker popup says what it was worked out with', () => {
   assert.equal(lines[0]!.text, 'Liquidity Tracker');
   assert.deepEqual([by(lines, 'Bid')!.color, by(lines, 'Ask')!.color], ['below', 'above']);
   assert.equal(by(lines, 'Δ')!.text, '−$4M'); assert.equal(by(lines, 'Δ')!.color, 'above');
+  assert.deepEqual([by(lines, 'Ratio')!.text, by(lines, 'Ratio')!.color], ['asks 1.50×', 'above']);
   assert.equal(by(lines, 'Half-life')!.text, '25 bp'); assert.equal(by(lines, 'Venues')!.text, '7');
   assert.equal(lines.at(-1)!.rule, true);
   assert.equal(by(ltCardLines({ time: 0, bid: 0, ask: 0, halfLifeBp: 10, venues: 0 }), 'Imbalance'), undefined, 'no liquidity: no balance to speak of');
+  assert.equal(by(ltCardLines({ time: 0, bid: 5, ask: 5, halfLifeBp: 10, venues: 1 }), 'Ratio'), undefined, 'even: no ratio line');
 });
 
 test('the open-interest popup has the level and the step, and only the lines that have something to say', () => {
@@ -109,4 +112,12 @@ test("right of the newest point, or over the price axis, the popup keeps showing
   assert.equal(read(10_000), 3, "far right of it: still the newest");
   assert.equal(readAt(-1, 5, -1, undefined), -1, "no data, nothing");
   assert.equal(readAt(2, 10_000, 3, 300), 2, "a point under the pointer wins");
+});
+
+test('the liquidation levels popup names the larger side and how many times the other it is, and says nothing where both are empty', () => {
+  const bands = [{ r: 0.0125, bid: 0, ask: 3_000_000 }, { r: 0.05, bid: 25_000_000, ask: 10_000_000 }];
+  const lines = liqCardLines({ asOf: 0, bands, watched: 1, units: 'usd', coin: 'BTC' });
+  assert.deepEqual([by(lines, 'Ratio')!.text, by(lines, 'Ratio')!.color], ['longs 2.50×', 'below']);
+  assert.equal(by(liqCardLines({ asOf: 0, bands, watched: 0, units: 'usd', coin: 'BTC' }), 'Ratio')!.text, 'shorts ∞', 'no longs in the band: only shorts');
+  assert.equal(by(liqCardLines({ asOf: 0, bands: [{ r: 0.01, bid: 0, ask: 0 }], watched: 0, units: 'usd', coin: 'BTC' }), 'Ratio'), undefined);
 });

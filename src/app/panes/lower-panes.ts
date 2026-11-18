@@ -26,7 +26,7 @@ import { LiqHistory, bandIndex, type LiqRow } from '../liq-history.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { el } from '../dom.ts';
 import { addTune } from '../pane-tune.ts';
-import { PaneTable, tableInk, tableRowCap, type TableCell, type TableRoom } from './pane-table.ts';
+import { PaneTable, ratioCell, ratioFigure, sideRatio, tableInk, tableRowCap, type TableCell, type TableRoom } from './pane-table.ts';
 import { isPhone } from '../device.ts';
 import { niceTicks } from '../cvd/hero.ts';
 import { button, checkRow, heading, note, numberRow, selectRow, sizeControl, sizeRow, sortableList, switchRow, togglePanel, type Panel } from '../ui.ts';
@@ -467,7 +467,7 @@ export class DepthPane extends TimePane {
     this.#units.append(new Option('USD', 'usd'), new Option(currentCoin().coin, 'coin'));
     this.#units.onchange = () => this.#set({ units: this.#units.value === 'coin' ? 'coin' : 'usd' });
     units.append(this.#units);
-    const table = el('label', { class: 'ctl', tip: t('Each band\'s bids, asks and their difference in a table on the pane, at the pointer\'s time or the newest. Click a row to bring that band forward.') });
+    const table = el('label', { class: 'ctl', tip: `${t('Each band\'s bids, asks and their difference in a table on the pane, at the pointer\'s time or the newest. Click a row to bring that band forward.')} ${t('× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.')}` });
     this.#tableBox.type = 'checkbox'; this.#tableBox.onchange = () => this.#set({ table: this.#tableBox.checked });
     table.append(this.#tableBox, t('Table'));
     // An extreme balance can sound; its band, how rare and the hours it is judged against are in the Sounds panel.
@@ -650,11 +650,12 @@ export class DepthPane extends TimePane {
     if (liq && lastX < 0) { say(t('No liquidation levels recorded for this stretch of time.')); return; }
     // The header reads the watched band at the newest column (Liquidation levels: longs and shorts, and when those positions stood).
     if (liq) {
-      const b = bid[at(lastX, top)]!, a = ask[at(lastX, top)]!, row = rowOf(lastX);
-      setHtml(readout, `±${bandText(s.radii[top]!)}% L <b class="bid">${amountText(b, coins)}</b> S <b class="ask">${amountText(a, coins)}</b> Δ <b>${coins ? tableSigned(b - a) : signedText(b - a)}</b>${unit}${row ? ` · ${t('positions as of {time}', { time: clock(row.asOf) })}` : ''}`);
+      const b = bid[at(lastX, top)]!, a = ask[at(lastX, top)]!, row = rowOf(lastX), r = sideRatio(b, a);
+      const larger = r?.lead ? ` <b class="${r.lead > 0 ? 'bid' : 'ask'}">${r.lead > 0 ? t('longs') : t('shorts')} ${ratioFigure(r.ratio)}</b>` : '';
+      setHtml(readout, `±${bandText(s.radii[top]!)}% L <b class="bid">${amountText(b, coins)}</b> S <b class="ask">${amountText(a, coins)}</b> Δ <b>${coins ? tableSigned(b - a) : signedText(b - a)}</b>${unit}${larger}${row ? ` · ${t('positions as of {time}', { time: clock(row.asOf) })}` : ''}`);
     } else if (lastX >= 0) {
-      const b = bid[at(lastX, top)]!, a = ask[at(lastX, top)]!, total = b + a, lean = total > 0 ? (b - a) / total : 0;
-      const dominant = Math.abs(lean) < 0.005 ? '' : ` <b class="${lean > 0 ? 'bid' : 'ask'}">${lean > 0 ? t('bids') : t('asks')} +${(Math.abs(lean) * 100).toFixed(1)}%</b>`;
+      const b = bid[at(lastX, top)]!, a = ask[at(lastX, top)]!, total = b + a, lean = total > 0 ? (b - a) / total : 0, r = sideRatio(b, a);
+      const dominant = Math.abs(lean) < 0.005 ? '' : ` <b class="${lean > 0 ? 'bid' : 'ask'}">${lean > 0 ? t('bids') : t('asks')} +${(Math.abs(lean) * 100).toFixed(1)}%${r ? ` · ${ratioFigure(r.ratio)}` : ''}</b>`;
       setHtml(readout, `±${bandText(s.radii[top]!)}% B <b class="bid">${amountText(b, coins)}</b> A <b class="ask">${amountText(a, coins)}</b> Δ <b>${coins ? tableSigned(b - a) : signedText(b - a)}</b>${unit}${dominant}`);
     } else setHtml(readout, '');
     // The column the table reads: the one under the pointer, past the newest the newest; with no pointer the newest.
@@ -734,8 +735,7 @@ export class DepthPane extends TimePane {
   #drawTable(rows: readonly { r: number; bid: number; ask: number }[], pointing: boolean, focus: number, time: string, unit: string, sides: readonly [string, string]): boolean {
     const { ctx, palette: p } = this;
     return this.#table.draw(ctx, p, { w: this.w, h: this.h, plotW: this.plotW, axisW: AXIS_W, pointing }, {
-      heads: ['', sides[0], sides[1], 'Δ'], minCols: 3, focus, foot: `${time}${unit}`,
-      rows: rows.map(row => [{ text: `±${bandText(row.r)}%` }, { text: tableText(row.bid), color: tableInk(p.bid, p) }, { text: tableText(row.ask), color: tableInk(p.ask, p) }, { text: Number.isFinite(row.bid) ? tableSigned(row.bid - row.ask) : '–' }]),
+      heads: ['', sides[0], sides[1], 'Δ', '×'], minCols: 3, focus, foot: `${time}${unit}`, rows: depthTableRows(rows, p),
     }) !== null;
   }
 
@@ -806,6 +806,15 @@ function whoText(c: NlnsCandle | undefined, d: number): string {
   if (!c || d === 0) return '';
   const opened = [[t('New longs'), c.longOpened, 'bid'], [t('New shorts'), c.shortOpened, 'ask']] as const, closed = [[t('Shorts closed'), -c.shortClosed, 'bid'], [t('Longs closed'), -c.longClosed, 'ask']] as const;
   return [...(d > 0 ? [...opened, ...closed] : [...closed, ...opened])].filter(([, x]) => x !== 0).map(([label, x, tone]) => ` ${label} <b class="${tone}">${coinText(x, '')}</b>`).join('');
+}
+
+/**
+ * The Depth pane's table (both sources): a band a row, its bids and asks (longs and shorts), bids less asks, and how many times the larger side is
+ * the smaller in that side's colour (pane-table.ts `ratioCell`). A band not read has dashes.
+ */
+export function depthTableRows(rows: readonly { r: number; bid: number; ask: number }[], p: Pick<Palette, 'bid' | 'ask' | 'text' | 'muted'>): TableCell[][] {
+  return rows.map(row => [{ text: `±${bandText(row.r)}%` }, { text: tableText(row.bid), color: tableInk(p.bid, p) }, { text: tableText(row.ask), color: tableInk(p.ask, p) },
+    { text: Number.isFinite(row.bid) && Number.isFinite(row.ask) ? tableSigned(row.bid - row.ask) : '–' }, ratioCell(row.bid, row.ask, p)]);
 }
 
 /** The OI pane's table: a venue a row, its open interest in coins, its change over the candle read and its share of those read then. */
@@ -1241,7 +1250,7 @@ export class LtPane extends TimePane {
     bell.append(bellBox, t('Sound')); setTip(bell, t('Within 1% of the price, the bids outweigh the asks (or the other way round) by more than this share. It sounds once and again only after the book has come back. Three steps.')); group.append(bell);
     this.#sync.push(() => { bellBox.checked = panelSwitchOn(this.store, 'depth'); });
     this.#sync.push(() => { if (box.checked !== lt().average) box.checked = lt().average; });
-    const table = el('label', { class: 'ctl', tip: t('Each venue\'s weighted bids and asks, their imbalance and its share of the total in a table on the pane, at the pointer\'s time or the newest. The largest venues get a row each; the rest are added up in the last row.') });
+    const table = el('label', { class: 'ctl', tip: `${t('Each venue\'s weighted bids and asks, their imbalance and its share of the total in a table on the pane, at the pointer\'s time or the newest. The largest venues get a row each; the rest are added up in the last row.')} ${t('× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.')}` });
     this.#tableBox.type = 'checkbox'; this.#tableBox.checked = store.state.ltTable; this.#tableBox.onchange = () => store.set({ ltTable: this.#tableBox.checked });
     table.append(this.#tableBox, t('Table')); group.append(table);
     this.#sync.push(() => { this.#tableBox.checked = this.store.state.ltTable; });
@@ -1392,9 +1401,10 @@ export class LtPane extends TimePane {
     // Readout follows the cursor, else the newest point.
     let at = n - 1;
     if (state.hover) { at = 0; for (let i = 0; i < n; i++) if (s.times[i]! <= state.hover.t) at = i; }
-    const b = s.bid[at]!, a = s.ask[at]!, total = b + a;
+    const b = s.bid[at]!, a = s.ask[at]!, total = b + a, r = sideRatio(b, a);
+    const larger = r?.lead ? ` <b class="${r.lead > 0 ? 'bid' : 'ask'}">${r.lead > 0 ? t('bids') : t('asks')} ${ratioFigure(r.ratio)}</b>` : '';
     // ≈: part of the line was worked out from the minutes' average books (a size filter, or minutes recorded before the tracker was kept: see the help).
-    setHtml(readout, `${s.estimated ? '≈ ' : ''}${t('Bid')} <b class="bid">${usd(b)}</b> ${t('Ask')} <b class="ask">${usd(a)}</b> Δ <b>${usd(b - a)}</b> ${t('imb')} <b>${total > 0 ? Math.round((b - a) / total * 100) : 0}%</b> · ${tn(s.ids.length, '{n} venue', '{n} venues')}`);
+    setHtml(readout, `${s.estimated ? '≈ ' : ''}${t('Bid')} <b class="bid">${usd(b)}</b> ${t('Ask')} <b class="ask">${usd(a)}</b> Δ <b>${usd(b - a)}</b> ${t('imb')} <b>${total > 0 ? Math.round((b - a) / total * 100) : 0}%</b>${larger} · ${tn(s.ids.length, '{n} venue', '{n} venues')}`);
     // The card reads the windows shown too: in a replay, never one under way at its moment or after it (the mask covers pixels, not the card).
     const over = state.hover && this.pointer ? readAt(slotAt(s.times.subarray(0, n), step, state.hover.t), state.hover.t, n - 1, s.times[n - 1]) : -1;
     if (over >= 0 && state.hover && state.hover.t >= s.times[over]! + step) this.cursorT = s.times[over]! + step / 2;
@@ -1437,7 +1447,7 @@ export function ltRank(parts: LtParts, windows: number, owners: number, n: numbe
 }
 
 /** The Liquidity Tracker table's heads: no share in the Per level mode, which is the series' own (its parts carry the weights), as in `ltRowsAt`. */
-export const ltHeads = (parts: LtParts): string[] => (parts.wBid ? ['', t('Bid'), t('Ask'), t('imb')] : ['', t('Bid'), t('Ask'), t('imb'), t('Share')]);
+export const ltHeads = (parts: LtParts): string[] => (parts.wBid ? ['', t('Bid'), t('Ask'), t('imb'), '×'] : ['', t('Bid'), t('Ask'), t('imb'), '×', t('Share')]);
 
 /**
  * The table's rows at window `k`: the markets in `order` that have something in it, as many as `cap`, the rest added up in the last row (a
@@ -1463,12 +1473,12 @@ export function ltRowsAt(s: Pick<LtSeries, 'times' | 'bid' | 'ask' | 'parts'>, n
   return rows;
 }
 
-/** The Liquidity Tracker's table: a market a row, its bids and asks, its imbalance (bids less asks over both) and, where there is one, its share. */
+/** The Liquidity Tracker's table: a market a row, its bids and asks, its imbalance (bids less asks over both), how many times the larger side is the smaller and, where there is one, its share. */
 export function ltTableRows(rows: readonly LtRow[], p: Pick<Palette, 'bid' | 'ask' | 'text' | 'muted'>): TableCell[][] {
   return rows.map(r => {
     const both = r.bid + r.ask, imb = both > 0 ? Math.round((r.bid - r.ask) / both * 100) : 0;
     const cells: TableCell[] = [{ text: r.name }, { text: tableText(r.bid), color: tableInk(p.bid, p) }, { text: tableText(r.ask), color: tableInk(p.ask, p) },
-      { text: imb === 0 ? '0%' : `${imb > 0 ? '+' : '−'}${Math.abs(imb)}%`, color: imb ? tableInk(imb > 0 ? p.bid : p.ask, p) : p.muted }];
+      { text: imb === 0 ? '0%' : `${imb > 0 ? '+' : '−'}${Math.abs(imb)}%`, color: imb ? tableInk(imb > 0 ? p.bid : p.ask, p) : p.muted }, ratioCell(r.bid, r.ask, p)];
     if (r.share !== null) cells.push({ text: `${Math.round(r.share * 100)}%`, color: p.muted });
     return cells;
   });
