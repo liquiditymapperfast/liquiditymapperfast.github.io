@@ -46,17 +46,17 @@ export const tableInk = (side: string, p: Pick<Palette, 'text'>): string => mixH
 
 /**
  * How many times the larger of two sides (bids and asks, longs and shorts, buys and sells) is the smaller, and which one leads: 1 the first, -1
- * the second, 0 where they round to the same (under 1.005×). Null where there is nothing to compare (both empty, or a side not read); Infinity
- * where only one side has something.
+ * the second, 0 where the ratio is written 1.00×. Null where there is nothing to compare (both empty, or a side not read); Infinity where only
+ * one side has something.
  */
 export function sideRatio(first: number, second: number): { ratio: number; lead: 1 | -1 | 0 } | null {
   if (!Number.isFinite(first) || !Number.isFinite(second) || first < 0 || second < 0 || (first <= 0 && second <= 0)) return null;
   const big = Math.max(first, second), small = Math.min(first, second), ratio = small > 0 ? big / small : Infinity;
-  return { ratio, lead: ratio < 1.005 ? 0 : first > second ? 1 : -1 };
+  return { ratio, lead: Math.round(ratio * 100) <= 100 ? 0 : first > second ? 1 : -1 };
 }
 
-/** A ratio as the tables write it: two decimals under 10, one under 100, whole above; ∞ where the other side has none. */
-export const ratioFigure = (ratio: number): string => !Number.isFinite(ratio) ? '∞' : `${ratio < 9.995 ? ratio.toFixed(2) : ratio < 99.95 ? ratio.toFixed(1) : Math.round(ratio)}×`;
+/** A ratio as the tables write it: two decimals under 10, one under 100, whole under 1000, then >999× (a cell stays narrow); ∞ where the other side has none. */
+export const ratioFigure = (ratio: number): string => !Number.isFinite(ratio) ? '∞' : ratio >= 999.5 ? '>999×' : `${ratio < 9.995 ? ratio.toFixed(2) : ratio < 99.95 ? ratio.toFixed(1) : Math.round(ratio)}×`;
 
 /** The × cell of a table: the ratio in the leading side's colour (the first side's is `p.bid`), muted where neither leads, a dash where there is nothing to compare. */
 export function ratioCell(first: number, second: number, p: Pick<Palette, 'bid' | 'ask' | 'text' | 'muted'>): TableCell {
@@ -78,7 +78,13 @@ export function placeTable(measure: (text: string) => number, room: TableRoom, s
   const free = room.w - room.axisW - room.plotW;
   let cols = n, left = room.plotW + 4, plate = false;
   while (cols >= spec.minCols && width(cols) > free - 4) cols--;
-  if (cols < spec.minCols) { cols = n; left = 6; plate = true; if (!room.pointing || width(n) > room.plotW * 0.6) return null; }
+  // On a plate the last columns go first too, down to `minCols`, so a column more never takes the whole table away from a narrow pane.
+  if (cols < spec.minCols) {
+    left = 6; plate = true;
+    if (!room.pointing) return null;
+    for (cols = n; cols > spec.minCols && width(cols) > room.plotW * 0.6;) cols--;
+    if (width(cols) > room.plotW * 0.6) return null;
+  }
   const height = (k + (titles ? 1 : 0) + (foot ? 1 : 0)) * rowH, y0 = Math.round(room.h / 2 - height / 2), first = y0 + (titles ? rowH : 0);
   const rights: number[] = [];
   for (let c = 0, x = left + PAD; c < cols; c++) { x += widths[c]!; rights.push(x); x += GAP; }

@@ -1447,7 +1447,7 @@ export function ltRank(parts: LtParts, windows: number, owners: number, n: numbe
 }
 
 /** The Liquidity Tracker table's heads: no share in the Per level mode, which is the series' own (its parts carry the weights), as in `ltRowsAt`. */
-export const ltHeads = (parts: LtParts): string[] => (parts.wBid ? ['', t('Bid'), t('Ask'), t('imb'), '×'] : ['', t('Bid'), t('Ask'), t('imb'), '×', t('Share')]);
+export const ltHeads = (parts: LtParts): string[] => (parts.wBid ? ['', t('Bid'), t('Ask'), t('imb'), '×'] : ['', t('Bid'), t('Ask'), t('imb'), t('Share'), '×']);
 
 /**
  * The table's rows at window `k`: the markets in `order` that have something in it, as many as `cap`, the rest added up in the last row (a
@@ -1473,13 +1473,14 @@ export function ltRowsAt(s: Pick<LtSeries, 'times' | 'bid' | 'ask' | 'parts'>, n
   return rows;
 }
 
-/** The Liquidity Tracker's table: a market a row, its bids and asks, its imbalance (bids less asks over both), how many times the larger side is the smaller and, where there is one, its share. */
+/** The Liquidity Tracker's table: a market a row, its bids and asks, its imbalance (bids less asks over both), where there is one its share, and how many times the larger side is the smaller (last: imb says the lean too, Share is said nowhere else). */
 export function ltTableRows(rows: readonly LtRow[], p: Pick<Palette, 'bid' | 'ask' | 'text' | 'muted'>): TableCell[][] {
   return rows.map(r => {
     const both = r.bid + r.ask, imb = both > 0 ? Math.round((r.bid - r.ask) / both * 100) : 0;
     const cells: TableCell[] = [{ text: r.name }, { text: tableText(r.bid), color: tableInk(p.bid, p) }, { text: tableText(r.ask), color: tableInk(p.ask, p) },
-      { text: imb === 0 ? '0%' : `${imb > 0 ? '+' : '−'}${Math.abs(imb)}%`, color: imb ? tableInk(imb > 0 ? p.bid : p.ask, p) : p.muted }, ratioCell(r.bid, r.ask, p)];
+      { text: imb === 0 ? '0%' : `${imb > 0 ? '+' : '−'}${Math.abs(imb)}%`, color: imb ? tableInk(imb > 0 ? p.bid : p.ask, p) : p.muted }];
     if (r.share !== null) cells.push({ text: `${Math.round(r.share * 100)}%`, color: p.muted });
+    cells.push(ratioCell(r.bid, r.ask, p));
     return cells;
   });
 }

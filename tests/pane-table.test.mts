@@ -6,7 +6,7 @@ import { fundingTableRows } from '../src/app/panes/funding-pane.ts';
 import { lsTableRows } from '../src/app/panes/ls-pane.ts';
 import { bookNames, depthTableRows, ltHeads, ltRank, ltRowsAt, ltTableRows, oiTableRows } from '../src/app/panes/lower-panes.ts';
 import type { LtParts } from '../src/app/lt.ts';
-import { deltaTableRows } from '../src/app/panes/delta-pane.ts';
+import { deltaRow, deltaTableRows } from '../src/app/panes/delta-pane.ts';
 import { tableRowCap } from '../src/app/panes/pane-table.ts';
 import { foldCount } from '../src/app/pane-tune.ts';
 import type { Market } from '../src/app/store.ts';
@@ -173,16 +173,16 @@ test('the Long/Short table: long, short and their ratio at the moment read, dash
 
 test('the Liquidity Tracker table: bids, asks, the imbalance signed, and the share only outside the Per level mode', () => {
   const rows = ltTableRows([{ name: 'Binance', bid: 29_900_000, ask: 40_500_000, share: 0.21 }, { name: '7 others', bid: 44_800_000, ask: 45_900_000, share: 0.26 }, { name: 'Kraken', bid: 0, ask: 0, share: 0 }], PALETTE);
-  assert.deepEqual(rows.map(r => r.map(c => c.text)), [['Binance', '29.9M', '40.5M', '−15%', '1.35×', '21%'], ['7 others', '44.8M', '45.9M', '−1%', '1.02×', '26%'], ['Kraken', '0', '0', '0%', '–', '0%']]);
+  assert.deepEqual(rows.map(r => r.map(c => c.text)), [['Binance', '29.9M', '40.5M', '−15%', '21%', '1.35×'], ['7 others', '44.8M', '45.9M', '−1%', '26%', '1.02×'], ['Kraken', '0', '0', '0%', '0%', '–']]);
   assert.equal(rows[2]![3]!.color, PALETTE.muted, 'no lean: muted');
-  assert.equal(rows[0]![4]!.color, rows[0]![2]!.color, 'the asks lead: the ratio in their colour');
+  assert.equal(rows[0]![5]!.color, rows[0]![2]!.color, 'the asks lead: the ratio in their colour');
   assert.deepEqual(ltTableRows([{ name: 'OKX', bid: 300, ask: 100, share: null }], PALETTE).map(r => r.map(c => c.text)), [['OKX', '300', '100', '+50%', '3.00×']], 'Per level: no share column');
 });
 
 test('the Delta table: buys, sells, the delta signed and the share of the volume', () => {
   const rows = deltaTableRows([{ name: 'Binance', buys: 3_000_000, sells: 1_000_000, delta: 2_000_000, share: 0.8 }, { name: '2 others', buys: 400_000, sells: 600_000, delta: -200_000, share: 0.2 }], PALETTE);
-  assert.deepEqual(rows.map(r => r.map(c => c.text)), [['Binance', '3M', '1M', '+2M', '3.00×', '80%'], ['2 others', '400K', '600K', '−200K', '1.50×', '20%']]);
-  assert.deepEqual([rows[0]![4]!.color, rows[1]![4]!.color], [rows[0]![1]!.color, rows[1]![2]!.color], 'the ratio in the colour of the side that leads');
+  assert.deepEqual(rows.map(r => r.map(c => c.text)), [['Binance', '3M', '1M', '+2M', '80%', '3.00×'], ['2 others', '400K', '600K', '−200K', '20%', '1.50×']]);
+  assert.deepEqual([rows[0]![5]!.color, rows[1]![5]!.color], [rows[0]![1]!.color, rows[1]![2]!.color], 'the ratio in the colour of the side that leads');
   assert.notEqual(rows[0]![3]!.color, rows[1]![3]!.color, 'a buying delta and a selling one in their sides\' colours');
 });
 
@@ -284,9 +284,11 @@ test('the × column: how many times the larger side is the smaller, in its colou
   assert.deepEqual(sideRatio(546, 214), { ratio: 546 / 214, lead: 1 });
   assert.equal(sideRatio(103, 113)!.lead, -1, 'the second side leads');
   assert.equal(sideRatio(100, 100.4)!.lead, 0, 'under 1.005x neither leads');
+  assert.equal(sideRatio(100, 100.5)!.lead, 0, 'written 1.00x: neither leads, so no colour on a figure that says even');
+  assert.equal(sideRatio(100, 100.6)!.lead, -1);
   assert.deepEqual(sideRatio(5, 0), { ratio: Infinity, lead: 1 }, 'only one side has something');
   assert.equal(sideRatio(0, 0), null); assert.equal(sideRatio(NaN, 3), null); assert.equal(sideRatio(3, Infinity), null); assert.equal(sideRatio(-1, 3), null);
-  assert.deepEqual([1, 1.004, 2.5512, 9.994, 9.996, 42.37, 99.96, 1234.4, Infinity].map(ratioFigure), ['1.00×', '1.00×', '2.55×', '9.99×', '10.0×', '42.4×', '100×', '1234×', '∞']);
+  assert.deepEqual([1, 1.004, 2.5512, 9.994, 9.996, 42.37, 99.96, 999.4, 999.5, 8e13, Infinity].map(ratioFigure), ['1.00×', '1.00×', '2.55×', '9.99×', '10.0×', '42.4×', '100×', '999×', '>999×', '>999×', '∞']);
   assert.deepEqual(ratioCell(546, 214, PALETTE), { text: '2.55×', color: ratioCell(5, 0, PALETTE).color });
   assert.equal(ratioCell(0, 7, PALETTE).text, '∞'); assert.notEqual(ratioCell(0, 7, PALETTE).color, ratioCell(7, 0, PALETTE).color);
   assert.deepEqual(ratioCell(100, 100, PALETTE), { text: '1.00×', color: PALETTE.muted }, 'neither leads: muted');
@@ -300,4 +302,22 @@ test('the Depth table: bids, asks, their difference and the × column, on both s
   assert.equal(rows[2]![4]!.color, rows[2]![2]!.color, 'only asks (shorts) there: their colour');
   const spec = { heads: ['', 'Bid', 'Ask', 'Δ', '×'], rows, minCols: 3, foot: 'newest 13:39', focus: -1 };
   assert.equal(placeTable(measure, room({ w: 900, h: 140 }), spec)!.cols, 5, 'with room beside the plot the × column shows');
+});
+
+test('a Delta row: a side that traded nothing is 0, not the residue of live seconds added up in doubles, so × says ∞ and the cells stay narrow', () => {
+  const gross = 1_234_567.89, delta = gross + 4e-9;
+  const r = deltaRow('Thin', delta, gross, 2 * gross);
+  assert.deepEqual([r.buys, r.sells, r.share], [gross + 2e-9, 0, 0.5]);
+  assert.equal(r.delta, r.buys, 'the delta is the two sides\' difference');
+  assert.deepEqual(deltaTableRows([r], PALETTE)[0]!.map(c => c.text), ['Thin', '1.23M', '0', '+1.23M', '50%', '∞']);
+  const below = deltaRow('Thin', -gross + 3e-8, gross, gross);
+  assert.deepEqual([below.buys, deltaTableRows([below], PALETTE)[0]![5]!.text], [0, '∞'], 'a negative residue too');
+  assert.deepEqual(deltaRow('A', 0, 0, 0), { name: 'A', buys: 0, sells: 0, delta: 0, share: 0 });
+});
+
+test('on a plate the last columns go first too, down to minCols, before the table is left out', () => {
+  // All four 126 wide, three 99: a plot of 200 takes 120 on a plate.
+  const plate = placeTable(measure, room({ w: 200 + 60 + 20, plotW: 200, pointing: true }), spec())!;
+  assert.deepEqual([plate.plate, plate.cols, plate.width], [true, 3, 99]);
+  assert.equal(placeTable(measure, room({ w: 150 + 60, plotW: 150, pointing: true }), spec()), null, 'not even minCols fit: none');
 });
