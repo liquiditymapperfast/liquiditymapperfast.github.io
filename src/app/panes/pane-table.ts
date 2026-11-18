@@ -5,7 +5,7 @@ import type { Pt } from '../touch.ts';
  * The table a pane under the map draws on itself: several things of one kind read at one moment (the Depth pane's bands, the venues of the Funding, Open
  * Interest and Long/Short panes), while its chart shows their history or their sum. Beside the plot where the columns right of it leave room, the last columns
  * going first; else over the plot's left end on a plate while the pointer (or a pinned finger) is on the pane, so it never covers the newest candles and leaves the
- * chart clear at rest. In a short pane the rows close up (15 px down to 12) and the titles, then the foot, are left out; where even a row each does not fit,
+ * chart clear at rest; a plate keeps every column, or as many as its `plateMin` says. In a short pane the rows close up (15 px down to 12) and the titles, then the foot, are left out; where even a row each does not fit,
  * there is no table.
  */
 
@@ -21,6 +21,12 @@ export interface TableSpec {
   foot: string;
   /** The fewest columns kept beside the plot: fewer would not say what the table is for, and it goes on a plate. */
   minCols: number;
+  /**
+   * The fewest columns a plate keeps, the last going first (at least `minCols`); by default every column, and a plate that cannot hold them
+   * all is left out (the pane's card says it). The tables whose last column is × give it `heads.length - 1`, so that column never takes the
+   * table away from a pane it fitted before.
+   */
+  plateMin?: number;
   /** The row lit as the one chosen; -1 for none. */
   focus: number;
 }
@@ -66,7 +72,7 @@ export function ratioCell(first: number, second: number, p: Pick<Palette, 'bid' 
 }
 
 /** Where a table goes in `room`, or null where it does not fit. `measure` is the width of a text in the pane's font. */
-export function placeTable(measure: (text: string) => number, room: TableRoom, spec: Pick<TableSpec, 'heads' | 'rows' | 'minCols'>): TablePlace | null {
+export function placeTable(measure: (text: string) => number, room: TableRoom, spec: Pick<TableSpec, 'heads' | 'rows' | 'minCols' | 'plateMin'>): TablePlace | null {
   const k = spec.rows.length, n = spec.heads.length;
   let rowH = 0, titles = true, foot = true;
   fit: for (const [withTitles, withFoot] of [[true, true], [false, true], [false, false]] as const) {
@@ -78,11 +84,12 @@ export function placeTable(measure: (text: string) => number, room: TableRoom, s
   const free = room.w - room.axisW - room.plotW;
   let cols = n, left = room.plotW + 4, plate = false;
   while (cols >= spec.minCols && width(cols) > free - 4) cols--;
-  // On a plate the last columns go first too, down to `minCols`, so a column more never takes the whole table away from a narrow pane.
+  // On a plate the last columns go first too, down to `plateMin` (every column unless the table says otherwise).
   if (cols < spec.minCols) {
     left = 6; plate = true;
     if (!room.pointing) return null;
-    for (cols = n; cols > spec.minCols && width(cols) > room.plotW * 0.6;) cols--;
+    const least = Math.min(n, Math.max(spec.minCols, spec.plateMin ?? n));
+    for (cols = n; cols > least && width(cols) > room.plotW * 0.6;) cols--;
     if (width(cols) > room.plotW * 0.6) return null;
   }
   const height = (k + (titles ? 1 : 0) + (foot ? 1 : 0)) * rowH, y0 = Math.round(room.h / 2 - height / 2), first = y0 + (titles ? rowH : 0);

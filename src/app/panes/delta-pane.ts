@@ -374,7 +374,7 @@ export class DeltaPane extends TimePane {
     if (state.deltaTable && ids.length > 1) {
       const rows = this.#tableRows(state, ids, shown.t, tf, now, visible, ph);
       const foot = `${hover ? clock(shown.t, true) : `${t('newest')} ${clock(shown.t)}`} USD`;
-      if (rows.length && this.#table.draw(ctx, p, { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, { heads: ['', t('Buys'), t('Sells'), 'Δ', t('Share'), '×'], minCols: 4, focus: -1, foot, rows: deltaTableRows(rows, p) })?.plate) this.#lines = null;
+      if (rows.length && this.#table.draw(ctx, p, { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, { heads: ['', t('Buys'), t('Sells'), 'Δ', t('Share'), '×'], minCols: 4, plateMin: 5, focus: -1, foot, rows: deltaTableRows(rows, p) })?.plate) this.#lines = null;
     }
   }
 

@@ -730,13 +730,15 @@ export class DepthPane extends TimePane {
 
   /**
    * The bands' figures (pane-table.ts): a row a band (bids, asks, bids less asks), the band brought forward lit, the column titles over them and the time read
-   * under them. The header reads the watched band; where even a row a band does not fit, the table is not drawn and the card says it instead. Returns whether it was drawn.
+   * under them. The header reads the watched band; where even a row a band does not fit, the table is not drawn and the card says it instead. Returns whether it was
+   * drawn whole: one beside the plot without its last columns (× first) leaves the card to say them at the pointer (a plate is drawn whole or not at all).
    */
   #drawTable(rows: readonly { r: number; bid: number; ask: number }[], pointing: boolean, focus: number, time: string, unit: string, sides: readonly [string, string]): boolean {
     const { ctx, palette: p } = this;
+    const heads = ['', sides[0], sides[1], 'Δ', '×'];
     return this.#table.draw(ctx, p, { w: this.w, h: this.h, plotW: this.plotW, axisW: AXIS_W, pointing }, {
-      heads: ['', sides[0], sides[1], 'Δ', '×'], minCols: 3, focus, foot: `${time}${unit}`, rows: depthTableRows(rows, p),
-    }) !== null;
+      heads, minCols: 3, focus, foot: `${time}${unit}`, rows: depthTableRows(rows, p),
+    })?.cols === heads.length;
   }
 
   /** The watched band's columns of an answer, as two plain series (Highlights judged a pixel column at a time). */
@@ -1418,7 +1420,7 @@ export class LtPane extends TimePane {
       const foot = `${s.estimated ? '≈ ' : ''}${state.hover ? clock(s.times[at]!, true) : `${t('newest')} ${clock(s.times[at]!)}`}`;
       // Per level is what the series was worked out with (its parts carry the weights), not the setting, which a new series may still be on its way for.
       const heads = ltHeads(parts);
-      if (rows.length && this.#table.draw(ctx, p, { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, { heads, minCols: 3, focus: -1, foot, rows: ltTableRows(rows, p) })?.plate) this.#lines = null;
+      if (rows.length && this.#table.draw(ctx, p, { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, { heads, minCols: 3, plateMin: heads.length - 1, focus: -1, foot, rows: ltTableRows(rows, p) })?.plate) this.#lines = null;
     }
   }
 }

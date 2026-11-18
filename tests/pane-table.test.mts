@@ -315,9 +315,22 @@ test('a Delta row: a side that traded nothing is 0, not the residue of live seco
   assert.deepEqual(deltaRow('A', 0, 0, 0), { name: 'A', buys: 0, sells: 0, delta: 0, share: 0 });
 });
 
-test('on a plate the last columns go first too, down to minCols, before the table is left out', () => {
+test('a plate keeps every column unless the table lets its last ones go (plateMin), and then only down to that', () => {
   // All four 126 wide, three 99: a plot of 200 takes 120 on a plate.
-  const plate = placeTable(measure, room({ w: 200 + 60 + 20, plotW: 200, pointing: true }), spec())!;
-  assert.deepEqual([plate.plate, plate.cols, plate.width], [true, 3, 99]);
-  assert.equal(placeTable(measure, room({ w: 150 + 60, plotW: 150, pointing: true }), spec()), null, 'not even minCols fit: none');
+  const narrow = room({ w: 200 + 60 + 20, plotW: 200, pointing: true });
+  assert.equal(placeTable(measure, narrow, spec()), null, 'by default a plate is the whole table or none (the card says it)');
+  const plate = placeTable(measure, narrow, { ...spec(), plateMin: 3 })!;
+  assert.deepEqual([plate.plate, plate.cols, plate.width], [true, 3, 99], 'the × tables let their last column go');
+  assert.equal(placeTable(measure, room({ w: 150 + 60, plotW: 150, pointing: true }), { ...spec(), plateMin: 3 }), null, 'not even plateMin fit: none');
+  assert.equal(placeTable(measure, narrow, { ...spec(), plateMin: 1 })!.cols, 3, 'never below minCols');
+  const all = placeTable(measure, room({ w: 400 + 60 + 90, pointing: true }), { ...spec(), plateMin: 3 })!;
+  assert.equal(all.cols, 4, 'with room on the plate every column stays');
+});
+
+test('the × column is the first to go beside the plot in the Liquidity Tracker and Delta tables', () => {
+  const lt = ltTableRows([{ name: 'Binance', bid: 29_900_000, ask: 40_500_000, share: 0.21 }], PALETTE), heads = ['', 'Bid', 'Ask', 'imb', 'Share', '×'];
+  const full = placeTable(measure, room({ w: 2000 }), { heads, rows: lt, minCols: 3 })!;
+  const less = placeTable(measure, room({ w: 400 + 60 + full.width - 10 }), { heads, rows: lt, minCols: 3 })!;
+  assert.deepEqual([full.cols, less.cols], [6, 5], 'Share stays, × goes');
+  assert.equal(deltaTableRows([deltaRow('A', 1, 3, 3)], PALETTE)[0]!.length, 6);
 });
