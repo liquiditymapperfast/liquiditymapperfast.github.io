@@ -180,3 +180,14 @@ test('an untouched copy of the plain spot and perpetual CVD becomes the labelled
   assert.equal(updateStarters([edited])[0]!.source, edited.source, 'an edited one is left as it is');
   assert.ok(/cum\(spotDelta\)/.test(PREVIOUS_CVD_SOURCES[0]!) && !/renderer\.last/.test(PREVIOUS_CVD_SOURCES[0]!), 'the plain text, as the page wrote it');
 });
+
+test('an untouched copy of the CVD with labels at the lines\' ends becomes the one with tags, its settings kept (2026-11-18)', () => {
+  const labelled = PREVIOUS_CVD_SOURCES[1]!;
+  assert.ok(/shape=label, position=above/.test(labelled) && !/shape=tag/.test(labelled), 'the labelled text, as the page wrote it');
+  assert.ok(/shape=tag/.test(CVD_SOURCE) && !/shape=label/.test(CVD_SOURCE), 'the current one stands its labels at the right edge');
+  const old = { id: 'spot-and-perpetual-cvd', name: 'Spot and perpetual CVD', source: labelled, options: { perpColor: '#00ff00', showLabels: false, trendLength: 30 }, on: true, api: 3, height: 220, place: 'pane' as const };
+  const [up] = updateStarters([old]);
+  assert.equal(up!.source, CVD_SOURCE);
+  assert.deepEqual(up!.options, old.options, 'its colours, lookback and Labels switch kept');
+  assert.equal(updateStarters([{ ...old, source: labelled.replace('trendLength + 1', 'trendLength + 2') }])[0]!.source, labelled.replace('trendLength + 1', 'trendLength + 2'), 'an edited one is left as it is');
+});

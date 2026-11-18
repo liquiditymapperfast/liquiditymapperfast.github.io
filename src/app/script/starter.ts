@@ -306,7 +306,7 @@ export const STARTER_ID = 'vwap-with-bands', HEATMAP_ID = 'stochastic-heat-map',
 /**
  * The scripts a page starts with before it has kept any: the rolling VWAP with its bands on the map, on (Karl, 2026-10-28: shown to every
  * visitor), and the stochastic heat map in a row under the map, off until switched on (it was on from 2026-10-27; a row under the map takes
- * height from it), and the spot and perpetual CVD with its labels in a row, off (a user's, 2026-11-11), and the strong and weak highs and lows
+ * height from it), and the spot and perpetual CVD with its tags in a row, off (a user's, 2026-11-11), and the strong and weak highs and lows
  * on the map, off (a user's, 2026-11-17), so the Scripts panel opens on four to read, change and learn from.
  * Deleting one keeps the list as it is left; its example brings it back. A browser that already kept a list keeps it as it is, but for an
  * untouched heat map of an earlier version (`updateStarters`).
@@ -335,7 +335,8 @@ export function updateStarters(list: ScriptRecord[]): ScriptRecord[] {
   return list.map(r => {
     // An untouched VWAP with bands, the starter or a copy added from the examples: the current text, its settings as they were.
     if (PREVIOUS_VWAP_SOURCES.includes(r.source.replace(/\r\n?/g, '\n'))) return { ...r, source: VWAP_SOURCE, api: Math.max(r.api, SCRIPT_API) };
-    // An untouched spot and perpetual CVD from before its labels: the labelled one, its colours kept (its "?" describes the labels by its id).
+    // An untouched spot and perpetual CVD from before its tags (without labels, or with labels at the lines' ends): the current one, its
+    // colours and switches kept (its "?" describes the labels by its id).
     if (PREVIOUS_CVD_SOURCES.includes(r.source.replace(/\r\n?/g, '\n'))) return { ...r, source: CVD_SOURCE, api: Math.max(r.api, SCRIPT_API) };
     if (r.id !== HEATMAP_ID || !PREVIOUS_HEATMAP_SOURCES.includes(r.source.replace(/\r\n?/g, '\n'))) return r;
     const old = Object.keys(r.options).filter(k => Object.prototype.hasOwnProperty.call(OLD_HEATMAP_OPTIONS, k));

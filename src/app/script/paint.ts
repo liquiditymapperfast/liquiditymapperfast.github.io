@@ -202,31 +202,36 @@ export function placeTags(want: readonly number[], h: number, top: number, botto
   return out;
 }
 
-/** A tag where it is drawn: its plate (the pane's pixels), and the height of the value it names. */
-export interface TagBox { x: number; y: number; w: number; h: number; at: number }
+/** A tag where it is drawn: its plate (the pane's pixels). */
+export interface TagBox { x: number; y: number; w: number; h: number }
 
-/** The width of a tag's plate for its text (its face's width and a little room each side). */
+/** The width of a tag's plate for its text (its face's width and a little room each side); the canvas keeps the face it had. */
 export function tagWidth(ctx: CanvasRenderingContext2D, text: string): number {
-  ctx.font = markFont(1);
-  let w = MARK_WIDTHS.get(`${ctx.font}|${text}`);
-  if (w === undefined) { if (MARK_WIDTHS.size >= 2_048) MARK_WIDTHS.clear(); w = ctx.measureText(text).width; MARK_WIDTHS.set(`${ctx.font}|${text}`, w); }
+  const font = markFont(1), key = `${font}|${text}`;
+  let w = MARK_WIDTHS.get(key);
+  if (w === undefined) {
+    const was = ctx.font; ctx.font = font;
+    if (MARK_WIDTHS.size >= 2_048) MARK_WIDTHS.clear();
+    w = ctx.measureText(text).width; MARK_WIDTHS.set(key, w); ctx.font = was;
+  }
   return Math.ceil(w) + 10;
 }
 
 /**
  * Lay out a row's tags (`asks`, in the order the plots asked) between `top` and `bottom`: each plate at its height from `placeTags`, all
- * with their left edges at `left` when the widest fits between it and `right`, else all with their right edges at `right` (over the plot,
- * where the room right of it is too narrow). One left out is null.
+ * with their left edges at `left` when the widest of those kept fits between it and `right`, else all with their right edges at `edge`
+ * (`right` unless given: over the plot, where the room right of it is too narrow; a replay gives its moment, past which the plot is
+ * covered). One left out is null.
  */
-export function layoutTags(ctx: CanvasRenderingContext2D, asks: readonly TagAsk[], area: { left: number; right: number; top: number; bottom: number }): (TagBox | null)[] {
+export function layoutTags(ctx: CanvasRenderingContext2D, asks: readonly TagAsk[], area: { left: number; right: number; top: number; bottom: number; edge?: number }): (TagBox | null)[] {
   if (!asks.length) return [];
-  const widths = asks.map(a => tagWidth(ctx, a.text)), widest = Math.max(...widths);
-  const flush = area.left + widest <= area.right;
   const tops = placeTags(asks.map(a => a.y), TAG_H, area.top, area.bottom);
+  const widths = asks.map((a, k) => tops[k] === null ? 0 : tagWidth(ctx, a.text)), widest = Math.max(...widths);
+  const flush = area.left + widest <= area.right, edge = area.edge ?? area.right;
   return asks.map((a, k) => {
     const y = tops[k]; if (y === null || y === undefined) return null;
-    const w = widths[k]!, x = Math.max(0, flush ? area.left : area.right - w);
-    return { x, y, w, h: TAG_H, at: a.y };
+    const w = widths[k]!, x = Math.max(0, flush ? area.left : edge - w);
+    return { x, y, w, h: TAG_H };
   });
 }
 
@@ -235,6 +240,7 @@ export function layoutTags(ctx: CanvasRenderingContext2D, asks: readonly TagAsk[
  * leader in its colour from that height at its left edge (none where the value is off the row, `top` to `bottom`).
  */
 export function drawTags(ctx: CanvasRenderingContext2D, asks: readonly TagAsk[], boxes: readonly (TagBox | null)[], top: number, bottom: number): void {
+  if (!boxes.some(b => b)) return;
   ctx.save();
   ctx.font = markFont(1); ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
   asks.forEach((a, k) => {

@@ -4,7 +4,7 @@ import { analyze, createRunner, runScript } from '../src/app/script/lang/engine.
 import type { BarInputs } from '../src/app/script/inputs.ts';
 import { MARK_TEXT, MARK_TIP, MAX_ALERTS, type PlotOut, type ScriptResult } from '../src/app/script/protocol.ts';
 import { TAG_GAP, TAG_H, drawTags, layoutTags, markBox, markPlace, markPosition, markShape, paintPlot, placeTags, textOn, type Frame, type MarkBox, type TagAsk } from '../src/app/script/paint.ts';
-import { markAt, markLines, markText, type DrawnMark } from '../src/app/script/marks.ts';
+import { markAt, markLines, markNearest, markText, type DrawnMark } from '../src/app/script/marks.ts';
 import { ALERT_FRESH_MS, AlertNews, fingerprint } from '../src/app/script/alert-news.ts';
 import { scriptNotes } from '../src/app/sound/rules.ts';
 import { SCRIPT_API } from '../src/app/script/records.ts';
@@ -299,4 +299,26 @@ test('tags line up next to the plot where the room past it holds the widest, els
   drawTags(rec.ctx, asks, roomy, 0, 100);
   assert.deepEqual(rec.texts, ['Spot +$1M', 'Perp −$2M']);
   assert.ok(rec.segments.some(([x0, y0]) => x0 === 806 - 7 && Math.abs(y0 - 50.5) < 1), 'a leader from the moved tag\'s value');
+});
+
+test('a finger on one of two stacked tags gets that tag, not the one drawn after it; near both, the nearer', () => {
+  const plot: PlotOut = { kind: 'mark', title: '', style: { shape: 'tag' }, fields: { value: new Float64Array(1) }, colors: null, texts: null, tips: null };
+  const tag = (y: number, name: string): DrawnMark => ({ box: { x: 100, y, w: 60, h: TAG_H, i: 0 }, id: 'a', name, plot, color: '#fff' });
+  const tags = [tag(20, 'upper'), tag(20 + TAG_H + TAG_GAP, 'lower')];
+  assert.equal(markAt(tags, 130, 30, 10)!.name, 'lower', 'the grown boxes overlap: the last drawn answered');
+  assert.equal(markNearest(tags, 130, 30, 10)!.name, 'upper', 'the box that holds the point');
+  assert.equal(markNearest(tags, 130, 15, 10)!.name, 'upper', 'above both: the nearer');
+  assert.equal(markNearest(tags, 130, 20 + 2 * TAG_H + TAG_GAP + 4, 10)!.name, 'lower', 'below both: the nearer');
+  assert.equal(markNearest(tags, 300, 30, 10), null, 'too far from either');
+});
+
+test('tags that do not fit past the plot stand at the edge given (a replay\'s moment); one left out does not decide it', () => {
+  const rec = recorder();
+  const ask = (text: string, y: number): TagAsk => ({ y, text, named: true, color: '#888', textColor: '#fff', i: 0, value: 0 });
+  const boxes = layoutTags(rec.ctx, [ask('wide tag text', 50)], { left: 806, right: 860, top: 0, bottom: 100, edge: 500 });
+  assert.equal(boxes[0]!.x + boxes[0]!.w, 500, 'right-aligned at the edge');
+  // A row that holds one tag: the second, wider one is left out, and the first is laid out next to the plot as if alone.
+  const kept = layoutTags(rec.ctx, [ask('ab', 50), ask('a much wider text here', 52)], { left: 806, right: 860, top: 40, bottom: 40 + TAG_H + 1 });
+  assert.equal(kept[1], null);
+  assert.equal(kept[0]!.x, 806);
 });

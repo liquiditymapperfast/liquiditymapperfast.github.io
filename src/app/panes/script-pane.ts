@@ -23,7 +23,7 @@ import { ROW_DEFAULT, SCRIPT_API, loadScripts, storeScripts, type OptionValue, t
 import { starterScripts, updateStarters } from '../script/starter.ts';
 import { exampleHeight, examples } from '../script/examples.ts';
 import { valuesAt, type PlotOut, type ScriptResult, type Warning } from '../script/protocol.ts';
-import { MARK_SLOP, MARK_SLOP_TOUCH, markAt, markLines, markText, type DrawnMark } from '../script/marks.ts';
+import { MARK_SLOP, MARK_SLOP_TOUCH, markAt, markLines, markNearest, markText, type DrawnMark } from '../script/marks.ts';
 import { AlertNews, fingerprint, type ScriptAlert } from '../script/alert-news.ts';
 import { drawTags, layoutTags, onPlot, paintPlot, plotColorAt, scaleIdOf, scalesOf, shortNumber, visibleRange, yOf, type Frame, type Scale, type TagAsk } from '../script/paint.ts';
 import { errorText } from '../script/messages.ts';
@@ -236,7 +236,10 @@ export class ScriptPane extends TimePane {
 
   /** Whether a script that is on draws in a row of this pane: the pane is shown only then (and only while Scripts is on). */
   get hasRows(): boolean { return this.#records.some(r => r.on && r.place === 'pane'); }
-  /** The buttons beside each row's name (what it is, hide it, open it, switch it off), a layer over the canvas; placed again only when a row moves. */
+  /**
+   * The buttons beside each row's name (what it is, hide it, open it; switch it off on a phone, else at the row's right end where the pane has
+   * several rows: `ToolPlace`), a layer over the canvas; placed again only when a row moves.
+   */
   #rowTools = el('div', { class: 'script-row-tools' });
   #rowToolsKey = '';
 
@@ -271,10 +274,11 @@ export class ScriptPane extends TimePane {
     const gone = new Set(ids);
     this.setRecords(this.#records.map(r => gone.has(r.id) ? { ...r, on: false } : r));
     if (this.#panel && !this.#ui.editing) this.#panel.render(this.#build);
+    // Undo switches on again those still off and still drawn in the pane (one moved to the map since is left as it is).
+    const back = (r: ScriptRecord): boolean => gone.has(r.id) && !r.on && r.place === 'pane';
     toast(tn(ids.length, 'Switched off {n} script in this panel.', 'Switched off {n} scripts in this panel.'), { action: { label: t('Undo'), run: () => {
-      if (!this.#records.some(r => gone.has(r.id) && !r.on)) return;
-      this.setRecords(this.#records.map(r => gone.has(r.id) ? { ...r, on: true } : r));
-      this.showScripts();
+      if (!this.#records.some(back)) return;
+      this.setRecords(this.#records.map(r => back(r) ? { ...r, on: true } : r));
       if (this.#panel && !this.#ui.editing) this.#panel.render(this.#build);
     } } });
   }
@@ -730,6 +734,8 @@ export class ScriptPane extends TimePane {
     // A row's own switch-off button: with one row the pane's close does what it would, so it has none; with more, each row has one at its
     // right end, under the pane's (`#placeRowTools`). A phone has no pane buttons, and keeps it beside the name.
     const offApart = !isPhone(), rowOff = offApart && on.length > 1;
+    // A replay covers the plot past its moment (TimePane's mask): tags that do not fit past the plot stand at that moment.
+    const replayX = replaying() ? v.xOf(pageNow(), pw) : Infinity, replayEdge = replayX < pw ? Math.max(0, replayX) - 2 : this.w - 2;
     on.forEach((r, k) => {
       const left = on.length - 1 - k, rowH = left === 0 ? Math.max(least, ph - top) : Math.max(least, Math.min(ph - top - left * least, Math.round(ph * r.height / total)));
       const kept = this.#held.get(r.id), held = kept && this.#fresh(kept) ? kept : undefined;
@@ -760,14 +766,14 @@ export class ScriptPane extends TimePane {
             if (s) paintPlot({ ...frame, color: fallback, ...(plot.kind === 'mark' ? { marks: box => { this.#rowMarks.push({ box, id: r.id, name: r.name, plot, color: plotColorAt(plot, box.i, fallback, p.candleUp, p.candleDown) }); }, tags: ask => { tags.push({ ask, plot }); } } : {}) }, plot, s);
           });
           // The row's tags (`shape=tag`) at its right edge, next to the plot where the room past it holds them, else over the scale and the
-          // plot's end; under the row's own switch-off button where it has one.
-          const asks = tags.map(x => x.ask), boxes = layoutTags(ctx, asks, { left: pw + 6, right: this.w - 2, top: top + (rowOff ? 20 : 2), bottom: top + rowH - 2 });
+          // plot's end (in a replay, at its moment: the plot past it is covered); under the row's own switch-off button where it has one.
+          const asks = tags.map(x => x.ask), boxes = layoutTags(ctx, asks, { left: pw + 6, right: this.w - 2, top: top + (rowOff ? 20 : 2), bottom: top + rowH - 2, edge: replayEdge });
           // The highest and the lowest in view of the row's first scale, at its right edge, where no tag stands on them.
           const first = scales.values().next().value;
           if (first) {
             ctx.font = '10px ui-monospace, monospace'; ctx.textAlign = 'right'; ctx.fillStyle = p.muted;
             const number = (value: number, y: number): void => {
-              const text = shortNumber(value), w = ctx.measureText(text).width;
+              const text = shortNumber(value), w = boxes.length ? ctx.measureText(text).width : 0;
               if (!boxes.some(b => b && b.x < this.w - 4 && b.x + b.w > this.w - 4 - w && b.y < y + 6 && b.y + b.h > y - 6)) ctx.fillText(text, this.w - 4, y);
             };
             number(first.max, Math.max(top + (rowOff ? 26 : 8), yOf(first.max, first, top, rowH)));
@@ -797,17 +803,17 @@ export class ScriptPane extends TimePane {
   }
   /** The tag under the pointer, as the rows were last drawn (a finger's a little wider). */
   #tagAt(p = this.#pointerAt()): DrawnMark | null {
-    return p ? markAt(this.#rowTags, p.x, p.y, this.store.state.hover?.touch ? MARK_SLOP_TOUCH : MARK_SLOP) : null;
+    return p ? markNearest(this.#rowTags, p.x, p.y, MARK_SLOP) : null;
   }
   /** The rows' tags answer the pointer themselves, past the plot as over it: the shared time is left alone over one. */
   protected override ownsPoint(x: number): boolean { const p = this.#pointerAt(); return !!p && this.#tagAt({ x, y: p.y }) !== null; }
-  /** A tap on a tag shows what it says (another tap elsewhere goes on as a tap does). */
+  /**
+   * A tap on a tag shows what it says, pinned in the tag's middle (where the next drawing finds it without a finger's slop) as a pin of the
+   * pane's: a tap near it, or the pane hidden, lets it go.
+   */
   protected override claimTap(p: { x: number; y: number }): boolean {
-    const tag = markAt(this.#rowTags, p.x, p.y, MARK_SLOP_TOUCH); if (!tag) return false;
-    // The pointer stands in the tag's middle, where the next drawing finds it without a finger's slop.
-    const box = this.canvas.getBoundingClientRect();
-    this.pointer = { x: box.left + leftGutter(this.store.state) + tag.box.x + tag.box.w / 2, y: box.top + tag.box.y + tag.box.h / 2 };
-    if (this.store.state.hover) this.store.set({ hover: null }); else this.invalidate();
+    const tag = markNearest(this.#rowTags, p.x, p.y, MARK_SLOP_TOUCH); if (!tag) return false;
+    this.pinPoint({ x: tag.box.x + tag.box.w / 2, y: tag.box.y + tag.box.h / 2 });
     return true;
   }
 
@@ -875,7 +881,9 @@ export class ScriptPane extends TimePane {
         if (s) paintPlot({ ...frame, color: fallback, ...(plot.kind === 'mark' ? { marks: box => { this.#mapMarks.push({ box, id: r.id, name: r.name, plot, color: plotColorAt(plot, box.i, fallback, p.candleUp, p.candleDown) }); }, tags: ask => { tags.push({ ask: !ask.named && scaleIdOf(plot, r.options) === 'right' ? { ...ask, text: fmtPrice(ask.value) } : ask, plot, id: r.id, name: r.name }); } } : {}) }, plot, s);
       });
     }
-    const asks = tags.map(x => x.ask), boxes = layoutTags(ctx, asks, { left: Infinity, right: pw - 2, top: 2, bottom: ph - 2 });
+    // In a replay the map is covered past its moment: the tags stand at it.
+    const replayX = replaying() ? v.xOf(pageNow(), pw) : Infinity, right = Math.max(0, Math.min(pw, replayX)) - 2;
+    const asks = tags.map(x => x.ask), boxes = layoutTags(ctx, asks, { left: Infinity, right, top: 2, bottom: ph - 2 });
     drawTags(ctx, asks, boxes, 0, ph);
     boxes.forEach((b, k) => { if (b) this.#mapMarks.push({ box: { x: b.x, y: b.y, w: b.w, h: b.h, i: asks[k]!.i }, id: tags[k]!.id, name: tags[k]!.name, plot: tags[k]!.plot, color: asks[k]!.color }); });
   }
@@ -1144,15 +1152,19 @@ export class ScriptPane extends TimePane {
       const asks: TagAsk[] = [];
       res.plots.forEach((plot, j) => { const s = scales.get(scaleIdOf(plot, target.options)); if (s) paintPlot({ ...frame, color: fallbacks[j % fallbacks.length]!, tags: ask => { asks.push(!band && !ask.named && scaleIdOf(plot, target.options) === 'right' ? { ...ask, text: fmtPrice(ask.value) } : ask); } }, plot, s); });
       // Its tags at the right edge, as where it is drawn for good.
-      const area = { left: Infinity, right: pw - 2, top: top + 2, bottom: top + (band || ph) - 2 };
-      drawTags(ctx, asks, layoutTags(ctx, asks, area), top, top + (band || ph));
-      // A band's highest and lowest in view at its right edge, as a row has them.
+      const area = { left: Infinity, right: pw - 2, top: top + 2, bottom: top + (band || ph) - 2 }, boxes = layoutTags(ctx, asks, area);
+      // A band's highest and lowest in view at its right edge, as a row has them, where no tag stands on them.
       const first = band ? scales.values().next().value : undefined;
       if (first) {
         ctx.font = '10px ui-monospace, monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = p.muted;
-        ctx.fillText(shortNumber(first.max), pw - 4, Math.max(top + 8, yOf(first.max, first, top, band)));
-        ctx.fillText(shortNumber(first.min), pw - 4, Math.min(top + band - 8, yOf(first.min, first, top, band)));
+        const number = (value: number, y: number): void => {
+          const text = shortNumber(value), w = boxes.length ? ctx.measureText(text).width : 0;
+          if (!boxes.some(b => b && b.x < pw - 4 && b.x + b.w > pw - 4 - w && b.y < y + 6 && b.y + b.h > y - 6)) ctx.fillText(text, pw - 4, y);
+        };
+        number(first.max, Math.max(top + 8, yOf(first.max, first, top, band)));
+        number(first.min, Math.min(top + band - 8, yOf(first.min, first, top, band)));
       }
+      drawTags(ctx, asks, boxes, top, top + (band || ph));
     }
     // A band's name on a faint plate at its top, as a row's is.
     if (band) {
@@ -1172,7 +1184,7 @@ export class ScriptPane extends TimePane {
    */
   mapMarkAt(x: number, y: number, touch: boolean): { lines: InfoLine[]; color: string; box: { x: number; y: number; w: number; h: number } } | null {
     if (!this.store.state.show.script) return null;
-    const m = markAt(this.#mapMarks, x, y, touch ? MARK_SLOP_TOUCH : MARK_SLOP);
+    const m = markNearest(this.#mapMarks, x, y, touch ? MARK_SLOP_TOUCH : MARK_SLOP);
     return m ? { lines: markLines(m), color: m.color, box: m.box } : null;
   }
 

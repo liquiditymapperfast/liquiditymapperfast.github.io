@@ -255,7 +255,16 @@ export abstract class TimePane {
   #unpin(): void {
     // The pointer the pin set goes with it: left set, a table on a plate stayed over the chart after the finger had let go.
     this.#pinned = null; this.pointer = null;
-    if (this.store.state.hover?.touch) this.store.set({ hover: null });
+    if (this.store.state.hover?.touch) this.store.set({ hover: null }); else this.invalidate();
+  }
+  /**
+   * Pin the pointer at `p` (plot coordinates) for what the pane itself answers there (a script's tag, past the plot): no time is pinned, and
+   * the pin goes as any does, with a tap near it or the pane hidden.
+   */
+  protected pinPoint(p: Pt): void {
+    const box = this.canvas.getBoundingClientRect();
+    this.#pinned = p; this.pointer = { x: box.left + this.#left + p.x, y: box.top + p.y };
+    if (this.store.state.hover) this.store.set({ hover: null }); else this.invalidate();
   }
   /** Whether the last press began a Range selection: the click it ends in is the selection's, not a click on the pane. */
   protected rangeGesture = false;
