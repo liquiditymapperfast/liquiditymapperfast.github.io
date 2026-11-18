@@ -65,12 +65,14 @@ test('a mouse drag on a pane under the map always lets go of the map, and the wh
   assert.match(lower, /addEventListener\('pointercancel', lost\);/);
   assert.match(lower, /addEventListener\('lostpointercapture', lost\);/);
   assert.match(lower, /if \(e\.pointerId === this\.#pan\?\.id\) this\.#endPan\(\);/);
-  assert.match(lower, /if \(!\(e\.buttons & 1\)\) this\.#endPan\(\);/, 'a button let go unseen ends it');
+  assert.match(lower, /if \(e\.pointerType === 'mouse' && !\(e\.buttons & 1\)\) this\.#endPan\(\);/, 'a button let go unseen ends it');
+  assert.match(lower, /if \(this\.#selecting && e\.pointerId === this\.#selecting\.id\) \{ this\.#selecting = null; this\.#range\?\.cancel\(\); \}/, 'a Range drag taken away is cancelled');
+  assert.match(lower, /if \(!this\.#pan\?\.moved && this\.ownsPoint\(x\)\)/, 'a drag passes over a table without lighting its rows');
   assert.match(lower, /if \(!on\) \{ this\.invalidate\(\); return; \}\r?\n\s+this\.#endPan\(\);/, 'covered by a maximized pane');
   assert.match(lower, /if \(hidden\) \{ this\.#endPan\(\);/, 'hidden');
   assert.match(lower, /if \(pan\.moved\) \{ this\.canvas\.style\.cursor = ''; this\.#time\?\.panEnd\?\.\(null\); \}/);
   const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
-  const wheel = heat.slice(heat.indexOf('timeWheel(x: number'), heat.indexOf('timeWheel(x: number') + 900);
+  const from = heat.indexOf('timeWheel(x: number'), wheel = heat.slice(from, heat.indexOf('\n  }\n', from));
   assert.match(wheel, /region: 'time'/);
   assert.doesNotMatch(wheel, /zoomPrice/, 'price is the map\'s alone');
   assert.match(heat, /shift: e\.shiftKey \|\| y > this\.plotH/, 'a drag on the map\'s time strip moves time alone');

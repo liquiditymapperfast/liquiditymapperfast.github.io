@@ -113,7 +113,7 @@ export abstract class TimePane {
   protected pointer: { x: number; y: number } | null = null;
   /** The Range tool (set by the page), and a stretch of time being selected here: where the drag began, and where a finger last was. */
   #range: RangeTool | null = null;
-  #selecting: { x: number } | null = null;
+  #selecting: { x: number; id: number } | null = null;
   #touchSelect: { start: Pt; at: Pt } | null = null;
 
   constructor(host: HTMLElement, protected store: Store, protected view: View, cls: string) {
@@ -133,7 +133,7 @@ export abstract class TimePane {
       this.#endPan();
       const x = e.clientX - this.canvas.getBoundingClientRect().left - this.#left;
       if (this.#range && selects(this.#range.armed, e) && x >= 0 && x <= this.plotW) {
-        this.rangeGesture = true; this.#selecting = { x }; this.#range.begin({ t: this.#timeAt(x), p: null }, source); this.canvas.setPointerCapture(e.pointerId);
+        this.rangeGesture = true; this.#selecting = { x, id: e.pointerId }; this.#range.begin({ t: this.#timeAt(x), p: null }, source); this.canvas.setPointerCapture(e.pointerId);
         return;
       }
       this.pointer = { x: e.clientX, y: e.clientY };
@@ -147,7 +147,7 @@ export abstract class TimePane {
     // A Range selection the browser took away is cancelled the same way: left set, every hover moved it and the next release ended it.
     const lost = (e: PointerEvent): void => {
       if (e.pointerId === this.#pan?.id) this.#endPan();
-      if (this.#selecting && e.pointerType !== 'touch') { this.#selecting = null; this.#range?.cancel(); }
+      if (this.#selecting && e.pointerId === this.#selecting.id) { this.#selecting = null; this.#range?.cancel(); }
     };
     this.canvas.addEventListener('pointercancel', lost);
     this.canvas.addEventListener('lostpointercapture', lost);
@@ -172,7 +172,7 @@ export abstract class TimePane {
       const pan = this.#pan;
       if (pan && e.pointerId === pan.id) {
         // The button let go without an up reaching the pane (review r1): the drag ends there, rather than panning on with a plain hover.
-        if (!(e.buttons & 1)) this.#endPan();
+        if (e.pointerType === 'mouse' && !(e.buttons & 1)) this.#endPan();
         else {
           if (!pan.moved && Math.abs(x - pan.x0) >= DRAG_MIN_PX) { pan.moved = true; this.#time?.down?.({ x: pan.x0, y }); this.#time?.panStart?.({ x: pan.x0, y }); }
           if (pan.moved) { this.#time?.pan?.({ x: x - pan.x, y: 0 }, { x, y }, { x: 0, y: 0 }); pan.x = x; }
