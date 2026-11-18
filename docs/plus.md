@@ -49,10 +49,12 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
 
 ## The pieces
 
-- **The levels service** (`HyperLiquidMap_Levels`, on hiverust) serves every file to whoever reaches it; it is reachable only through
-  the Cloudflare tunnel.
-- **The Worker** (`HyperLiquidMap_Plus`) runs on the routes of the paid paths and on `plus.hiverust.dev`. It lets a free day through,
-  answers a paid one only to a valid pass, gives a key and a pass after a checkout (`POST /v1/pass`), renews a pass for a key
+- **The levels service** (`HyperLiquidMap_Levels`, on hiverust, reached through the Cloudflare tunnel) is the gate: it serves a free
+  day and the live files to anyone, and a paid day or file only with a valid pass in `Authorization: Bearer`, which it checks itself
+  with the Worker's key (since 2026-11-17; "the gate" below means it). Its refusal is the one this page knows: 403
+  `{"error":"plus_required"}`.
+- **The Worker** (`HyperLiquidMap_Plus`) answers only `plus.hiverust.dev`; no data request passes through it. It gives a key and a
+  pass after a checkout (`POST /v1/pass`), renews a pass for a key
   (`POST /v1/pass/renew`), finds a membership by the receipt's email and invoice number (`POST /v1/restore`), and keeps each
   subscription's state from Paddle's notifications.
 - **The page**: `src/app/plus/`.
