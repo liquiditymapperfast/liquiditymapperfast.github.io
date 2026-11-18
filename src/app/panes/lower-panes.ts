@@ -125,7 +125,7 @@ export abstract class TimePane {
     sharpens({ resize: () => this.#resize(), paint: () => { if (!this.#covered && this.canvas.getBoundingClientRect().width > 0) this.#prepare(); } });
     const source = this.#source = cls as 'depth' | 'oi' | 'lt' | 'bars' | 'delta' | 'ls' | 'funding' | 'script';
     // A drag across a pane selects a stretch of time for the Range tool while it is armed, or with Ctrl (Cmd on a Mac) held. Otherwise a drag with
-    // the main button moves the time axis the panes share with the map, as a finger's does: not from what the pane answers itself (a table), and
+    // the main button moves the time axis the panes share with the map, as a finger's does: not from a table's rows it chooses (`ownsPress`), and
     // only once it has gone DRAG_MIN_PX, so a click (a table's row, a Bar stats candle) and a double click (maximize) stay what they were.
     this.canvas.addEventListener('pointerdown', e => {
       this.rangeGesture = false;
@@ -137,15 +137,20 @@ export abstract class TimePane {
         return;
       }
       this.pointer = { x: e.clientX, y: e.clientY };
-      if (e.button !== 0 || !this.#time || x < 0 || this.ownsPoint(x)) return;
+      if (e.button !== 0 || !this.#time || x < 0 || this.ownsPress(x)) return;
       this.#pan = { id: e.pointerId, x0: x, x, moved: false };
       this.canvas.setPointerCapture(e.pointerId);
     });
     // A drag that moved the axis ends in no click: the table's row or the candle under where it was let go is not chosen.
     this.canvas.addEventListener('pointerup', e => { const pan = this.#pan; if (!pan || e.pointerId !== pan.id) return; if (pan.moved) this.rangeGesture = true; this.#endPan(); });
     // A drag the browser took away, or a capture lost, lets go of the map too: left held, the map would stop following the market.
-    this.canvas.addEventListener('pointercancel', e => { if (e.pointerId === this.#pan?.id) this.#endPan(); });
-    this.canvas.addEventListener('lostpointercapture', e => { if (e.pointerId === this.#pan?.id) this.#endPan(); });
+    // A Range selection the browser took away is cancelled the same way: left set, every hover moved it and the next release ended it.
+    const lost = (e: PointerEvent): void => {
+      if (e.pointerId === this.#pan?.id) this.#endPan();
+      if (this.#selecting && e.pointerType !== 'touch') { this.#selecting = null; this.#range?.cancel(); }
+    };
+    this.canvas.addEventListener('pointercancel', lost);
+    this.canvas.addEventListener('lostpointercapture', lost);
     // The wheel zooms the time axis the panes share with the map, as it does on the map's time strip.
     this.canvas.addEventListener('wheel', e => {
       if (!this.#wheel) return;
@@ -166,13 +171,18 @@ export abstract class TimePane {
       if (this.#selecting) this.#range?.move({ t: this.#timeAt(x), p: null });
       const pan = this.#pan;
       if (pan && e.pointerId === pan.id) {
-        if (!pan.moved && Math.abs(x - pan.x0) >= DRAG_MIN_PX) { pan.moved = true; this.#time?.down?.({ x: pan.x0, y }); this.#time?.panStart?.({ x: pan.x0, y }); }
-        if (pan.moved) { this.#time?.pan?.({ x: x - pan.x, y: 0 }, { x, y }, { x: 0, y: 0 }); pan.x = x; }
+        // The button let go without an up reaching the pane (review r1): the drag ends there, rather than panning on with a plain hover.
+        if (!(e.buttons & 1)) this.#endPan();
+        else {
+          if (!pan.moved && Math.abs(x - pan.x0) >= DRAG_MIN_PX) { pan.moved = true; this.#time?.down?.({ x: pan.x0, y }); this.#time?.panStart?.({ x: pan.x0, y }); }
+          if (pan.moved) { this.#time?.pan?.({ x: x - pan.x, y: 0 }, { x, y }, { x: 0, y: 0 }); pan.x = x; }
+        }
       }
       this.canvas.style.cursor = this.#pan?.moved ? 'grabbing' : this.#range?.armed && x <= this.plotW ? 'crosshair' : '';
       if (x < 0) { this.store.set({ hover: null }); return; }
       // Where the pane answers the pointer itself (Bar stats' View column), the time the panes share is left alone, and only it is drawn again.
-      if (this.ownsPoint(x)) { if (this.store.state.hover) this.store.set({ hover: null }); this.invalidate(); return; }
+      // A drag moving the axis passes over a table as over the plot: its rows are not lit for a release that chooses none (review r1).
+      if (!this.#pan?.moved && this.ownsPoint(x)) { if (this.store.state.hover) this.store.set({ hover: null }); this.invalidate(); return; }
       // Over the price axis the pointer reads the right edge of the plot, so a pane past its newest point keeps showing that (readAt).
       this.store.set({ hover: { t: this.view.tOf(Math.min(x, this.plotW), this.plotW), price: null, y, source } });
     });
@@ -247,6 +257,8 @@ export abstract class TimePane {
   protected rangeGesture = false;
   /** Whether the pane answers the pointer at `x` (plot coordinates) itself, rather than as a time on the axis the panes share. */
   protected ownsPoint(_x: number): boolean { return false; }
+  /** Whether a mouse press at `x` (plot coordinates) is the pane's own (a table's row it chooses), rather than the start of a drag on the time axis. */
+  protected ownsPress(_x: number): boolean { return false; }
   /** Whether a tap at `p` (plot coordinates) is the pane's own (a row of its table), rather than one that pins the readout. */
   protected claimTap(_p: Pt): boolean { return false; }
   /** Header element, the grip target for drag-reordering. */
@@ -525,6 +537,7 @@ export class DepthPane extends TimePane {
   }
   protected override undrawn(): void { this.#lines = null; this.#table.clear(); this.#card.hide(); }
   protected override ownsPoint(x: number): boolean { return this.#table.owns(x, this.pointer); }
+  protected override ownsPress(x: number): boolean { return this.#table.takesPress(x, this.pointer); }
   protected override claimTap(p: Pt): boolean { return this.#table.tap(p); }
   #clickRow(row: number): void { const s = this.#settings(); this.#set({ focus: s.focus === row ? null : row }); }
 

@@ -125,6 +125,9 @@ export class PaneTable {
     return x >= at.left && x <= at.left + at.width && y >= at.first - at.rowH && y <= at.first + (this.#rows + 1) * at.rowH;
   }
 
+  /** Whether a press at `x` is the table's: over a table whose rows take a click; one only read lets a drag move the time axis as over the plot. */
+  takesPress(x: number, pointer: { y: number } | null): boolean { return !!this.onRow && this.owns(x, pointer); }
+
   /** Whether a finger's tap at `p` (plot coordinates) chose a row. */
   tap(p: Pt): boolean {
     if (!this.onRow) return false;

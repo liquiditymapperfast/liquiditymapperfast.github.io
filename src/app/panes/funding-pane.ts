@@ -236,6 +236,7 @@ export class FundingPane extends TimePane {
   }
   protected override undrawn(): void { this.#lines = null; this.#table.clear(); this.#card.hide(); }
   protected override ownsPoint(x: number): boolean { return this.#table.owns(x, this.pointer); }
+  protected override ownsPress(x: number): boolean { return this.#table.takesPress(x, this.pointer); }
   protected override claimTap(p: Pt): boolean { return this.#table.tap(p); }
 
   /**

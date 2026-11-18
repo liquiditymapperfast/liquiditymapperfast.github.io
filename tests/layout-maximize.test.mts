@@ -57,6 +57,25 @@ test('the map\'s double click maximizes on its plot only, and recentres on its a
   assert.match(main, /heat\.onMaximize = \(\) => arrange\.toggleMax\('heat'\);/);
 });
 
+test('a mouse drag on a pane under the map always lets go of the map, and the wheel there zooms time alone', () => {
+  // Read from the source: a drag left held keeps the map from following the market (HeatPane #followHeld). Every way a drag can end must
+  // reach #endPan, which hands the map its panEnd (Karl, 2026-11-17: a pane, even maximized, could not be panned or zoomed out).
+  const lower = fs.readFileSync('src/app/panes/lower-panes.ts', 'utf8');
+  assert.match(lower, /addEventListener\('pointerup', e => \{ const pan = this\.#pan; if \(!pan \|\| e\.pointerId !== pan\.id\) return; if \(pan\.moved\) this\.rangeGesture = true; this\.#endPan\(\); \}\);/, 'a release ends it, and a drag ends in no click');
+  assert.match(lower, /addEventListener\('pointercancel', lost\);/);
+  assert.match(lower, /addEventListener\('lostpointercapture', lost\);/);
+  assert.match(lower, /if \(e\.pointerId === this\.#pan\?\.id\) this\.#endPan\(\);/);
+  assert.match(lower, /if \(!\(e\.buttons & 1\)\) this\.#endPan\(\);/, 'a button let go unseen ends it');
+  assert.match(lower, /if \(!on\) \{ this\.invalidate\(\); return; \}\r?\n\s+this\.#endPan\(\);/, 'covered by a maximized pane');
+  assert.match(lower, /if \(hidden\) \{ this\.#endPan\(\);/, 'hidden');
+  assert.match(lower, /if \(pan\.moved\) \{ this\.canvas\.style\.cursor = ''; this\.#time\?\.panEnd\?\.\(null\); \}/);
+  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
+  const wheel = heat.slice(heat.indexOf('timeWheel(x: number'), heat.indexOf('timeWheel(x: number') + 900);
+  assert.match(wheel, /region: 'time'/);
+  assert.doesNotMatch(wheel, /zoomPrice/, 'price is the map\'s alone');
+  assert.match(heat, /shift: e\.shiftKey \|\| y > this\.plotH/, 'a drag on the map\'s time strip moves time alone');
+});
+
 test('panes covered by a maximized one draw nothing and put their cards away, but Delta keeps drawing the map\'s divergences under a maximized map', () => {
   // Read from the source: the cards are top-layer popovers, drawn they floated over the maximized chart (review r1); Delta's drawing works
   // out the CVD divergences the map draws (review r2).
