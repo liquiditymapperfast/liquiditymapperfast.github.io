@@ -730,15 +730,15 @@ export class DepthPane extends TimePane {
 
   /**
    * The bands' figures (pane-table.ts): a row a band (bids, asks, bids less asks), the band brought forward lit, the column titles over them and the time read
-   * under them. The header reads the watched band; where even a row a band does not fit, the table is not drawn and the card says it instead. Returns whether it was
-   * drawn whole: one beside the plot without its last columns (× first) leaves the card to say them at the pointer (a plate is drawn whole or not at all).
+   * under them. The header reads the watched band; where even a row a band does not fit, the table is not drawn and the card says it instead. Returns whether it was drawn
+   * (a plate is drawn whole or not at all, so one that cannot hold the × column leaves the card, which says the watched band's ratio).
    */
   #drawTable(rows: readonly { r: number; bid: number; ask: number }[], pointing: boolean, focus: number, time: string, unit: string, sides: readonly [string, string]): boolean {
     const { ctx, palette: p } = this;
     const heads = ['', sides[0], sides[1], 'Δ', '×'];
     return this.#table.draw(ctx, p, { w: this.w, h: this.h, plotW: this.plotW, axisW: AXIS_W, pointing }, {
       heads, minCols: 3, focus, foot: `${time}${unit}`, rows: depthTableRows(rows, p),
-    })?.cols === heads.length;
+    }) !== null;
   }
 
   /** The watched band's columns of an answer, as two plain series (Highlights judged a pixel column at a time). */

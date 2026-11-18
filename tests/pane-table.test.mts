@@ -328,7 +328,9 @@ test('a plate keeps every column unless the table lets its last ones go (plateMi
 });
 
 test('the × column is the first to go beside the plot in the Liquidity Tracker and Delta tables', () => {
-  const lt = ltTableRows([{ name: 'Binance', bid: 29_900_000, ask: 40_500_000, share: 0.21 }], PALETTE), heads = ['', 'Bid', 'Ask', 'imb', 'Share', '×'];
+  const lt = ltTableRows([{ name: 'Binance', bid: 29_900_000, ask: 40_500_000, share: 0.21 }], PALETTE), heads = ltHeads({} as LtParts);
+  assert.deepEqual(heads.slice(-2), ['Share', '×'], 'Share, then × last');
+  assert.equal(ltHeads({ wBid: new Float64Array(0) } as unknown as LtParts).at(-1), '×', 'Per level: × last too');
   const full = placeTable(measure, room({ w: 2000 }), { heads, rows: lt, minCols: 3 })!;
   const less = placeTable(measure, room({ w: 400 + 60 + full.width - 10 }), { heads, rows: lt, minCols: 3 })!;
   assert.deepEqual([full.cols, less.cols], [6, 5], 'Share stays, × goes');
