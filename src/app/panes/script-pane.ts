@@ -27,7 +27,7 @@ import { onPlot, paintPlot, plotColorAt, scaleIdOf, scalesOf, shortNumber, visib
 import { errorText } from '../script/messages.ts';
 import { safeColor } from '../script/lang/colors.ts';
 import type { BarInputs, SourceFilter } from '../script/inputs.ts';
-import { PALETTES } from '../theme.ts';
+import { paletteOf, themeKey } from '../theme.ts';
 import { NEW_SCRIPT, unsaved, type ScriptsPanelState } from '../script/panel-state.ts';
 import { buildScriptsPanel, panelClosed, refreshStatuses } from '../script/panel.ts';
 import { scriptHeldKey, scriptPaneHeld, type ScriptPaneHeld, type ScriptRowInput } from '../range/script-lines.ts';
@@ -470,13 +470,17 @@ export class ScriptPane extends TimePane {
     this.#timer = window.setTimeout(() => { this.#timer = 0; this.#wakeAt = 0; this.refresh(); }, at - Date.now());
   }
 
-  /** The theme this pane draws in (the one picked, or one previewed from the menu): its scripts read its colours (`theme`). */
+  /**
+   * The theme this pane draws in (the one picked, or one previewed from the menu), whose colours its scripts read (`theme`), and `themeKey` of it,
+   * which also changes when a theme of one's own is edited: what is kept by theme is kept by the key.
+   */
+  #themeName = 'light';
   #theme = 'light';
-  override setPalette(name: string): void { this.#theme = name; super.setPalette(name); }
+  override setPalette(name: string): void { this.#themeName = name; this.#theme = themeKey(name); super.setPalette(name); }
   /** Inputs with the colours of the theme the pane draws in. */
   #withTheme(inputs: BarInputs | null): BarInputs | null {
     if (!inputs) return null;
-    const p = PALETTES[this.#theme] ?? PALETTES.light!;
+    const p = paletteOf(this.#themeName);
     return { ...inputs, theme: { dark: p.dark, background: p.bg, text: p.text, up: p.candleUp, down: p.candleDown } };
   }
 

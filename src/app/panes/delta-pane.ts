@@ -13,7 +13,7 @@ import { resolveZone } from '../traded/settings.ts';
 import { AXIS_W, leftGutter } from './heat-pane.ts';
 import { TimePane, bookNames, setHtml, tableSigned, tableText } from './lower-panes.ts';
 import { FlowCache, candleFlow, candleStarts, deltaCandles, resetKeys, type CandleFlow, type DeltaCandle, type DeltaTrack } from '../delta/candles.ts';
-import { PaneTable, tableInk, tableRowCap, type TableCell } from './pane-table.ts';
+import { PaneTable, ratioCell, tableInk, tableRowCap, type TableCell } from './pane-table.ts';
 import { el } from '../dom.ts';
 import type { Palette } from '../theme.ts';
 import { deltaFlows, deltaIds, ensureDeltaFlow } from '../delta/flows.ts';
@@ -127,7 +127,7 @@ export class DeltaPane extends TimePane {
     // Divergences are the CVD's: NL/NS draws none, so its header leaves their two controls out (they wrapped the header onto a third row and
     // took the plot's height for nothing).
     // Each market's part of the candle, in a table on the pane: the switches last, the table's at the right end (as on every pane).
-    const table = el('label', { class: 'ctl', tip: t('Each market\'s buys and sells at market, its delta and its share of the volume in a table on the pane, for the candle under the pointer or the newest. The most traded markets get a row each; the rest are added up in the last row.') });
+    const table = el('label', { class: 'ctl', tip: `${t('Each market\'s buys and sells at market, its delta and its share of the volume in a table on the pane, for the candle under the pointer or the newest. The most traded markets get a row each; the rest are added up in the last row.')} ${t('× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.')}` });
     this.#tableBox.type = 'checkbox'; this.#tableBox.checked = store.state.deltaTable; this.#tableBox.onchange = () => store.set({ deltaTable: this.#tableBox.checked });
     table.append(this.#tableBox, t('Table')); group.append(table);
     this.#sync.push(() => { this.#tableBox.checked = this.store.state.deltaTable; });
@@ -370,11 +370,11 @@ export class DeltaPane extends TimePane {
     if (hover && this.pointer) this.#lines = deltaCardLines(shown, state.timeframe);
     const since = earliest !== null && earliest > v.t0 ? ` <span class="muted">${t('flow recorded since {time}', { time: clock(earliest, true) })}</span>` : '';
     setHtml(readout, `Δ <b class="${shown.delta > 0 ? 'bid' : shown.delta < 0 ? 'ask' : ''}">${signed(shown.delta)}</b> ${t('CVD')} <b class="${shown.close > 0 ? 'bid' : shown.close < 0 ? 'ask' : ''}">${signed(shown.close)}</b>${since}`);
-    // Each market's part of the candle read (the readout's): on a plate the table is the popup; beside the plot the popup stays (it has the CVD).
+    // Each market's part of the candle read (the readout's): a table drawn takes the popup's place, as on every pane with one (the readout has the CVD).
     if (state.deltaTable && ids.length > 1) {
       const rows = this.#tableRows(state, ids, shown.t, tf, now, visible, ph);
       const foot = `${hover ? clock(shown.t, true) : `${t('newest')} ${clock(shown.t)}`} USD`;
-      if (rows.length && this.#table.draw(ctx, p, { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, { heads: ['', t('Buys'), t('Sells'), 'Δ', t('Share')], minCols: 4, focus: -1, foot, rows: deltaTableRows(rows, p) })?.plate) this.#lines = null;
+      if (rows.length && this.#table.draw(ctx, p, { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, { heads: ['', t('Buys'), t('Sells'), 'Δ', t('Share'), '×'], minCols: 4, plateMin: 5, focus: -1, foot, rows: deltaTableRows(rows, p) })) this.#lines = null;
     }
   }
 
@@ -400,7 +400,7 @@ export class DeltaPane extends TimePane {
     let total = 0;
     for (const m of here) total += flows.get(m)!.gross;
     const names = bookNames(ids, state.markets), shown = here.length <= cap ? here : here.slice(0, cap - 1), rest = here.slice(shown.length);
-    const row = (name: string, delta: number, gross: number): DeltaRow => ({ name, buys: (gross + delta) / 2, sells: (gross - delta) / 2, delta, share: total > 0 ? gross / total : 0 });
+    const row = (name: string, delta: number, gross: number): DeltaRow => deltaRow(name, delta, gross, total);
     const rows = shown.map(m => { const f = flows.get(m)!; return row(names[m]!, f.delta, f.gross); });
     if (rest.length) { let delta = 0, gross = 0; for (const m of rest) { const f = flows.get(m)!; delta += f.delta; gross += f.gross; } rows.push(row(tn(rest.length, '{n} other', '{n} others'), delta, gross)); }
     return rows;
@@ -417,8 +417,17 @@ function viewGross(track: DeltaTrack, from: number, to: number): number {
 /** A row of the Delta pane's table: a market (or the rest added up), what it bought and sold at market in the candle read, their difference and its share of the volume. */
 export interface DeltaRow { name: string; buys: number; sells: number; delta: number; share: number }
 
-/** The Delta pane's table: a market a row, its buys and sells at market, its delta and its share of the candle's volume. */
+/**
+ * A Delta table row from a candle's delta and volume (`total`: the volume of every market read). Live seconds are added up in doubles, so a side
+ * that traded nothing reads a residue (±1e-7 USD) rather than 0: under half a cent a side is nothing, so the cells and the × column say so.
+ */
+export function deltaRow(name: string, delta: number, gross: number, total: number): DeltaRow {
+  const side = (value: number): number => (value < 0.005 ? 0 : value), buys = side((gross + delta) / 2), sells = side((gross - delta) / 2);
+  return { name, buys, sells, delta: buys - sells, share: total > 0 ? gross / total : 0 };
+}
+
+/** The Delta pane's table: a market a row, its buys and sells at market, its delta, its share of the candle's volume and how many times the larger side is the smaller (last, so it is the first to go where room is short: Share cannot be worked out from the rest). */
 export function deltaTableRows(rows: readonly DeltaRow[], p: Pick<Palette, 'bid' | 'ask' | 'text' | 'muted'>): TableCell[][] {
   return rows.map(r => [{ text: r.name }, { text: tableText(r.buys), color: tableInk(p.bid, p) }, { text: tableText(r.sells), color: tableInk(p.ask, p) },
-    { text: tableSigned(r.delta), color: r.delta ? tableInk(r.delta > 0 ? p.bid : p.ask, p) : undefined }, { text: `${Math.round(r.share * 100)}%`, color: p.muted }]);
+    { text: tableSigned(r.delta), color: r.delta ? tableInk(r.delta > 0 ? p.bid : p.ask, p) : undefined }, { text: `${Math.round(r.share * 100)}%`, color: p.muted }, ratioCell(r.buys, r.sells, p)]);
 }

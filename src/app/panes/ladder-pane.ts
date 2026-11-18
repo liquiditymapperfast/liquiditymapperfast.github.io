@@ -6,7 +6,7 @@ import { HELP, helpButton } from '../help.ts';
 import { addTune } from '../pane-tune.ts';
 import { button, checkRow, note, selectRow, switchRow, togglePanel, type Panel } from '../ui.ts';
 import type { Kernels } from '../kernels.ts';
-import { PALETTES, textOn } from '../theme.ts';
+import { PALETTES, textOn, paletteOf } from '../theme.ts';
 import { niceStep } from '../view.ts';
 import { price as fmtPrice, usd } from '../format.ts';
 import { LADDER_CURVES, type Store, type AppState } from '../store.ts';
@@ -181,7 +181,7 @@ export class LadderPane {
   get step(): number { return this.#layout.step; }
   /** The price at the middle of the row at canvas height `y` in the last frame, or null before one (read by tests). */
   priceAtY(y: number): number | null { return this.#layout.step > 0 ? this.#priceAt(this.#rowAt(y)) : null; }
-  setPalette(name: string): void { this.#palette = PALETTES[name] ?? PALETTES.light!; this.invalidate(); }
+  setPalette(name: string): void { this.#palette = paletteOf(name); this.invalidate(); }
   recenter(): void { this.#offsetRows = 0; this.invalidate(); }
 
   /**

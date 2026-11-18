@@ -5,7 +5,7 @@ import { volText } from './footprint.ts';
 import { groupLevels, type Grouped } from './levels-data.ts';
 import { setText } from './lower-panes.ts';
 import { activeIds } from '../scope.ts';
-import { PALETTES, mixHex, resolveThemeId, rgb, textOn, type Palette } from '../theme.ts';
+import { PALETTES, mixHex, rgb, textOn, type Palette, paletteOf } from '../theme.ts';
 import { t } from '../i18n.ts';
 import { helpButton } from '../help.ts';
 import { el } from '../dom.ts';
@@ -155,7 +155,7 @@ export class CandlePane {
   /** Settings from outside the header (a look tried from the console or a test page), checked as a saved value is. */
   applySettings(patch: Partial<M.CandleSettings>): void { this.#set(patch); }
 
-  setPalette(name: string): void { this.#palette = PALETTES[resolveThemeId(name)] ?? PALETTES.dark!; this.invalidate(); this.#scheduleTrail(0); }
+  setPalette(name: string): void { this.#palette = paletteOf(name); this.invalidate(); this.#scheduleTrail(0); }
 
   /** Shown or not (the phone's tab is this view's): only a shown view draws (the tape is kept either way). */
   setShown(on: boolean): void {

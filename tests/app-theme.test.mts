@@ -15,7 +15,7 @@ test('every theme is complete, listed once, and has a distinct name', () => {
   const labels = Object.values(PALETTES).map(p => p.label);
   assert.equal(new Set(labels).size, labels.length);
   for (const [id, p] of Object.entries(PALETTES)) for (const [key, value] of Object.entries(p)) {
-    if (key === 'label' || key === 'dark' || key === 'frame' || key === 'chrome') continue;
+    if (key === 'label' || key === 'dark' || key === 'frame' || key === 'chrome' || key === 'colourSafe') continue;
     assert.match(String(value), /^#[0-9a-f]{6}$/i, `${id}.${key}`);
   }
 });

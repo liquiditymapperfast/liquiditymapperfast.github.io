@@ -1,5 +1,5 @@
 import type { View } from '../view.ts';
-import { PALETTES, type Palette } from '../theme.ts';
+import type { Palette } from '../theme.ts';
 import type { LabelBoard } from '../labels.ts';
 import { t } from '../i18n.ts';
 import { price as fmtPrice, usd } from '../format.ts';
@@ -215,7 +215,7 @@ export interface TpoPaint {
 
 export function paintTpo(ctx: CanvasRenderingContext2D, o: TpoPaint): TpoGeometry[] {
   const out: TpoGeometry[] = [];
-  const { view: v, pw, ph, p, settings: s } = o, dark = p.dark, safe = p === PALETTES.colorblind || p === PALETTES.daylight;
+  const { view: v, pw, ph, p, settings: s } = o, dark = p.dark, safe = p.colourSafe === true;
   const safeStops = dark ? SAFE : SAFE_LIGHT;
   // The marks are amber, but on the colour-blind themes, whose ramp ends in amber, they take the text's colour.
   const timeStops = safe ? safeStops : dark ? TIME_DARK : TIME_LIGHT, countStops = safe ? safeStops : dark ? COUNT_DARK : COUNT_LIGHT, amber = safe ? p.text : dark ? AMBER_DARK : AMBER_LIGHT;

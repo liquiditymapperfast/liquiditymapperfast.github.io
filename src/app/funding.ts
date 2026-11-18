@@ -21,11 +21,102 @@ export type FundingVenue = 'hyperliquid' | 'binance' | 'bybit' | 'okx' | 'bitget
 /** The venues the pane offers, in its menu's order (Hyperliquid first: the one whose link to who opened was measured). */
 export const FUNDING_VENUES: readonly FundingVenue[] = ['hyperliquid', 'binance', 'bybit', 'okx', 'bitget', 'deribit'];
 export const isFundingVenue = (v: unknown): v is FundingVenue => typeof v === 'string' && (FUNDING_VENUES as readonly string[]).includes(v);
-/** The venue the pane shows: the one picked where it lists the coin, else Hyperliquid, else the first that does; null where none does. */
-export function fundingVenueOf(picked: FundingVenue | '', listed: (v: FundingVenue) => boolean): FundingVenue | null {
-  if (picked && listed(picked)) return picked;
+/**
+ * What the pane's Venue menu holds: a venue, '' (none picked: Hyperliquid where it lists the coin) or 'all' (every venue's funding at once, with
+ * their median). 'all' is kept out of `FundingVenue`, which keys each venue's own reads, base rate and reach.
+ */
+export type FundingPick = FundingVenue | '' | 'all';
+export const isFundingPick = (v: unknown): v is FundingPick => v === 'all' || isFundingVenue(v);
+/** Whether every venue is drawn: picked, with two or more venues listing the coin (a coin on one venue is drawn as that venue, its premium and who opened included). */
+export const showsEvery = (picked: FundingPick, listed: number): boolean => picked === 'all' && listed >= 2;
+/** The venue the pane shows: the one picked where it lists the coin, else Hyperliquid, else the first that does; null where none does ('all' falls back the same way: callers that draw every venue ask `picked === 'all'` first). */
+export function fundingVenueOf(picked: FundingPick, listed: (v: FundingVenue) => boolean): FundingVenue | null {
+  if (picked && picked !== 'all' && listed(picked)) return picked;
   return FUNDING_VENUES.find(listed) ?? null;
 }
+
+/** One venue's funding as the pane holds it at its moment: its settlements and the rate accruing now (live only). */
+export interface VenueFunding { rows: readonly FundingRow[]; forming: FundingNow | null }
+/** A stretch of the venues' median: from `t0` to `t1`, per eight hours, over `n` venues, `forming` where one of them counts its rate under way (`fundingIn`). */
+export interface MedianStep { t0: number; t1: number; per8h: number; n: number; forming: boolean }
+/** How many venues must have a rate at a time for the median to be drawn there: half of those listing the coin, and two at least. */
+export const medianNeeds = (listed: number): number => Math.max(2, Math.ceil(listed / 2));
+
+/** How long after a settlement was due its record may still be on its way: the newest is carried that long past its next one. */
+const CARRY_GRACE_MS = 30 * 60_000;
+/**
+ * A venue's rate under way at `clock` (pure): its rate now over the interval it pays for, while that settlement is ahead; once it has passed
+ * with no record of it yet (the next reading failed, or the venue still gives the old time), that rate to the clock; with no rate now (a
+ * replay) or once the record is in, the newest record carried from its settlement to the clock. Either carry lasts while the settlement is
+ * not overdue by more than `CARRY_GRACE_MS`: a replay at 14:30 kept the exchanges' 08:00 rates, where without it the every-venue median stopped
+ * at 08:00 (review 2026-11-17). Null where there is none of these.
+ */
+export function fundingTail(rows: readonly FundingRow[], now: FundingNow | null, clock: number): { start: number; end: number; per8h: number } | null {
+  const newest = rows[rows.length - 1];
+  if (now) {
+    const end = now.next ?? clock;
+    if (now.next === null || clock <= now.next) return { start: end - now.hours * HOUR, end, per8h: now.per8h };
+    // A reading now whose settlement has passed (the next reading failed, or the venue still gives the old time): until that settlement's
+    // record lands, its rate over the interval it paid for, to the clock, within the grace (at a boundary every venue read before it said
+    // nothing for the seconds after, and the median was gone, review round 2). Once the record is in, the newest record is carried as below.
+    if (!(newest && newest.t >= now.next) && clock <= now.next + CARRY_GRACE_MS) return { start: now.next - now.hours * HOUR, end: clock, per8h: now.per8h };
+  }
+  return newest && clock >= newest.t && clock <= newest.t + newest.hours * HOUR + CARRY_GRACE_MS ? { start: newest.t, end: clock, per8h: newest.per8h } : null;
+}
+/**
+ * A venue's rate in force at `at` (pure): over its rate under way (`fundingTail`) that rate, as `forming`, else the settled row whose interval
+ * holds `at`, else none. Unlike `fundingAt` nothing is carried further: a venue with nothing for a time does not count there. The every-venue
+ * line, its readout, popup and table all read a venue by this one rule.
+ */
+export function fundingIn(rows: readonly FundingRow[], now: FundingNow | null, at: number, clock: number): { per8h: number; forming: boolean } | null {
+  const settled = rowAt(rows, at), tail = fundingTail(rows, now, clock);
+  if (tail && at >= tail.start && at <= tail.end && !(now && settled && settled.t >= tail.end)) return { per8h: tail.per8h, forming: true };
+  return settled ? { per8h: settled.per8h, forming: false } : null;
+}
+/** Where a venue's rate under way starts and ends (`fundingTail`), for the median's edges. */
+const formingEnd = (v: VenueFunding, clock: number): { start: number; end: number } | null => fundingTail(v.rows, v.forming, clock);
+/** The middle of sorted `values` (two middles averaged). */
+const middle = (values: number[]): number => { values.sort((x, y) => x - y); const h = values.length >> 1; return values.length % 2 ? values[h]! : (values[h - 1]! + values[h]!) / 2; };
+
+/**
+ * The venues' median at one moment (pure): the readout's, the popup's and the table's, worked out from the venues at `at` and not from the
+ * line drawn for the view (a view moved back off now drew no step at now, and the readout lost its median; a step joined over a run of equal
+ * rates kept the fewest venues of the run, review 2026-11-17). Null where fewer than `need` venues have a rate then.
+ */
+export function medianIn(venues: readonly VenueFunding[], at: number, clock: number, need: number): { per8h: number; n: number; forming: boolean } | null {
+  const values: number[] = []; let forming = false;
+  for (const v of venues) { const r = fundingIn(v.rows, v.forming, at, clock); if (r) { values.push(r.per8h); forming ||= r.forming; } }
+  return values.length >= need ? { per8h: middle(values), n: values.length, forming } : null;
+}
+
+/**
+ * The median of the venues' funding over [t0, t1] (pure), cut at `clock`: steps between every edge of any venue's intervals, each the median
+ * of the venues with a rate there (a missing venue never counts as zero), drawn only where at least `need` have one. A median, not an average:
+ * at the 0.01 % base Hyperliquid sits 70 % of the hours and the exchanges 12-29 %, and an average weighted by open interest follows Binance
+ * (correlation 0.89 / 0.93 on BTC / ETH over 90 days, 2026-11-08); the median of five or six venues is held by none of them. Neighbouring steps
+ * with the same rate over the same number of venues join.
+ */
+export function fundingMedian(venues: readonly VenueFunding[], t0: number, t1: number, clock: number, need: number): MedianStep[] {
+  const end = Math.min(t1, clock);
+  if (!(end > t0)) return [];
+  const edges: number[] = [t0, end];
+  for (const v of venues) {
+    for (let i = cutAt(v.rows, t0, false), n = v.rows.length; i < n; i++) { const start = rowStart(v.rows, i); if (start > end) break; edges.push(start, v.rows[i]!.t); }
+    const f = formingEnd(v, clock); if (f) edges.push(f.start, f.end);
+  }
+  const cuts = [...new Set(edges.filter(x => x >= t0 && x <= end))].sort((a, b) => a - b), steps: MedianStep[] = [], values: number[] = [];
+  for (let k = 1; k < cuts.length; k++) {
+    const a = cuts[k - 1]!, b = cuts[k]!, mid = (a + b) / 2;
+    values.length = 0; let forming = false;
+    for (const v of venues) { const r = fundingIn(v.rows, v.forming, mid, clock); if (r) { values.push(r.per8h); forming ||= r.forming; } }
+    if (values.length < need) continue;
+    const per8h = middle(values), last = steps[steps.length - 1];
+    if (last && last.t1 === a && last.per8h === per8h && last.forming === forming && last.n === values.length) last.t1 = b;
+    else steps.push({ t0: a, t1: b, per8h, n: values.length, forming });
+  }
+  return steps;
+}
+
 
 /** One settled funding, at `t`, over the `hours` before it: `rate` per its own interval, `per8h` the same per eight hours. */
 export interface FundingRow { t: number; rate: number; per8h: number; hours: number }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FundingSource, buyerShare, continuousFunding, cutAt, fundingBase, fundingVenueOf, hasPremium, heldPremium, isFundingVenue, readFunding, readFundingNow, readPremium, rowAt } from '../src/app/funding.ts';
-import { fundingCardLines, fundingShownAt } from '../src/app/panes/funding-pane.ts';
+import { FundingSource, buyerShare, continuousFunding, cutAt, fundingBase, fundingIn, fundingMedian, fundingTail, fundingVenueOf, hasPremium, heldPremium, isFundingPick, isFundingVenue, medianIn, medianNeeds, showsEvery, readFunding, readFundingNow, readPremium, rowAt, type FundingRow } from '../src/app/funding.ts';
+import { fundingAllCardLines, fundingCardLines, fundingShownAt, rateTicks, tagText, tickText } from '../src/app/panes/funding-pane.ts';
 import type { Fetcher } from '../src/shared/history.ts';
 
 const H = 3_600_000, T = Date.UTC(2026, 10, 6, 0);
@@ -455,7 +455,9 @@ test('the popup names a settlement and a band only where a venue has them', () =
   assert.deepEqual(labels(false, true), ['Funding', 'Each settlement', 'APR', 'Settles at']);
   assert.deepEqual(labels(true, false), ['Funding', 'APR'], 'continuous: what the hour paid, settled by nothing');
   assert.deepEqual(labels(true, true), ['Funding', 'APR']);
-  const bandSaid = (continuous: boolean): boolean => card(continuous, false).some(line => (line.text ?? '').includes('shaded band'));
+  const okx = fundingCardLines({ time: T + H / 2, venue: 'OKX', row, forming: false, premium: null, opens: null, coin: 'BTC', continuous: false, band: false });
+  assert.equal(okx.some(line => (line.text ?? '').includes('dotted lines')), false, 'no premium line, no dotted lines drawn: none spoken of');
+  const bandSaid = (continuous: boolean): boolean => card(continuous, false).some(line => (line.text ?? '').includes('dotted lines'));
   assert.deepEqual([bandSaid(false), bandSaid(true)], [true, false], 'no band is drawn on a continuous venue, so none is spoken of');
 });
 
@@ -581,4 +583,96 @@ test('the source reads what a view needs once, says when it lands, and reads the
   source.view('hyperliquid', listing, H, T, now, now + 60_000);
   await new Promise(r => setTimeout(r, 10));
   assert.equal(get.asked.filter(u => u.includes('fundingHistory')).length, reads, 'a minute later: what is held stands');
+});
+
+test('every venue: "all" is a pick of its own, kept out of the venues; resolving a venue from it falls back as from none', () => {
+  assert.deepEqual([isFundingPick('all'), isFundingPick('okx'), isFundingPick(''), isFundingPick('gate')], [true, true, false, false], 'a saved "" is the default anyway');
+  assert.deepEqual([showsEvery('all', 2), showsEvery('all', 1), showsEvery('binance', 6), showsEvery('', 6)], [true, false, false, false], 'a coin on one venue is drawn as that venue');
+  assert.equal(isFundingVenue('all'), false, 'never a venue: it keys no read, base rate or reach');
+  assert.equal(fundingVenueOf('all', v => v !== 'hyperliquid'), 'binance');
+  assert.deepEqual([medianNeeds(1), medianNeeds(2), medianNeeds(5), medianNeeds(6)], [2, 2, 3, 3]);
+});
+
+/** Hourly rows at a rate each, settling at T + (k+1) h. */
+const hourly = (rates: number[], from = T): FundingRow[] => rates.map((r, k) => ({ t: from + (k + 1) * H, rate: r / 8, per8h: r, hours: 1 }));
+const eight = (rates: number[], from = T): FundingRow[] => rates.map((r, k) => ({ t: from + (k + 1) * 8 * H, rate: r, per8h: r, hours: 8 }));
+
+test('the median of the venues: on every edge of 1 h and 8 h intervals alike, a missing venue never counted as zero, drawn only where enough venues have a rate', () => {
+  const hl = hourly([1, 1, 1, 1, 1, 1, 1, 1, 5, 5, 5, 5, 5, 5, 5, 5].map(x => x * 1e-4));
+  const bn = eight([2e-4, 3e-4]), ok = eight([4e-4]);
+  const steps = fundingMedian([{ rows: hl, forming: null }, { rows: bn, forming: null }, { rows: ok, forming: null }], T, T + 16 * H, T + 30 * H, 2);
+  // First 8 h: 1, 2, 4 -> 2; then OKX has nothing: 5 and 3 -> 4 (two venues, their middle), not 3 (zero counted would make it 3 of 0, 3, 5).
+  assert.deepEqual(steps.map(s => [s.t0, s.t1, +s.per8h.toFixed(8), s.n]), [[T, T + 8 * H, 2e-4, 3], [T + 8 * H, T + 16 * H, 4e-4, 2]]);
+  const strict = fundingMedian([{ rows: hl, forming: null }, { rows: bn, forming: null }, { rows: ok, forming: null }], T, T + 16 * H, T + 30 * H, 3);
+  assert.deepEqual(strict.map(s => [s.t0, s.t1]), [[T, T + 8 * H]], 'fewer venues than needed: no median there');
+  const venues = [{ rows: hl, forming: null }, { rows: bn, forming: null }, { rows: ok, forming: null }];
+  assert.deepEqual([+medianIn(venues, T + 9 * H, T + 30 * H, 2)!.per8h.toFixed(8), medianIn(venues, T + 9 * H, T + 30 * H, 2)!.n], [4e-4, 2]);
+  // A replay at T + 16.6 h: Hyperliquid's and Binance's newest (T + 16 h) are carried to the clock as the rate under way; OKX's next
+  // settlement (T + 16 h) is overdue past the half-hour grace, so its T + 8 h record is not carried over the hours after it.
+  const carried = medianIn(venues, T + 16.25 * H, T + 16.6 * H, 2)!;
+  assert.deepEqual([+carried.per8h.toFixed(8), carried.n, carried.forming], [4e-4, 2, true]);
+  assert.equal(medianIn(venues, T + 16.25 * H, T + 30 * H, 2), null, 'at T + 30 h every next settlement is long overdue: nothing is carried');
+});
+
+test('the median at a moment is the venues\' there, whatever the view drew, and says how many venues it counts', () => {
+  const base = (from: number, n: number): FundingRow[] => hourly(Array.from({ length: n }, () => 1e-4), from);
+  const venues = [{ rows: base(T, 10), forming: null }, { rows: base(T, 10), forming: null }, { rows: base(T + 5 * H, 5), forming: null }];
+  // The line joins equal rates only over the same number of venues: its count is never the fewest of a run.
+  const steps = fundingMedian(venues, T, T + 10 * H, T + 10 * H, 2);
+  assert.deepEqual(steps.map(x => [x.t0, x.t1, x.n]), [[T, T + 5 * H, 2], [T + 5 * H, T + 10 * H, 3]]);
+  assert.equal(medianIn(venues, T + 9 * H, T + 10 * H, 2)?.n, 3);
+  // A view moved back off now draws no step at now; the readout's median is still there.
+  assert.equal(fundingMedian(venues, T, T + 4 * H, T + 10 * H, 2).some(x => x.t1 >= T + 10 * H), false);
+  assert.equal(medianIn(venues, T + 10 * H, T + 10 * H, 2)?.per8h, 1e-4);
+});
+
+test('the median counts each venue\'s rate accruing now over its interval, marks it, and stops at the clock', () => {
+  const now = T + 10 * H;
+  const bn = { rows: eight([1e-4]), forming: { rate: 3e-4, per8h: 3e-4, hours: 8, next: T + 16 * H, premium: null } };
+  const hl = { rows: hourly([2e-4, 2e-4, 2e-4, 2e-4, 2e-4, 2e-4, 2e-4, 2e-4, 2e-4, 2e-4]), forming: { rate: 6e-4 / 8, per8h: 6e-4, hours: 1, next: T + 11 * H, premium: null } };
+  const steps = fundingMedian([bn, hl], T, T + 20 * H, now, 2);
+  assert.deepEqual(steps.map(s => [s.t0, s.t1, +s.per8h.toFixed(8), s.forming]), [[T, T + 8 * H, 1.5e-4, false], [T + 8 * H, now, 2.5e-4, true]], 'Binance\'s rate now stands for its whole interval; nothing past the clock');
+  assert.deepEqual(fundingIn(bn.rows, bn.forming, T + 9 * H, now), { per8h: 3e-4, forming: true });
+  assert.deepEqual(fundingIn(bn.rows, null, T + 9 * H, now), { per8h: 1e-4, forming: true }, 'a replay has no rate now: the newest record is carried to the clock, as the rate under way');
+  assert.equal(fundingIn(bn.rows, null, T + 9 * H, T + 8.5 * H), null, 'never past the clock');
+  assert.equal(fundingIn(bn.rows, null, T + 17 * H, T + 17 * H), null, 'nor once its next settlement is overdue (16:00 + 30 min)');
+  assert.deepEqual(fundingTail(bn.rows, null, T + 16.4 * H), { start: T + 8 * H, end: T + 16.4 * H, per8h: 1e-4 }, 'a record a few minutes late is waited for');
+  assert.deepEqual(fundingMedian([bn, hl], T + 5 * H, T + 5 * H, now, 2), [], 'an empty view');
+});
+
+test('the rate scale: round signed ticks with zero exact, as many as the height holds, and the decimals their step needs', () => {
+  const a = rateTicks(-0.0004, 0.0007, 100);
+  assert.ok(a.values.includes(0), 'zero is a tick');
+  // 100 px hold three ticks at most: a step of 0.05 % (0.025 % would need four and a half).
+  assert.deepEqual(a.values.map(x => tickText(x, a.digits)), ['0%', '+0.05%']);
+  const b = rateTicks(-0.00002, 0.00013, 200);
+  assert.equal(b.digits, 4, 'a step of 0.0025 %: four decimals');
+  assert.deepEqual(b.values.map(x => tickText(x, b.digits)), ['0%', '+0.0025%', '+0.0050%', '+0.0075%', '+0.0100%', '+0.0125%']);
+  const c = rateTicks(-0.0011, 0.0002, 130);
+  assert.deepEqual(c.values.map(x => tickText(x, c.digits)), ['−0.10%', '−0.05%', '0%'], 'negative values signed with a minus');
+  assert.deepEqual(rateTicks(0, 0, 100).values, [], 'no span, no ticks');
+  // Hyperliquid's line area in a 140 px pane is about 63 px: a step of 0.1 % left zero alone on the scale; a finer one still 14 px apart is taken.
+  const low = rateTicks(-0.00048, 0.00068, 63);
+  assert.deepEqual(low.values.map(x => tickText(x, low.digits)), ['0%', '+0.05%']);
+});
+
+test('the every-venue popup: the median and who pays, then each venue with its mark, a dash where it has nothing, its rate now marked', () => {
+  const lines = fundingAllCardLines({ time: T, need: 3, median: { per8h: 5e-5 }, venues: [{ id: 'binance', name: 'Binance', per8h: 5e-5, forming: false }, { id: 'okx', name: 'OKX', per8h: null, forming: false }, { id: 'hyperliquid', name: 'Hyperliquid', per8h: 1e-4, forming: true }] });
+  assert.deepEqual(lines.filter(l => l.label).map(l => [l.label, l.text, l.mark]), [['Median', '+0.0050% / 8 h', undefined], ['APR', '+5.47%', undefined], ['Binance', '+0.0050%', 'binance'], ['OKX', '–', 'okx'], ['Hyperliquid', '+0.0100% (now)', 'hyperliquid']]);
+  assert.ok(lines.some(l => l.text === 'Longs pay shorts'));
+});
+
+test('a reading now past its settlement stands until the record lands, within the grace; then the record is carried', () => {
+  const rows = eight([1e-4]), stale = { rate: 3e-4, per8h: 3e-4, hours: 8, next: T + 16 * H, premium: null };
+  assert.deepEqual(fundingTail(rows, stale, T + 16 * H), { start: T + 8 * H, end: T + 16 * H, per8h: 3e-4 }, 'up to its settlement: the reading now over its interval');
+  assert.deepEqual(fundingTail(rows, stale, T + 16 * H + 3_000), { start: T + 8 * H, end: T + 16 * H + 3_000, per8h: 3e-4 }, 'seconds past it: carried to the clock, no gap after the settlement');
+  assert.deepEqual(fundingTail(rows, stale, T + 16 * H + 60_000), { start: T + 8 * H, end: T + 16 * H + 60_000, per8h: 3e-4 }, 'the next reading failed: its rate to the clock');
+  assert.deepEqual(fundingIn(rows, stale, T + 16 * H + 30_000, T + 16 * H + 60_000), { per8h: 3e-4, forming: true });
+  const landed = [...rows, { t: T + 16 * H, rate: 2e-4, per8h: 2e-4, hours: 8 }];
+  assert.deepEqual(fundingTail(landed, stale, T + 16 * H + 60_000), { start: T + 16 * H, end: T + 16 * H + 60_000, per8h: 2e-4 }, 'its record in: the record is carried');
+  assert.equal(fundingTail(rows, stale, T + 17 * H), null, 'past the grace with nothing landed: nothing');
+});
+
+test('the crosshair\'s value: three decimals, four on a tiny scale, and no sign on what rounds to zero', () => {
+  assert.deepEqual([tagText(0.00012345, 0.001), tagText(-0.0000001, 0.001), tagText(0.0000123, 0.00002), tagText(-0.0000004, 0.00002)], ['+0.012%', '0.000%', '+0.0012%', '0.0000%']);
 });

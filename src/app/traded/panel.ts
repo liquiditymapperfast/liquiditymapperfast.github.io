@@ -17,7 +17,7 @@ import { venueLabel } from '../venues.ts';
 import { BROWSER_RETENTION_MS, RETENTION_MS } from '../../shared/recorder.ts';
 import { MEASURES, measureDef } from '../measures/registry.ts';
 import { emphasisApplies, splitStyles } from './emphasis.ts';
-import { PALETTES, resolveThemeId } from '../theme.ts';
+import { paletteOf } from '../theme.ts';
 import { anyPlaced, isPlaced, lineMetric, onPriceAxis, placedOn, setPlaced } from './profiles.ts';
 import { arrangeProfiles, type ProfileRoom } from './arrange.ts';
 import { hiddenText, placementGrid, placementSketch } from './placement-panel.ts';
@@ -154,7 +154,7 @@ function emphasisRows(store: Store, set: (change: Partial<TradedSettings>, again
     ? t('In each row and each stretch the bigger side is drawn stronger and the smaller one fainter, the more one-sided the more; thin rows stay even. It shows what happened, not what comes next.')
     : t('Delta bars draw only the difference of the two sides, which already says which was the bigger: this applies to split bars.'), s.emphasis, emphasis => set({ emphasis }, true));
   if (!applies) { row.querySelector('input')!.disabled = true; row.classList.add('off'); }
-  const palette = PALETTES[resolveThemeId(store.state.theme)]!;
+  const palette = paletteOf(store.state.theme);
   const example = (b: number, label: string): HTMLElement => {
     const [first, second] = splitStyles(b, 100 - b, 0, 0, palette, on);
     const part = (share: number, style: { color: string; alpha: number }): HTMLElement => { const x = el('span'); x.style.width = `${share}%`; x.style.background = style.color; x.style.opacity = String(style.alpha); return x; };
@@ -298,7 +298,7 @@ function columnWindowRows(store: Store, set: (change: Partial<TradedSettings>, a
  * with a way back to it.
  */
 function profileColors(store: Store, rebuild: () => void): HTMLElement {
-  const p = PALETTES[resolveThemeId(store.state.theme)] ?? PALETTES.dark!, c = store.state.traded.colors;
+  const p = paletteOf(store.state.theme), c = store.state.traded.colors;
   const one = (key: keyof TradedColors, label: string, theme: string): HTMLElement => {
     const own = c[key], pick = lineSwatch(own ?? theme, own !== undefined, label, color => {
       const { [key]: _old, ...rest } = store.state.traded.colors;

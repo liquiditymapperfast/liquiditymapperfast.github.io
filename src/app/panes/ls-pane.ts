@@ -8,7 +8,7 @@ import { t } from '../i18n.ts';
 import { clock } from '../format.ts';
 import { HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
-import { venueLabel } from '../venues.ts';
+import { VENUE_LINE, venueLabel } from '../venues.ts';
 import { drawVenueMark } from '../venue-marks.ts';
 import { AXIS_W, leftGutter } from './heat-pane.ts';
 import { TimePane, setHtml } from './lower-panes.ts';
@@ -22,8 +22,6 @@ import { LS_CHOSEN_VENUES, LS_METRICS, LS_VENUES, lsPopulationOf, lsWindowPeriod
 import { lsHeldKey, type LsPaneHeld } from '../range/ls-lines.ts';
 
 const HOUR = 3_600_000;
-/** One colour per venue, apart from each other on either theme (the brands' own are black on two of them); the venue's mark ends its line. */
-const LINE_COLORS: Readonly<Record<string, string>> = { binance: '#d4a106', bybit: '#e8590c', okx: '#7a5af8', bitget: '#0ca5b8' };
 
 /** The markets the pane shows: the OI pane's markets (those it adds together, or its one market) on a venue that publishes a ratio. */
 export function lsIds(state: AppState, hub: Hub): string[] {
@@ -344,7 +342,7 @@ export class LsPane extends TimePane {
     const ends: { id: string; x: number; y: number }[] = [];
     for (const s of shown) {
       // Steps: a reading holds until the next, and a gap longer than its hold breaks the line.
-      ctx.strokeStyle = LINE_COLORS[s.id.split(':')[0]!] ?? p.text; ctx.lineWidth = 1.5; ctx.beginPath();
+      ctx.strokeStyle = VENUE_LINE[s.id.split(':')[0]!] ?? p.text; ctx.lineWidth = 1.5; ctx.beginPath();
       let last: { x: number; y: number } | null = null, prevEnd = -Infinity;
       for (let i = 0; i < s.points.length; i++) {
         const q = s.points[i]!, end = stepEnd(s, i);
@@ -375,10 +373,11 @@ export class LsPane extends TimePane {
     let time = state.hover ? state.hover.t : Math.min(now, v.t1);
     if (time > newest && Number.isFinite(newest) && shown.every(s => !lsAt(s.points, time, s.periodMs))) { time = newest; if (state.hover && this.pointer) this.cursorT = newest; }
     const hover = state.hover;
-    // On a plate the table is the popup; beside the plot the popup says who each line counts.
+    // A table drawn takes the popup's place, as on every pane with one (Table off brings back who each line counts).
     const room: TableRoom = { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null };
-    const plated = state.lsTable && !blank && this.#table.draw(ctx, p, room, { heads: ['', t('Longs'), t('Shorts'), 'L/S'], minCols: 3, focus: -1, foot: hover ? clock(time, true) : `${t('newest')} ${clock(time)}`, rows: lsTableRows(series, time, p) })?.plate === true;
-    if (hover && this.pointer && !plated) this.#lines = lsCardLines(series, time, state.timeframe);
+    // One series: a row that repeats the header; no table, and the popup stays.
+    const placed = state.lsTable && !blank && series.length > 1 ? this.#table.draw(ctx, p, room, { heads: ['', t('Longs'), t('Shorts'), 'L/S'], minCols: 3, focus: -1, foot: hover ? clock(time, true) : `${t('newest')} ${clock(time)}`, rows: lsTableRows(series, time, p) }) : null;
+    if (hover && this.pointer && !placed) this.#lines = lsCardLines(series, time, state.timeframe);
     const parts = series.map(s => {
       const q = lsAt(s.points, time, s.periodMs), name = venueLabel(s.id);
       if (s.status === 'serverOnly') return `<span class="muted">${name} ${t('not readable here')}</span>`;

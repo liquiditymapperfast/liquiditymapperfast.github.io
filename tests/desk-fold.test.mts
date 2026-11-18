@@ -110,7 +110,7 @@ test('the pane is weighed at the widths the stylesheet gives, to the fraction, a
 test('a column given back its own width (a double click on its splitter) weighs the fold again, as a resize does', () => {
   const layout = fs.readFileSync('src/app/layout.ts', 'utf8');
   assert.match(layout, /bar\.addEventListener\('dblclick', \(\) => \{ this\.#plan\[side === 'left' \? 'leftW' : 'rightW'\] = null; this\.#relayout\(\); this\.#persist\(\); \}\);/);
-  assert.match(layout, /window\.addEventListener\('resize', \(\) => \{ this\.#fit\(\); if \(isPhone\(\) !== phone\) \{ phone = !phone; this\.#renderSides\(\); \} else this\.#relayout\(\); \}\);/);
+  assert.match(layout, /window\.addEventListener\('resize', \(\) => \{ this\.#fit\(\); if \(isPhone\(\) !== phone\) \{ phone = !phone; this\.#setMax\(null\); this\.#renderSides\(\); \} else this\.#relayout\(\); \}\);/);
 });
 
 test('a column let go of after a drag weighs the fold (the other column may fold), and the one dragged stays open (Sol, 2026-11-03)', () => {

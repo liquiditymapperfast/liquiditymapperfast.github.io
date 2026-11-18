@@ -98,7 +98,8 @@ export class Dock {
   onChange: (tab: DockTab) => void = () => {};
 
   constructor(private main: HTMLElement) {
-    try { this.#sizes = JSON.parse(window.localStorage.getItem(SIZE_KEY) ?? '{}') as Record<string, number>; } catch { this.#sizes = {}; }
+    // Finite sizes by tab only: what storage holds can be anything (a backup brings any text, backup.ts).
+    try { const raw: unknown = JSON.parse(window.localStorage.getItem(SIZE_KEY) ?? '{}'); if (raw && typeof raw === 'object' && !Array.isArray(raw)) for (const [k, v] of Object.entries(raw)) if (typeof v === 'number' && Number.isFinite(v)) this.#sizes[k] = v; } catch { this.#sizes = {}; }
     for (const spec of DOCK_TABS) {
       const label = el('span', { textContent: spec.label });
       const button = el('button', { type: 'button', class: 'dock-tab', role: 'tab', tip: spec.tip, onclick: () => this.select(spec.id) });

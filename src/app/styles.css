@@ -286,14 +286,20 @@ html[data-layout="desktop"] .side-head > .pane-tools { position: static; flex: n
 /* The break after the first line (zero high, so the two gaps around it set the first line off from the controls): what the first line does not take starts the next one. */
 html[data-layout="desktop"] .side-head > .side-break { display: block; order: 3; flex: 1 0 100%; height: 0; }
 html[data-layout="desktop"] .side-head > :not(.grip, strong, button.help, .pane-tools, .side-break) { order: 4; }
-html[data-layout] .pane-head :is(.pane-x, .pane-more, .pane-range) { position: relative; width: 20px; height: 20px; min-height: 0; padding: 0; font-size: 0; line-height: 0; color: var(--muted); }
+html[data-layout] .pane-head :is(.pane-x, .pane-more, .pane-range, .pane-max) { position: relative; width: 20px; height: 20px; min-height: 0; padding: 0; font-size: 0; line-height: 0; color: var(--muted); }
 html[data-layout] .pane-head .pane-x { --cross: 9px; }
-html[data-layout] .pane-head :is(.pane-x, .pane-more, .pane-range):hover { color: var(--text); }
+html[data-layout] .pane-head :is(.pane-x, .pane-more, .pane-range, .pane-max):hover { color: var(--text); }
 /* A pane's Range button (range/tool.ts paneButton) before its menu: the dashed box the map's Select wears; lit in the accent while armed from it or showing its summary. */
 html[data-layout="desktop"] .pane-head.has-tools:has(> .pane-tools > .pane-range) { padding-right: 76px; }
+html[data-layout="desktop"] .pane-head.has-tools:has(> .pane-tools > .pane-max) { padding-right: 76px; }
+html[data-layout="desktop"] .pane-head.has-tools:has(> .pane-tools > .pane-range):has(> .pane-tools > .pane-max) { padding-right: 98px; }
 .pane-range::before { content: ""; position: absolute; inset: 0; margin: auto; width: 14px; height: 14px; background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-dasharray='4 3'%3E%3Crect x='3' y='5' width='18' height='14'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-dasharray='4 3'%3E%3Crect x='3' y='5' width='18' height='14'/%3E%3C/svg%3E") center / contain no-repeat; }
+/* A pane's maximize button (layout.ts #mover): four corners going out; while the pane is maximized, coming in, lit as the Range button is. */
+.pane-max::before { content: ""; position: absolute; inset: 0; margin: auto; width: 13px; height: 13px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'/%3E%3C/svg%3E") center / contain no-repeat; }
+.pane-max[data-state="on"]::before { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5'/%3E%3C/svg%3E"); }
+html[data-layout] .pane-head .pane-max[data-state="on"],
 html[data-layout] .pane-head .pane-range[data-state="on"] { color: var(--ui); background: color-mix(in srgb, var(--ui) 16%, transparent); box-shadow: inset 0 0 0 1px var(--ui); }
 .pane-more::before { content: ""; position: absolute; inset: 0; margin: auto; width: 14px; height: 14px; background: currentColor; -webkit-mask: var(--mark-more) center / contain no-repeat; mask: var(--mark-more) center / contain no-repeat; }
 /* A pane being dragged by its grip: a label with the pointer, a mark where it would stand (a bar between two panes, or the strip along an edge where a column is not there), and the pane itself dimmed. */
@@ -343,9 +349,12 @@ html[data-bar="compact"] .toast { bottom: 76px; }
   main { --rail-w: 30px; }
   html[data-layout="desktop"] .pane-head.has-tools { padding-right: 76px; }
   html[data-layout="desktop"] .pane-head.has-tools:has(> .pane-tools > .pane-range) { padding-right: 108px; }
-  html[data-layout] .pane-head :is(.pane-x, .pane-more, .pane-range) { width: 30px; height: 30px; }
+  html[data-layout="desktop"] .pane-head.has-tools:has(> .pane-tools > .pane-max) { padding-right: 108px; }
+  html[data-layout="desktop"] .pane-head.has-tools:has(> .pane-tools > .pane-range):has(> .pane-tools > .pane-max) { padding-right: 140px; }
+  html[data-layout] .pane-head :is(.pane-x, .pane-more, .pane-range, .pane-max) { width: 30px; height: 30px; }
   html[data-layout] .pane-head .pane-x { --cross: 12px; }
   :is(.pane-more, .pane-range)::before { width: 18px; height: 18px; }
+  .pane-max::before { width: 16px; height: 16px; }
   .edge-tab { font-size: 12px; }
 }
 .pane { position: relative; display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
@@ -360,7 +369,7 @@ html[data-bar="compact"] .toast { bottom: 76px; }
 .pane.heat canvas.hover { pointer-events: none; }
 /* Select and Recenter act on the map, so they sit in the map's top-right corner, left of the profile column. */
 .pane.heat .map-tools { position: absolute; z-index: 3; top: 8px; right: calc(var(--gutter, 192px) + 8px); display: flex; gap: 6px; }
-.pane.heat .map-recenter, .pane.heat .map-select, .pane.heat .map-goto, .pane.heat .map-draw, .pane.heat .map-layout { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 7px; border-radius: var(--radius);
+.pane.heat .map-recenter, .pane.heat .map-select, .pane.heat .map-goto, .pane.heat .map-draw, .pane.heat .map-layout, .pane.heat .map-max { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 7px; border-radius: var(--radius);
   background: color-mix(in srgb, var(--panel) 86%, transparent); font-size: 11px; color: var(--text); box-shadow: 3px 3px 0 var(--shadow); }
 /* Select wears the Range lamp on its left, then a dashed box: the selection it makes. */
 .pane.heat .map-select { padding-left: 21px; }
@@ -382,7 +391,23 @@ html[data-bar="compact"] .toast { bottom: 76px; }
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 6l6 6-6 6M13 6l6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat; }
 .pane.heat .map-live[hidden] { display: none; }
 .pane.heat .map-live:hover,
-.pane.heat .map-recenter:hover, .pane.heat .map-select:hover, .pane.heat .map-goto:hover, .pane.heat .map-draw:hover, .pane.heat .map-layout:hover { background: var(--panel); }
+.pane.heat .map-recenter:hover, .pane.heat .map-select:hover, .pane.heat .map-goto:hover, .pane.heat .map-draw:hover, .pane.heat .map-layout:hover, .pane.heat .map-max:hover { background: var(--panel); }
+/* The map's maximize button (main.ts, the corner's last): a drawing only, there while a pane under the map is open or the map is maximized. */
+.pane.heat .map-max { justify-content: center; width: 28px; padding: 0; }
+.pane.heat .map-max[hidden] { display: none; }
+.pane.heat .map-max::before { content: ""; width: 13px; height: 13px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'/%3E%3C/svg%3E") center / contain no-repeat; }
+.pane.heat .map-max[data-state="on"]::before { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5'/%3E%3C/svg%3E"); }
+.pane.heat .map-max[data-state="on"] { color: var(--ui); box-shadow: inset 0 0 0 1px var(--ui), 3px 3px 0 var(--shadow); }
+/* A maximized pane (layout.ts #setMax) stands over the whole map's column; the others stay laid out under it, unseen, so that the map goes on drawing.
+   A pane under the map leaves the map's time axis in sight below it: the map, at the height it had, stands at the column's bottom. Desktop only. */
+html[data-layout="desktop"] .chart-col.has-max { position: relative; overflow: hidden; }
+html[data-layout="desktop"] .chart-col.has-max > :not(.maxed, .pane.heat) { visibility: hidden; }
+/* The splitters go altogether: hidden from sight they kept their boxes, which Glass measured as walls over the maximized chart (review r4). */
+html[data-layout="desktop"] .chart-col.has-max > .splitter { display: none; }
+html[data-layout="desktop"] .chart-col.has-max > .pane.maxed { position: absolute; inset: 0; z-index: 20; min-height: 0; }
+html[data-layout="desktop"] .chart-col.max-lower > .pane.heat { position: absolute; left: 0; right: 0; bottom: 0; height: var(--max-map-h); min-height: 0; z-index: 0; }
+html[data-layout="desktop"] .chart-col.max-lower > .pane.maxed { bottom: var(--max-axis-h, 22px); }
 /* Where the named buttons over the top right of the map would hide its title and the figures beside it, they shrink to their drawings: judged on the
    plot's own width (heat-pane.ts `#fitCorner`), not the window's, since the columns beside the map take as much as the window gives. */
 html[data-layout="desktop"] .pane.heat .map-tools.compact :is(.map-goto, .map-select, .map-recenter, .map-draw, .map-layout) { font-size: 0; gap: 0; padding: 0 7px; }
@@ -509,6 +534,9 @@ html[data-layout="desktop"] .pane.cvd .pane-head > .fit-cells > .cvd-seg button,
 .pane-head .readout b { color: var(--text); }
 .pane-head .readout b.bid { color: var(--bid); }
 .pane-head .readout b.ask { color: var(--ask); }
+/* A line's key before its name in a readout (the Funding pane): a short stroke in the colour set on it. */
+.pane-head .readout .key { display: inline-block; width: 12px; height: 0; border-top: 2px solid currentColor; vertical-align: middle; margin-right: 4px; }
+.pane-head .readout .key.thin { border-top-width: 1px; }
 /* A pane's header is one row on a desktop (Karl, 2026-11-13): where its figures would get less than their room beside the controls, the last
    controls fold behind the settings key, which opens them in a panel (pane-tune.ts); the Liquidity Tracker's figures took a line of their own. */
 html[data-layout="desktop"] .pane-head .folded { display: none; }
@@ -1209,6 +1237,13 @@ html[data-frame="textmode"] .toolbar.cockpit .split > .split-cfg { width: 14px; 
 .layout-row:has(> button:not(:disabled):is(:hover, :focus-visible)) { background: color-mix(in srgb, var(--ui) 14%, transparent); }
 :where(:root[data-theme="dark"]) .layout-row:has(> button:not(:disabled):is(:hover, :focus-visible)) { background: color-mix(in srgb, var(--ui) 22%, transparent); }
 .layout-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.layout-backup { margin-top: 2px; }
+/* The Theme panel (theme-editor.ts): the name, then each colour as a swatch and its name, two to a row. */
+.theme-name { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; font-size: 12px; }
+.theme-name > input { flex: 1; min-width: 0; }
+.theme-colors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; margin: 2px 0 6px; }
+.theme-color { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 3px 0; font-size: 12px; cursor: pointer; }
+.theme-color > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The Scripts panel (script/panel.ts): a row per script with its switch, and the text box a script is written in. */
 .script-row > .script-on { display: inline-flex; flex: none; }
 .script-row > button:nth-child(2) { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

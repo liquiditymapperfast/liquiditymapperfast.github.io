@@ -238,6 +238,9 @@ export function readLayouts(raw: unknown): SavedLayout[] {
   return out.slice(-MAX_LAYOUTS);
 }
 
+/** Whether a saved layout carries the chart's settings, or only which panels are open. */
+export const keepsSettings = (layout: Pick<SavedLayout, 'settings'>): boolean => Object.keys(layout.settings).some(key => key !== 'show');
+
 /** Add `layout`, replacing one of the same name in its place; null when the list is full and the name is new. */
 export function upsert(list: readonly SavedLayout[], layout: SavedLayout): SavedLayout[] | null {
   const at = list.findIndex(l => sameName(l.name, layout.name));

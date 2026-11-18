@@ -12,8 +12,10 @@ import { withProfileAnchor } from './traded/settings.ts';
 import { ANCHOR_BAR_MS, PROFILE_ANCHOR_REACH_MS, anchorAt } from './traded/anchor.ts';
 import type { DataSource } from './source.ts';
 import { loadKernels } from './kernels.ts';
-import { Store, autoTheme, initialState, themeChange } from './store.ts';
-import { applyTheme } from './theme.ts';
+import { Store, autoTheme, initialState, slotsFor, themeChange } from './store.ts';
+import { applyTheme, paletteOf, resolveThemeId } from './theme.ts';
+import { CUSTOM_THEMES_KEY, loadCustomThemes, registerCustomThemes } from './custom-themes.ts';
+import { RESTORED_KEY, restoreResult } from './backup.ts';
 import { UiGlass } from './glass/ui-glass.ts';
 import { Sounds } from './sound/sounds.ts';
 import { Alerts } from './sound/alerts.ts';
@@ -28,7 +30,7 @@ import { installClassicSelects, installTouchSelects } from './touch-select.ts';
 import { lazy, preload } from './lazy.ts';
 import { watchBuild } from './update-check.ts';
 import { ScreenWake } from './wake.ts';
-import { HeatPane, gutter, gutterAt, leftGutter } from './panes/heat-pane.ts';
+import { HeatPane, TIME_H, gutter, gutterAt, leftGutter } from './panes/heat-pane.ts';
 import { LadderPane } from './panes/ladder-pane.ts';
 import { CvdPane } from './panes/cvd-pane.ts';
 import { TNS_LOOKBACK_MS } from './tns/model.ts';
@@ -56,7 +58,6 @@ import { pageNow, replaying } from './replay/clock.ts';
 import { DrawController } from './draw/controller.ts';
 import { DrawBar } from './draw/bar.ts';
 import { browserStore } from './draw/storage.ts';
-import { PALETTES } from './theme.ts';
 import { openedSheet } from './sheet.ts';
 import { dismissToast, toast } from './toast.ts';
 import { topShown } from './measures/strip.ts';
@@ -109,6 +110,8 @@ async function main(): Promise<void> {
   const params = new URLSearchParams(location.search);
   // The coin first: everything after it is built for that coin (BTC needs no list, so a BTC page does not wait for one).
   const choice = await chooseCoin(params);
+  // The person's own themes before the saved settings are read: a saved theme of their own must be one the page knows.
+  registerCustomThemes(loadCustomThemes());
   const store = new Store(forCoin(initialState(), choice.coin, choice.from));
   useMarkets(() => store.state.markets);
   setTimeZone(store.state.timeZone);
@@ -246,6 +249,19 @@ async function main(): Promise<void> {
   cvd.trades.flowLoads = () => hub.flow.loads;
   // A desktop folds its side columns to their edge tabs when the map would be left too little plot (layouts/dock-model.ts `chooseFold`).
   arrange.plotAt = paneW => paneW - gutterAt(paneW, store.state);
+  // A pane of the map's column maximized over it (TradingView's, Karl 2026-11-17): a double click on the pane, its button, the map's button in
+  // the corner or the Z key; again, or another pane opened or closed, gives the column back. Not while a tool that clicks on the panes is armed.
+  arrange.mapAxisH = TIME_H;
+  arrange.canMaximize = () => !store.state.rangeTool && !store.state.vwapAnchoring && !store.state.profileAnchoring && !heat.draw?.placing;
+  heat.onMaximize = () => arrange.toggleMax('heat');
+  toolbar.onMapMax = () => { arrange.toggleMax('heat'); };
+  const syncMapMax = (): void => toolbar.setMapMax(arrange.canMax('heat'), arrange.maximized === 'heat');
+  // The panes under the map that a maximized pane covers draw nothing meanwhile and put their cards away (TimePane.cover). Delta stays
+  // drawn under a maximized map: its drawing works out the CVD divergences the map draws (review r2), and a finger's pin on it is let go
+  // so that its card goes (review r3; a mouse's pointer has left it for the map).
+  const covers = { bars, depth, oi, delta, ls, funding, lt, script } as const;
+  const covered = (id: string | null, pid: string): boolean => id !== null && id !== pid && !(pid === 'delta' && id === 'heat');
+  arrange.onMaximized = id => { for (const [pid, pane] of Object.entries(covers)) pane.cover(covered(id, pid)); if (id === 'heat') delta.dismiss(); syncMapMax(); heat.invalidate(); lower(); };
   toolbar.layouts = layouts;
   const lower = () => { depth.invalidate(); oi.invalidate(); delta.invalidate(); ls.invalidate(); funding.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.followMap(); };
   // Replay: the map's candle under way is rebuilt from the flow, so flow arriving while paused redraws it too (live, the map has its own pace).
@@ -254,8 +270,8 @@ async function main(): Promise<void> {
   let stripLoads = hub.flow.loads;
   // The open-interest markets are worked out from the flow and the books on the map, which come after the candles: asked again as they do.
   hub.onFlowChanged = () => { cvd.invalidate(); delta.invalidate(); script.refresh(); const landed = stripLoads !== hub.flow.loads; stripLoads = hub.flow.loads; if (replaying() || (landed && topShown(store.state))) heat.invalidate(); hub.refreshOiMarkets(); };
-  // A finger on a pane under the map moves the time axis it shares with the map.
-  for (const pane of [depth, oi, delta, ls, funding, lt, bars, script]) pane.useTimeGestures(heat.timeGestures());
+  // A finger, a mouse drag or the wheel on a pane under the map moves the time axis it shares with the map.
+  for (const pane of [depth, oi, delta, ls, funding, lt, bars, script]) pane.useTimeGestures(heat.timeGestures(), (x, width, e) => heat.timeWheel(x, width, e));
   heat.onFrame = lower; heat.onView = lower;
   heat.onTopProfile = () => toolbar.openTradedPanel();
   heat.onArrangedChange = () => toolbar.refreshTradedPanel();
@@ -299,7 +315,7 @@ async function main(): Promise<void> {
   const fundingSummary = new FundingRangeSummary();
   range.useProvider({
     pane: 'funding', title: () => t('Funding'), shown: () => store.state.show.funding, barMs: () => TIMEFRAMES[store.state.timeframe] ?? 3_600_000,
-    lines: (sel, shown) => { const key = funding.rangeKey(store.state); return fundingSummary.lines(sel, funding.rangeHeld, shown, key ?? '', pageNow(), store.state.timeZone, key === null); },
+    lines: (sel, shown) => { const key = funding.rangeKey(store.state); return fundingSummary.lines(sel, funding.rangeHeld, shown, key ?? '', pageNow(), store.state.timeZone, key === null, funding.showsEvery(store.state)); },
   });
   // A drag in the Scripts pane sums up each script drawn in it (range/script-lines.ts): its visible plots of one value a candle over the
   // closed candles, in their own values. It reads only what the pane drew: it never starts a run.
@@ -367,7 +383,7 @@ async function main(): Promise<void> {
   heat.draw = draw;
   const drawBar = new DrawBar(draw, {
     settings: () => store.state.draw, setSettings: patch => store.set({ draw: { ...store.state.draw, ...patch } }),
-    palette: () => PALETTES[store.state.theme] ?? PALETTES.light!, mark: () => store.state.mark.price, restingAt: price => heat.restingAt(price), replaying, redraw: () => heat.invalidate(),
+    palette: () => paletteOf(store.state.theme), mark: () => store.state.mark.price, restingAt: price => heat.restingAt(price), replaying, redraw: () => heat.invalidate(),
   });
   heat.root.append(drawBar.rail, drawBar.editor, drawBar.say, drawBar.phoneButton);
   heat.onDrawFrame = f => drawBar.place(f);
@@ -502,6 +518,22 @@ async function main(): Promise<void> {
   // Hovering a theme shows it everywhere without saving it; leaving the menu puts the saved one back.
   toolbar.onPreviewTheme = id => { const name = id ?? store.state.theme; glass.setPalette(applyTheme(name)); for (const p of themed) p.setPalette(name); toolbar.previewTheme(name); };
   heat.onStats = () => toolbar.sync(store.state, heat.window);
+  // A backup restored as this page started (backup.ts): said once.
+  const restored = restoreResult();
+  if (restored) toast(restored === 'ok' ? t('The backup was restored.') : t('This browser did not let the page restore the backup: nothing was changed.'), { ms: 8_000 });
+  window.addEventListener('storage', e => {
+    // Another tab restored a backup: this one holds the setup from before in memory, and anything it wrote (its settings, its scripts, the panes'
+    // sizes) would undo part of the restore. Nothing but memory is lost by starting again, so it reloads, and opens with the restored setup.
+    if (e.key === RESTORED_KEY) { store.stopSaving(); window.location.reload(); return; }
+    // Another tab made, changed or deleted a theme of one's own: known here too, and drawn again where it is the one on the screen; a deleted one
+    // leaves the page, and the light-or-dark key, for the built-in themes (as Delete does in the tab it was deleted in).
+    if (e.key === CUSTOM_THEMES_KEY && store.saving) {
+      registerCustomThemes(loadCustomThemes());
+      const s = store.state, alive = resolveThemeId(s.theme) === s.theme, slots = slotsFor(s.themeSlots, s.theme);
+      const theme = alive ? s.theme : s.themeSlots.dark === s.theme ? slots.dark : slots.light;
+      if (s.theme.startsWith('custom-') || slots.light !== s.themeSlots.light || slots.dark !== s.themeSlots.dark) store.set({ theme, themeSlots: slotsFor(slots, theme) });
+    }
+  });
 
   // An address like #guide/mirror opens the guide there.
   const fromAddress = (): void => { if (/^#guide/.test(location.hash)) void lazy(() => import('./guide/guide.ts')).then(m => m?.openFromAddress()); };
@@ -553,6 +585,7 @@ async function main(): Promise<void> {
     else if (a.kind === 'range') range.toggle();
     else if (a.kind === 'draw') drawBar.toggle();
     else if (a.kind === 'goto') toolbar.openGoTo();
+    else if (a.kind === 'maximize') { const id = arrange.maximized ?? arrange.pointed; if (id) arrange.toggleMax(id); }
     else if (a.kind === 'screenshot') void lazy(() => import('./screenshot/editor.ts')).then(m => m?.startScreenshot());
     else toolbar.openShortcuts();
   });
@@ -575,6 +608,7 @@ async function main(): Promise<void> {
     // A phone's Tape tab shows the column's list with the column switched off too (its Flow tab goes with the switch): there it stays in the page.
     arrange.sides({ cvd: s.show.cvd || isPhone(), book: s.show.book });
     arrange.rebuild();
+    syncMapMax();
     if (s.show.cvd) cvd.invalidate(); if (s.show.book) ladder.invalidate();
     // The Scripts tab, like its pane, is there only for scripts drawn in rows: those on the map need neither.
     // The Liq tab is there while Liquidation levels are on and have an address to be read from.

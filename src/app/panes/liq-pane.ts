@@ -1,6 +1,6 @@
 import type { Hub } from '../hub.ts';
 import type { Store } from '../store.ts';
-import { PALETTES, resolveThemeId, rgb, type Palette } from '../theme.ts';
+import { PALETTES, rgb, type Palette, paletteOf } from '../theme.ts';
 import { t } from '../i18n.ts';
 import { helpButton } from '../help.ts';
 import { el } from '../dom.ts';
@@ -105,7 +105,7 @@ export class LiqPane {
     document.addEventListener('visibilitychange', () => { if (!document.hidden && this.#shown) this.#tick(); });
   }
 
-  setPalette(name: string): void { this.#palette = PALETTES[resolveThemeId(name)] ?? PALETTES.dark!; this.invalidate(); }
+  setPalette(name: string): void { this.#palette = paletteOf(name); this.invalidate(); }
 
   /** Shown while its tab is open: it keeps the levels fresh then (the map, covered, does not) and draws; hidden, it does nothing. */
   setShown(on: boolean): void {

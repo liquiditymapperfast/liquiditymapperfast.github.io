@@ -5,8 +5,8 @@ import type { Pt } from '../touch.ts';
  * The table a pane under the map draws on itself: several things of one kind read at one moment (the Depth pane's bands, the venues of the Funding, Open
  * Interest and Long/Short panes), while its chart shows their history or their sum. Beside the plot where the columns right of it leave room, the last columns
  * going first; else over the plot's left end on a plate while the pointer (or a pinned finger) is on the pane, so it never covers the newest candles and leaves the
- * chart clear at rest. In a short pane the rows close up (15 px down to 12) and the titles, then the foot, are left out; where even a row each does not fit,
- * there is no table.
+ * chart clear at rest; a plate keeps every column, or as many as its `plateMin` says. In a short pane the rows close up (15 px down to 12) and the titles, then the foot, are left out; where even a row each does not fit,
+ * there is no table. Where a pane draws its table it shows no hover card (the table says the moment read); with Table off, or no table, the card is back.
  */
 
 /** One cell: its words and, where it has one, its colour (else the text colour). */
@@ -21,6 +21,12 @@ export interface TableSpec {
   foot: string;
   /** The fewest columns kept beside the plot: fewer would not say what the table is for, and it goes on a plate. */
   minCols: number;
+  /**
+   * The fewest columns a plate keeps, the last going first (at least `minCols`); by default every column, and a plate that cannot hold them
+   * all is left out (the pane's card says it). The tables whose last column is × give it `heads.length - 1`, so that column never takes the
+   * table away from a pane it fitted before.
+   */
+  plateMin?: number;
   /** The row lit as the one chosen; -1 for none. */
   focus: number;
 }
@@ -44,8 +50,29 @@ export const tableRowCap = (h: number): number => Math.max(0, Math.min(8, Math.f
 /** A figure of a table in a side's colour, a little towards the text colour so that it reads at this size. */
 export const tableInk = (side: string, p: Pick<Palette, 'text'>): string => mixHex(side, p.text, 0.2);
 
+/**
+ * How many times the larger of two sides (bids and asks, longs and shorts, buys and sells) is the smaller, and which one leads: 1 the first, -1
+ * the second, 0 where the ratio is written 1.00×. Null where there is nothing to compare (both empty, or a side not read); Infinity where only
+ * one side has something.
+ */
+export function sideRatio(first: number, second: number): { ratio: number; lead: 1 | -1 | 0 } | null {
+  if (!Number.isFinite(first) || !Number.isFinite(second) || first < 0 || second < 0 || (first <= 0 && second <= 0)) return null;
+  const big = Math.max(first, second), small = Math.min(first, second), ratio = small > 0 ? big / small : Infinity;
+  return { ratio, lead: Math.round(ratio * 100) <= 100 ? 0 : first > second ? 1 : -1 };
+}
+
+/** A ratio as the tables write it: two decimals under 10, one under 100, whole under 1000, then >999× (a cell stays narrow); ∞ where the other side has none. */
+export const ratioFigure = (ratio: number): string => !Number.isFinite(ratio) ? '∞' : ratio >= 999.5 ? '>999×' : `${ratio < 9.995 ? ratio.toFixed(2) : ratio < 99.95 ? ratio.toFixed(1) : Math.round(ratio)}×`;
+
+/** The × cell of a table: the ratio in the leading side's colour (the first side's is `p.bid`), muted where neither leads, a dash where there is nothing to compare. */
+export function ratioCell(first: number, second: number, p: Pick<Palette, 'bid' | 'ask' | 'text' | 'muted'>): TableCell {
+  const r = sideRatio(first, second);
+  if (!r) return { text: '–', color: p.muted };
+  return { text: ratioFigure(r.ratio), color: r.lead ? tableInk(r.lead > 0 ? p.bid : p.ask, p) : p.muted };
+}
+
 /** Where a table goes in `room`, or null where it does not fit. `measure` is the width of a text in the pane's font. */
-export function placeTable(measure: (text: string) => number, room: TableRoom, spec: Pick<TableSpec, 'heads' | 'rows' | 'minCols'>): TablePlace | null {
+export function placeTable(measure: (text: string) => number, room: TableRoom, spec: Pick<TableSpec, 'heads' | 'rows' | 'minCols' | 'plateMin'>): TablePlace | null {
   const k = spec.rows.length, n = spec.heads.length;
   let rowH = 0, titles = true, foot = true;
   fit: for (const [withTitles, withFoot] of [[true, true], [false, true], [false, false]] as const) {
@@ -57,7 +84,14 @@ export function placeTable(measure: (text: string) => number, room: TableRoom, s
   const free = room.w - room.axisW - room.plotW;
   let cols = n, left = room.plotW + 4, plate = false;
   while (cols >= spec.minCols && width(cols) > free - 4) cols--;
-  if (cols < spec.minCols) { cols = n; left = 6; plate = true; if (!room.pointing || width(n) > room.plotW * 0.6) return null; }
+  // On a plate the last columns go first too, down to `plateMin` (every column unless the table says otherwise).
+  if (cols < spec.minCols) {
+    left = 6; plate = true;
+    if (!room.pointing) return null;
+    const least = Math.min(n, Math.max(spec.minCols, spec.plateMin ?? n));
+    for (cols = n; cols > least && width(cols) > room.plotW * 0.6;) cols--;
+    if (width(cols) > room.plotW * 0.6) return null;
+  }
   const height = (k + (titles ? 1 : 0) + (foot ? 1 : 0)) * rowH, y0 = Math.round(room.h / 2 - height / 2), first = y0 + (titles ? rowH : 0);
   const rights: number[] = [];
   for (let c = 0, x = left + PAD; c < cols; c++) { x += widths[c]!; rights.push(x); x += GAP; }
@@ -73,7 +107,7 @@ export function paintTable(ctx: CanvasRenderingContext2D, p: Pick<Palette, 'pane
   for (let j = 0; j < k; j++) {
     const y = at.first + j * at.rowH, row = spec.rows[j]!, mid = y + at.rowH / 2;
     if (j === spec.focus || j === hover) { ctx.fillStyle = p.text; ctx.globalAlpha = j === spec.focus ? 0.1 : 0.05; ctx.fillRect(at.left + 2, y, at.width - 4, at.rowH); ctx.globalAlpha = 1; }
-    ctx.textAlign = 'left'; ctx.fillStyle = j === spec.focus ? p.text : p.muted; ctx.fillText(row[0]!.text, at.left + PAD, mid);
+    ctx.textAlign = 'left'; ctx.fillStyle = row[0]!.color ?? (j === spec.focus ? p.text : p.muted); ctx.fillText(row[0]!.text, at.left + PAD, mid);
     ctx.textAlign = 'right';
     for (let c = 1; c < at.cols; c++) { ctx.fillStyle = row[c]!.color ?? p.text; ctx.fillText(row[c]!.text, at.rights[c]!, mid); }
   }
@@ -124,6 +158,9 @@ export class PaneTable {
     if (this.onRow) { const row = this.#rowAt(x, y); this.#light(row); if (row >= 0) this.host.canvas.style.cursor = 'pointer'; }
     return x >= at.left && x <= at.left + at.width && y >= at.first - at.rowH && y <= at.first + (this.#rows + 1) * at.rowH;
   }
+
+  /** Whether a press at `x` is the table's: over a table whose rows take a click; one only read lets a drag move the time axis as over the plot. */
+  takesPress(x: number, pointer: { y: number } | null): boolean { return !!this.onRow && this.owns(x, pointer); }
 
   /** Whether a finger's tap at `p` (plot coordinates) chose a row. */
   tap(p: Pt): boolean {

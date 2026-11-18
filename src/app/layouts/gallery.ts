@@ -3,7 +3,7 @@ import { t, tn } from '../i18n.ts';
 import { clock } from '../format.ts';
 import { openMenu, type MenuItem } from '../menu.ts';
 import { button, heading, note } from '../ui.ts';
-import { MAX_LAYOUTS, exportFile, importFile, loadLayouts, mergeLayouts, storeLayouts, type SavedLayout } from './layouts.ts';
+import { MAX_LAYOUTS, keepsSettings, exportFile, importFile, loadLayouts, mergeLayouts, storeLayouts, type SavedLayout } from './layouts.ts';
 import { PRESETS, buildPreset, type PresetDef } from './presets.ts';
 import { PANE_SHOW_KEY } from './dock-model.ts';
 import { thumbBoxes, type ThumbBox } from './thumb.ts';
@@ -11,7 +11,8 @@ import type { LayoutActions } from './actions.ts';
 
 /** What the panel says after an action, which of the person's own layouts is being renamed, and whether a save keeps the chart's settings; kept across redraws while the panel is open. */
 export interface GalleryState { message: { text: string; error: boolean } | null; renaming: string | null; withSettings: boolean }
-export const newGalleryState = (): GalleryState => ({ message: null, renaming: null, withSettings: false });
+/** A layout keeps the chart's settings unless the box is cleared (Karl, 2026-11-17: people saved a layout and found their settings were not in it). */
+export const newGalleryState = (): GalleryState => ({ message: null, renaming: null, withSettings: true });
 
 const NS = 'http://www.w3.org/2000/svg';
 const mark = (tag: string, attrs: Record<string, string | number>): SVGElement => { const node = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v)); return node; };
@@ -37,7 +38,7 @@ export function thumbSvg(boxes: readonly ThumbBox[]): SVGSVGElement {
  * saving what is on the screen, and the panes one by one. Applying one arranges the panes first and then sets the switches, so the panes it
  * shows get their splitters from the new arrangement; every change on the screen offers Undo.
  */
-export function buildGallery(actions: LayoutActions, body: HTMLElement, redraw: () => void, ui: GalleryState): void {
+export function buildGallery(actions: LayoutActions, body: HTMLElement, redraw: () => void, ui: GalleryState, openBackup?: () => void): void {
   const say = (text: string, error = false): void => { ui.message = { text, error }; redraw(); };
   const env = actions.host.env(), now = actions.store.state, saved = loadLayouts(), active = actions.active(), activeName = actions.activeName(), changed = actions.modified();
   /** After a layout is applied the page lays itself out in the next frame; the panel follows its button then. */
@@ -87,7 +88,7 @@ export function buildGallery(actions: LayoutActions, body: HTMLElement, redraw: 
     };
     const name = ui.renaming === layout.name ? renameField(layout) : el('span', { class: 'layout-title', textContent: layout.name });
     const card = el('div', { class: on ? 'layout-card own on' : 'layout-card own' },
-      el('button', { type: 'button', class: 'layout-apply', tip: t('Apply this layout'), onclick: () => { actions.applySaved(layout); later(); } }, picture, name, el('span', { class: 'layout-blurb', textContent: layout.savedAt ? clock(layout.savedAt, true) : '' })), more);
+      el('button', { type: 'button', class: 'layout-apply', tip: t('Apply this layout'), onclick: () => { actions.applySaved(layout); later(); } }, picture, name, el('span', { class: 'layout-blurb', textContent: [layout.savedAt ? clock(layout.savedAt, true) : '', keepsSettings(layout) ? t('with settings') : t('panels only')].filter(Boolean).join(' · ') })), more);
     card.dataset.layout = layout.name;
     return card;
   };
@@ -124,7 +125,8 @@ export function buildGallery(actions: LayoutActions, body: HTMLElement, redraw: 
   };
   field.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
   body.append(el('div', { class: 'layout-save' }, field, button(t('Save'), save, t('Save the panels as they stand under this name (the same name replaces it).'))),
-    el('label', { class: 'layout-keep', tip: t('Also keeps the timeframe, the heatmap colours and what every switch is set to; applying the layout sets them again.') }, keepSettings, el('span', { textContent: t('With the chart’s settings') })));
+    el('label', { class: 'layout-keep', tip: t('Also keeps the timeframe, the heatmap colours and what every switch is set to; applying the layout sets them again.') }, keepSettings, el('span', { textContent: t('With the chart’s settings') })),
+    note(t('A layout never holds the coin, the venues, the theme, the time zone or the sounds. To keep or move everything, use Back up and restore below.')));
 
   // The panels, one by one.
   body.append(heading(t('Panels')));
@@ -160,4 +162,5 @@ export function buildGallery(actions: LayoutActions, body: HTMLElement, redraw: 
   body.append(heading(t('More')), el('div', { class: 'layout-tools' },
     button(t('Swap the two sides'), () => { actions.host.swapSides(); later(); }, t('The flow column and the book exchange sides')),
     exportButton, button(t('Import'), () => file.click(), t('Read layouts from a file written by Export (a name already here is replaced)')), file));
+  if (openBackup) body.append(el('div', { class: 'layout-tools layout-backup' }, button(t('Back up and restore…'), openBackup, t('Everything the page keeps in this browser, to one file and back'))));
 }

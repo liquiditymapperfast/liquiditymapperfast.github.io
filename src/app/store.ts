@@ -4,7 +4,7 @@ import type { TimeZone } from './format.ts';
 import { HEAT_STYLES, type HeatStyleId } from './heatmap/lut.ts';
 import { clampContrast } from './heatmap/window.ts';
 import { LT_DEFAULTS, LT_REV4_HALF_LIFE_BP, type LtParams } from './lt.ts';
-import { PALETTES, resolveThemeId } from './theme.ts';
+import { resolveThemeId, paletteOf } from './theme.ts';
 import { readStatOptions, type StatOptions } from './stat-options.ts';
 import { readHighlight, type HighlightOptions } from './anomaly.ts';
 import { DEFAULT_SOUNDS, readSounds, type SoundSettings } from './sound/rules.ts';
@@ -37,7 +37,7 @@ import { t } from './i18n.ts';
 import { readLiqLevels, type LiqLevelSettings } from './liq-url.ts';
 import { WAVE_STRENGTH_DEFAULT, readWaveStrength } from './glass/waves.ts';
 import type { ReplayView } from './replay/clock.ts';
-import { isFundingVenue, type FundingVenue } from './funding.ts';
+import { isFundingPick, type FundingPick } from './funding.ts';
 import { readFlowView, type FlowView } from './tns/model.ts';
 import { TRADES_DEFAULTS, readTrades, tradesRev5Default, type TradesSettings } from './trades/settings.ts';
 
@@ -128,8 +128,8 @@ export interface AppState {
   oiFine: OiPart[];
   /** How the OI pane's change bars are coloured: by who opened and closed (NL/NS, worked out minute by minute where it can be), or rises and falls. */
   oiChange: 'who' | 'net';
-  /** The venue whose funding and premium the Funding pane shows (funding.ts); '' until one is picked: Hyperliquid where it lists the coin. */
-  fundingVenue: FundingVenue | '';
+  /** The venue whose funding and premium the Funding pane shows (funding.ts); '' until one is picked: Hyperliquid where it lists the coin; 'all': every venue's funding with their median. */
+  fundingVenue: FundingPick;
   /** Whether the Funding, Open Interest, Long/Short, Liquidity Tracker and Delta panes draw their tables (panes/pane-table.ts; the Depth pane's is in its own settings). */
   fundingTable: boolean;
   oiTable: boolean;
@@ -277,8 +277,26 @@ export type PhoneTape = 'list' | 'chart';
 export const readPhoneTape = (saved: unknown): PhoneTape => saved === 'chart' ? 'chart' : 'list';
 
 const PERSISTED: (keyof AppState)[] = ['keepAwake', 'tabPrice', 'tabIcon', 'phoneHistory', 'phoneTape', 'scriptBars', 'barCollapsed', 'material', 'waveStrength', 'timeZone', 'timeframe', 'layer', 'show', 'cvd', 'flowView', 'trades', 'heatmapSource', 'disabledVenues', 'scope', 'highlight', 'absorption', 'tradeBubbles', 'liquidations', 'keyLevels', 'liqLevels', 'vwap', 'tpo', 'footprint', 'delta', 'sounds', 'heat', 'lt', 'barStats', 'barStatOptions', 'grouping', 'ladderMode', 'ladderShow', 'ladderCurves', 'pullStack', 'ladderCues', 'depthBands', 'depthSource', 'liqBands', 'ladderVenue', 'ladderVenues', 'theme', 'themePicked', 'themeSlots', 'defaultsRev', 'traded', 'oiMarkets', 'oiChange', 'fundingVenue', 'fundingTable', 'oiTable', 'lsTable', 'ltTable', 'deltaTable', 'lsMetric', 'customMarkets', 'bookMarkets', 'bookPicks', 'draw', 'chartType', 'candleColors'];
+/**
+ * The saved settings: the saved keys only, from an object (a backup can bring any text here, backup.ts). The keys spread into the state as
+ * they are, without a reader of their own below, are checked for their type here; every other one is read field by field further on.
+ */
 function readSaved(): Partial<AppState> {
-  try { const raw = window.localStorage.getItem('hlm-app-v2'); return raw ? JSON.parse(raw) as Partial<AppState> : {}; } catch { return {}; }
+  let raw: unknown;
+  try { const text = window.localStorage.getItem('hlm-app-v2'); raw = text ? JSON.parse(text) : null; } catch { return {}; }
+  return savedFields(raw);
+}
+export function savedFields(raw: unknown): Partial<AppState> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const r = raw as Record<string, unknown>, out: Record<string, unknown> = {};
+  const strings = (v: unknown): boolean => Array.isArray(v) && v.every(x => typeof x === 'string');
+  const typed: Partial<Record<keyof AppState, (v: unknown) => boolean>> = {
+    keepAwake: v => typeof v === 'boolean', heatmapSource: v => typeof v === 'string', ladderVenue: v => typeof v === 'string', disabledVenues: strings, ladderVenues: strings,
+  };
+  for (const key of PERSISTED) if (Object.hasOwn(r, key) && (typed[key]?.(r[key]) ?? true)) out[key] = r[key];
+  // Read from older saves to carry them forward (`readSettings`: the measure strip became the profile along the top).
+  if (Object.hasOwn(r, 'measureStrip')) out.measureStrip = r.measureStrip;
+  return out as Partial<AppState>;
 }
 
 /** How many venue lines the Compact book may draw. */
@@ -346,7 +364,7 @@ export function readSettings(saved: Partial<Record<keyof AppState, unknown>>): S
     oiMarkets: saved.oiMarkets === 'chart' || saved.oiMarkets === 'custom' ? saved.oiMarkets : 'all',
     // New on 2026-11-07: no save holds a choice, so the bars by who opened show for every save (it needs no revision of the defaults).
     oiChange: saved.oiChange === 'net' ? 'net' : 'who',
-    fundingVenue: isFundingVenue(saved.fundingVenue) ? saved.fundingVenue : '',
+    fundingVenue: isFundingPick(saved.fundingVenue) ? saved.fundingVenue : '',
     // New on 2026-11-08: no save holds a choice, so they show for every save, as the Depth pane's does (no revision of the defaults).
     fundingTable: saved.fundingTable !== false,
     oiTable: saved.oiTable !== false,
@@ -377,15 +395,27 @@ export function autoTheme(phone: boolean, dark: boolean): string { return phone 
 export const prefersDark = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
 /** The change that shows theme `id`, picked or not; it is remembered as the theme of its kind, for the light-or-dark key. */
 export function themeChange(state: Pick<AppState, 'themeSlots'>, id: string, picked: boolean): Pick<AppState, 'theme' | 'themePicked' | 'themeSlots'> {
-  return { theme: id, themePicked: picked, themeSlots: { ...state.themeSlots, [PALETTES[id]?.dark ? 'dark' : 'light']: id } };
+  return { theme: id, themePicked: picked, themeSlots: { ...state.themeSlots, [paletteOf(id).dark ? 'dark' : 'light']: id } };
+}
+/**
+ * The light-or-dark key's slots once theme `id` is shown and its kind may have changed (a theme of one's own whose background was moved from light
+ * to dark): it takes its kind's slot, the other slot goes back to its default if it held it, and a slot holding a theme that is no longer there
+ * (deleted, in this tab or another) goes back to its default too.
+ */
+export function slotsFor(slots: AppState['themeSlots'], id: string): AppState['themeSlots'] {
+  const alive = (x: string): boolean => resolveThemeId(x) === x;
+  const out = { light: alive(slots.light) ? slots.light : DEFAULT_THEME, dark: alive(slots.dark) ? slots.dark : PHONE_DARK_THEME };
+  if (!alive(id)) return out;
+  const kind = paletteOf(id).dark ? 'dark' : 'light', other = kind === 'dark' ? 'light' : 'dark';
+  return { ...out, [kind]: id, ...(out[other] === id ? { [other]: other === 'dark' ? PHONE_DARK_THEME : DEFAULT_THEME } : {}) } as AppState['themeSlots'];
 }
 /** The theme the light-or-dark key brings: the one of the other kind last shown. */
-export function flippedTheme(state: Pick<AppState, 'theme' | 'themeSlots'>): string { return PALETTES[state.theme]?.dark ? state.themeSlots.light : state.themeSlots.dark; }
+export function flippedTheme(state: Pick<AppState, 'theme' | 'themeSlots'>): string { return paletteOf(state.theme).dark ? state.themeSlots.light : state.themeSlots.dark; }
 /** A remembered theme of the given kind, or null for a name that is not one (or not of that kind). */
 function slotTheme(v: unknown, dark: boolean): string | null {
   if (typeof v !== 'string') return null;
   const id = resolveThemeId(v);
-  return PALETTES[id]?.dark === dark ? id : null;
+  return paletteOf(id).dark === dark ? id : null;
 }
 /**
  * The revision of the first-visit defaults. The page saves its whole settings on any change, so a default is written down whether chosen
@@ -407,6 +437,8 @@ function slotTheme(v: unknown, dark: boolean): string | null {
  * No revision for 2026-10-28 (Karl: the daily profile off by default, and the profile along the top): a first visit draws the days' lines
  * without their profiles and the Volume profile's column without the band along the top, and a save from before revision 2 has no
  * profiles either; a save since holds both as it saved them, as Scripts switched on by default left a saved off.
+ * No revision for 2026-11-17 (Karl: the volume profile off at a first visit): a first visit on any screen has the Volume profile off; every
+ * save holds the switch as it was, chosen or not, so a person who had it keeps it.
  * Revision 5 (2026-11-03, Karl: "set the liquidity tracker to 10bp as default, it is currently 100bp"): the half-life is 10 bp again on every
  * screen. A save of revision 4 holding 100 bp, its default that every save wrote down, reads as 10 once; a revision-4 save whose owner chose
  * 100 cannot be told apart and reads 10 too, once. Any other half-life is kept, and so is a 100 in an older save (10 was the default then,
@@ -449,8 +481,9 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
     // profile with its column and no band (off by default since 2026-10-28); a save this old gets the band it was given then.
     if (!phone) {
       if (Object.keys(saved).length) state.traded = { ...state.traded, placements: withTopOn(state.traded.placements) };
-      // Not on a touch screen's first visit, as not on a phone's (Karl, 2026-11-03: the volume profile is not on by default on any mobile).
-      if (!touch || Object.keys(saved).length) state.show = { ...state.show, traded: true };
+      // Not on a first visit on any screen (Karl, 2026-11-17: "the volume profile should be disabled by default when someone loads the page for
+      // the first time"; on a touch screen it was off since 2026-11-03): a save this old gets it, as it was given then.
+      if (Object.keys(saved).length) state.show = { ...state.show, traded: true };
     }
   }
   // The panes: a touch screen only (a desktop browser window that was narrow once is not a phone, and its panes stay as it chose them).
@@ -468,7 +501,7 @@ export function initialState(phone: boolean = isPhone(), touch: boolean = isCoar
   // on 2026-10-17), so it counts as picked, and the device's setting never replaces it.
   if (!state.themePicked && typeof saved.theme === 'string' && savedTheme !== DEFAULT_THEME && savedTheme !== PHONE_DARK_THEME) state.themePicked = true;
   state.theme = state.themePicked ? savedTheme : autoTheme(phone && touch, prefersDark());
-  state.themeSlots = { ...state.themeSlots, [PALETTES[state.theme]?.dark ? 'dark' : 'light']: state.theme };
+  state.themeSlots = { ...state.themeSlots, [paletteOf(state.theme).dark ? 'dark' : 'light']: state.theme };
   state.material = saved.material === 'glass' ? 'glass' : 'solid';
   // New on 2026-11-06, so no save holds a strength that was not chosen: it needs no revision of the defaults.
   state.waveStrength = readWaveStrength(saved.waveStrength);
@@ -488,7 +521,11 @@ export class Store {
   #listeners = new Set<Listener>();
   #pending = new Set<keyof AppState>();
   #scheduled = false;
+  /** Set once another tab restored a backup (main.ts): this page's settings are from before it and are no longer written. */
+  #saving = true;
   constructor(state: AppState) { this.state = state; }
+  stopSaving(): void { this.#saving = false; }
+  get saving(): boolean { return this.#saving; }
   subscribe(listener: Listener): () => void { this.#listeners.add(listener); return () => this.#listeners.delete(listener); }
   set(patch: Partial<AppState>): void {
     for (const key of Object.keys(patch) as (keyof AppState)[]) { (this.state as unknown as Record<string, unknown>)[key] = patch[key]; this.#pending.add(key); }
@@ -498,7 +535,7 @@ export class Store {
       this.#scheduled = false;
       const changed = this.#pending; this.#pending = new Set();
       for (const listener of this.#listeners) listener(this.state, changed);
-      if ([...changed].some(key => PERSISTED.includes(key))) {
+      if (this.#saving && [...changed].some(key => PERSISTED.includes(key))) {
         try { window.localStorage.setItem('hlm-app-v2', JSON.stringify(Object.fromEntries(PERSISTED.map(key => [key, this.state[key]])))); } catch { /* storage unavailable */ }
       }
     });

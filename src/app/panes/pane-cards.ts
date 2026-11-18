@@ -5,6 +5,7 @@ import { signedUsd } from '../cvd/text.ts';
 import { t } from '../i18n.ts';
 import { bandText } from '../depth-settings.ts';
 import { viewParts, type LiqView } from '../liq-view.ts';
+import { ratioFigure, sideRatio } from './pane-table.ts';
 
 /**
  * What the popup says for a point of the Depth, Liquidity Tracker and Open Interest panes: the lines of the box (infobox.ts / hovercard.ts)
@@ -85,6 +86,12 @@ function imbalanceLine(bid: number, ask: number): InfoLine | null {
   if (Math.abs(share) < 0.005) return { label: t('Imbalance'), text: '0%' };
   return { label: t('Imbalance'), text: `${share > 0 ? t('bids') : t('asks')} +${(Math.abs(share) * 100).toFixed(1)}%`, color: share > 0 ? 'below' : 'above', bold: true };
 }
+/** How many times the larger side is the smaller, named by the larger (`names`: the first side's, the second's), as the tables' × column has it; none where neither leads. */
+function ratioLine(first: number, second: number, names: readonly [string, string]): InfoLine | null {
+  const r = sideRatio(first, second);
+  if (!r?.lead) return null;
+  return { label: t('Ratio'), text: `${r.lead > 0 ? names[0] : names[1]} ${ratioFigure(r.ratio)}`, color: r.lead > 0 ? 'below' : 'above', bold: true };
+}
 /** An amount of USD as the popups write it, with the sign the signed ones have. */
 const money = (value: number): string => `$${usd(value)}`;
 const sideColor = (value: number): InfoLine['color'] => value > 0 ? 'below' : value < 0 ? 'above' : 'text';
@@ -104,6 +111,7 @@ export function depthCardLines(h: { time: number; bands: readonly { r: number; b
     const diff = w.bid - w.ask;
     lines.push({ label: 'Δ', text: h.units === 'coin' ? `${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff))}` : signedUsd(diff), color: sideColor(diff), bold: true });
     const imbalance = imbalanceLine(w.bid, w.ask); if (imbalance) lines.push(imbalance);
+    const ratio = ratioLine(w.bid, w.ask, [t('bids'), t('asks')]); if (ratio) lines.push(ratio);
   }
   if (h.rank !== null && h.of > 1) lines.push({ label: t('Rank in view'), text: t('{rank} of {total}', { rank: h.rank, total: h.of }) });
   lines.push({ text: t('Bids · asks resting within each distance of the price, added up over the books counted (Venues); each band holds the ones inside it.'), color: 'muted', wrap: true, rule: true });
@@ -123,6 +131,7 @@ export function liqCardLines(h: { asOf: number; bands: readonly { r: number; bid
   if (w) {
     const diff = w.bid - w.ask;
     lines.push({ label: 'Δ', text: h.units === 'coin' ? `${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff))}` : signedUsd(diff), color: sideColor(diff), bold: true });
+    const ratio = ratioLine(w.bid, w.ask, [t('longs'), t('shorts')]); if (ratio) lines.push(ratio);
   }
   // The take profits of the watched band: the sells that close longs above the price, the buys that close shorts below; never added to the rest.
   if (h.takes) lines.push({ label: t('Take profits above / below'), text: `${fmt(h.takes.ask)} · ${fmt(h.takes.bid)}`, rule: true });
@@ -142,6 +151,7 @@ export function ltCardLines(h: { time: number; bid: number; ask: number; halfLif
     { label: 'Δ', text: signedUsd(h.bid - h.ask), color: sideColor(h.bid - h.ask), bold: true },
   ];
   const imbalance = imbalanceLine(h.bid, h.ask); if (imbalance) lines.push(imbalance);
+  const ratio = ratioLine(h.bid, h.ask, [t('bids'), t('asks')]); if (ratio) lines.push(ratio);
   lines.push({ label: t('Half-life'), text: `${h.halfLifeBp} bp` }, { label: t('Venues'), text: String(h.venues) });
   lines.push({ text: t('Liquidity near the touch, weighted: a level counts in full at the touch and half as much for every half-life further away.'), color: 'muted', wrap: true, rule: true });
   return lines;
