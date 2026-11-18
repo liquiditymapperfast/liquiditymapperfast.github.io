@@ -2,8 +2,9 @@
  * The confirmation the Plus page shows right after Plus came on in this browser by the visitor's own doing (a key entered, a checkout claimed,
  * the receipt's email and invoice number; Karl, 2026-11-18: the page swapped a section near its foot, out of sight, and said nothing): that
  * it is on and until when, and the way back to the map, which a typed key takes by itself after a few seconds unless the visitor stays
- * (`countsDown`). Never when the page simply opens with Plus on, or when another tab turned it on: only the page's own success paths start
- * it. The clock and the timer are handed in, so the countdown is tested with a fake clock (`page.ts` draws it).
+ * (`countsDown`), does anything else on the page or hides the tab (`stopOnActivity`). Never when the page simply opens with Plus on, or when
+ * another tab turned it on: only the page's own success paths start it. The clock, the timer and the document are handed in, so all of it is
+ * tested without a browser (`page.ts` draws it).
  */
 
 /** How long before the page goes back to the map by itself. */
@@ -32,6 +33,8 @@ export class Arrival {
   state: ArrivalState | null = null;
   /** Counts the confirmations started: a new one is drawn afresh (and takes the focus), a change to the same one is drawn in place. */
   started = 0;
+  /** When the confirmation now shown was started (the clock's time). */
+  startedAt = -Infinity;
   #stop: (() => void) | null = null;
   #deadline = 0;
 
@@ -45,7 +48,8 @@ export class Arrival {
   start(until: number | null, count = true): void {
     this.#halt();
     this.started++;
-    this.#deadline = this.clock.now() + ARRIVAL_SECONDS * 1_000;
+    this.startedAt = this.clock.now();
+    this.#deadline = this.startedAt + ARRIVAL_SECONDS * 1_000;
     this.state = { until, left: ARRIVAL_SECONDS, counting: count };
     if (count) this.#stop = this.clock.every(200, () => this.#tick());
     this.changed();
@@ -77,4 +81,36 @@ export class Arrival {
   }
 
   #halt(): void { this.#stop?.(); this.#stop = null; }
+}
+
+/** What the visitor can do on the page that stops the countdown, outside the confirmation: press, type, turn the wheel, touch, scroll. */
+export const STOPPING_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'] as const;
+/**
+ * A scroll this soon after the confirmation came is the page's own (drawn afresh, it can grow shorter and the browser moves the view up), not
+ * the visitor's.
+ */
+export const SCROLL_SETTLE_MS = 400;
+
+/** The part of the page's `document` the countdown listens to. */
+export interface ArrivalDocument {
+  readonly hidden: boolean;
+  addEventListener(type: string, listener: (event: { type: string; target: unknown }) => void, options?: { capture?: boolean; passive?: boolean }): void;
+}
+
+/**
+ * The countdown stops as soon as the visitor does anything on the page outside the confirmation (Sol's review, 2026-11-18: a Reveal pressed in
+ * the five seconds showed the key, and the page left anyway): a press, a key, the wheel, a touch, a scroll (`inside` says what is the
+ * confirmation's own: its buttons do what they say). It stops too when the tab is hidden, and does not start again when it shows. Stopping is
+ * `stay`: the confirmation stays, with the map a press away. Listened to once, for every confirmation.
+ */
+export function stopOnActivity(doc: ArrivalDocument, arrival: Arrival, inside: (target: unknown) => boolean, now: () => number): void {
+  const stop = (): void => { if (arrival.state?.counting) arrival.stay(); };
+  for (const type of STOPPING_EVENTS) {
+    doc.addEventListener(type, event => {
+      if (!arrival.state?.counting || inside(event.target)) return;
+      if (type === 'scroll' && now() - arrival.startedAt < SCROLL_SETTLE_MS) return;
+      stop();
+    }, { capture: true, passive: true });
+  }
+  doc.addEventListener('visibilitychange', () => { if (doc.hidden) stop(); });
 }

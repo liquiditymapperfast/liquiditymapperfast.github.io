@@ -26,8 +26,7 @@ import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from '../scope.ts';
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText, wrapText } from '../text-fit.ts';
-import { distanceText } from './ladder-info.ts';
-import { binsPerRow, captionPlace, dollarPriceOf, liqCurves, liqProfile, onTheWay, partsBetween, partsOnTheWay, seamStats, liqRows, paintLiqStripe, standingBelow, standingHeat, stripeLanes, TAKE_DASH, type CurvePoint, type Lane, type LiqLevels, type LiqRow, type LiqStanding } from '../liq-levels.ts';
+import { binsPerRow, captionPlace, dollarPriceOf, liqCurves, liqProfile, onTheWay, seamStats, liqRows, paintLiqStripe, standingBelow, standingHeat, stripeLanes, TAKE_DASH, type CurvePoint, type Lane, type LiqLevels, type LiqRow, type LiqStanding } from '../liq-levels.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRowsHeld, type TradedRows } from '../traded.ts';
 import { MEASURES, measureDef, metricWords, type ProfileMetric } from '../measures/registry.ts';
@@ -55,7 +54,8 @@ import { blockMsOf, editScope, withEdits } from '../tpo/settings.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
 import { liqLevelsUrl } from '../liq-url.ts';
 import { groupName, heldBack, kindName, liveView, plusOn, viewParts, type LiqView } from '../liq-view.ts';
-import { columnNotes, countLabel, curveSentence, liqNote, liqWhy, sideTitle, splitLabel, splitText, topLabel } from '../liq-words.ts';
+import { columnNotes, curveSentence, liqNote, liqWhy, sideTitle } from '../liq-words.ts';
+import { mirrorSplits, readingTexts, stripeBoxLines } from '../liq-box.ts';
 import { openLiqMenu } from '../liq-menu.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
@@ -374,6 +374,9 @@ export class HeatPane {
   #gutterCss = ''; #leftCss = '';
   /** What the corner tools' names were last judged on (`#fitCorner`), and the room the legend wants for its title and prices (`#paintLegend`). */
   #cornerKey = ''; #legendNeed = LEGEND_NEED_PX;
+  /** The corner tools' element and their size as last measured, with what it was measured for (`#cornerTools`). */
+  #cornerEl: HTMLElement | null = null;
+  #cornerBox: { key: string; box: { width: number; bottom: number } | null } = { key: '', box: null };
   onStats: () => void = () => {};
   onView: () => void = () => {};
   /** Whether scripts are running and read the candles (main.ts): then the price history reaches `SCRIPT_WARM_BARS` before the view too. */
@@ -772,6 +775,8 @@ export class HeatPane {
   get plotH(): number { return Math.max(1, this.#h - TIME_H); }
   setPalette(name: string): void {
     this.#palette = paletteOf(name);
+    // A theme brings its frame and so its type: the column's button is fitted again at the next drawing.
+    this.#liqKindFit = '';
     this.#radius = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--radius')) || 0;
     this.gl.setLut(buildLut(this.#palette.dark)); this.invalidate();
   }
@@ -1464,13 +1469,12 @@ export class HeatPane {
     ctx.beginPath(); ctx.moveTo(x0, line); ctx.lineTo(x0 + W, line); ctx.stroke(); ctx.setLineDash([]);
     ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(x, line, 3.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = p.panel; ctx.stroke();
     // How far (in the precision the stripe's box and Mirror use), and what goes on the way: the distance is dropped where both do not fit.
-    const pct = Math.abs(at - price) / price * 100, arrow = way.side === 'long' ? '▼' : '▲', money = `$${usd(way.usd)}`;
-    ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
-    const full = `${arrow} ${pct < 1 ? pct.toFixed(2) : pct.toFixed(1)}% · ${money}`, text = ctx.measureText(full).width <= W - 14 ? full : `${arrow} ${money}`;
     // Liq + stops: the total and its two parts under it, wrapped to the column ("Total $X = liquidations $Y + stops $Z").
-    const parts = src.partStandings(), split = parts ? partsOnTheWay(parts, price, at) : null;
+    const reading = readingTexts(way, price, at, src.partStandings());
+    ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
+    const text = ctx.measureText(reading.full).width <= W - 14 ? reading.full : reading.short;
     ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
-    const more = split ? wrapText(words => ctx.measureText(words).width, splitText(split), W - 14, 4) : [];
+    const more = reading.split ? wrapText(words => ctx.measureText(words).width, reading.split, W - 14, 4) : [];
     const tw = Math.max(...[text, ...more].map((words, i) => { ctx.font = `${i ? '' : '600 '}10px ui-sans-serif, system-ui, sans-serif`; return ctx.measureText(words).width; }));
     // Above the line, or below it near the top, and never on the column's heading (its band hides the curve there anyway).
     const tall = 13 + 12 * more.length, right = x0 + W - 4, room = this.#liqHeadH + 8;
@@ -1635,6 +1639,20 @@ export class HeatPane {
   #rangePoint(x: number, y: number): RangePoint {
     const pw = this.plotW, ph = this.plotH;
     return { t: this.view.tOf(Math.max(0, Math.min(pw, x)), pw), p: this.view.pOf(Math.max(0, Math.min(ph, y)), ph) };
+  }
+
+  /**
+   * The corner tools' width and bottom edge (px in the pane), measured again only when what sizes them can have changed: the plot's width, their
+   * names shown or folded and which of them show (`#fitCorner`'s key and the same reads, none of them layout), the frame and the arrangement.
+   * So a drawing that keeps clear of them (the take profits' caption) reads no layout.
+   */
+  #cornerTools(pw: number): { width: number; bottom: number } | null {
+    if (!this.#cornerEl?.isConnected) this.#cornerEl = this.root.querySelector<HTMLElement>('.map-tools');
+    const tools = this.#cornerEl, html = document.documentElement.dataset;
+    if (!tools) return null;
+    const key = `${pw}|${this.#cornerKey}|${tools.hidden}|${tools.classList.contains('compact')}|${tools.querySelectorAll(':scope > :not([hidden])').length}|${html.frame ?? ''}|${html.layout ?? ''}|${html.bar ?? ''}`;
+    if (key !== this.#cornerBox.key) this.#cornerBox = { key, box: !tools.hidden && tools.offsetWidth > 0 ? { width: tools.offsetWidth, bottom: tools.offsetTop + tools.offsetHeight } : null };
+    return this.#cornerBox.box;
   }
 
   /**
@@ -2207,8 +2225,8 @@ export class HeatPane {
    * reaching left over the map (`captionPlace`); below the corner tools where they stand over it, and below the legend and its notes.
    */
   #paintTakesCaption(ctx: CanvasRenderingContext2D, lane: Lane, pw: number): void {
-    const p = this.#palette, corner = this.root.querySelector<HTMLElement>('.map-tools'), box = this.#legendBox;
-    const tools = corner && !corner.hidden && corner.offsetWidth > 0 ? { x0: pw - 8 - corner.offsetWidth - 4, bottom: corner.offsetTop + corner.offsetHeight + 4 } : null;
+    const p = this.#palette, corner = this.#cornerTools(pw), box = this.#legendBox;
+    const tools = corner ? { x0: pw - 8 - corner.width - 4, bottom: corner.bottom + 4 } : null;
     ctx.save();
     ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     const wide = (words: string): number => ctx.measureText(words).width, SAMPLE = 12, words = t('Take profits');
@@ -2263,10 +2281,7 @@ export class HeatPane {
 
   /**
    * What a level under the pointer holds, for the hover box: only on the stripe, on a row strong enough to be drawn there (the levels' lane,
-   * or the take profits' by the live edge). It says what is at that level (and how much of it still stands), how far it is from the price and
-   * how much is on the way there (the liquidation column's cumulative curve at the level's far edge, as a number), how many positions or
-   * orders make it up and how big the largest is, and its two parts (isolated and cross margin; whole-position orders and orders with their
-   * own size), each in the words of what it is. Liq + stops gives both of its figures as their total and its two parts.
+   * or the take profits' by the live edge); what the box says is `stripeBoxLines`'s.
    */
   #liquidationLines(state: AppState, x: number, y: number, pw: number, ph: number, touch: boolean): InfoLine[] {
     const src = this.hub.liqLevels, lanes = this.#liqLanes, v = this.view;
@@ -2283,31 +2298,8 @@ export class HeatPane {
       if (d < best) { best = d; row = r; }
     }
     if (!row) return [];
-    const price = this.#liqPrice(state), standing = inTakes ? src.takesStanding() : src.standing(), lines: InfoLine[] = [], kind = levels.kind;
-    const parts = kind === 'both' ? src.partStandings() : null;
-    for (const side of ['long', 'short'] as const) {
-      if (!shown(row, side)) continue;
-      const total = row[side], left = row[`${side}Left`], iso = row[`${side}Iso`], top = row[`${side}Top`];
-      // In the colour it is drawn in: what sells in the falling colour, what buys in the rising one (take profits of shorts are buys).
-      const sells = kind === 'takes' ? side === 'short' : side === 'long';
-      lines.push({ text: sideTitle(kind, side), color: sells ? 'sell' : 'buy', bold: true, rule: true });
-      lines.push({ label: t('At this level'), text: left < total * 0.995 ? t('{left} of {total}', { left: `${usd(left)}`, total: `${usd(total)}` }) : `${usd(total)}`, bold: true });
-      if (parts) lines.push({ text: splitText(partsBetween(parts, side, row.p0, row.p1)), color: 'muted', wrap: true });
-      // Measured from the edge price reaches first; on the way there, everything that still stands between the price and this level.
-      const edge = side === 'long' ? row.p1 : row.p0;
-      if (price > 0) lines.push({ label: t('Distance'), text: distanceText(edge, price) });
-      if (price > 0 && standing) {
-        // To the edge price reaches last, so the level itself counts; the column's curve and its reading at the pointer use the same sum.
-        const way = onTheWay(standing, price, side === 'long' ? row.p0 : row.p1);
-        lines.push({ label: t('If price gets here'), text: `${usd(way?.side === side ? way.usd : 0)}` });
-        const split = parts && way?.side === side ? partsOnTheWay(parts, price, side === 'long' ? row.p0 : row.p1) : null;
-        if (split) lines.push({ text: splitText(split), color: 'muted', wrap: true });
-      }
-      lines.push({ label: countLabel(kind), text: String(row[`${side}Wallets`]) });
-      if (top > 0) lines.push({ label: topLabel(kind), text: `$${usd(top)} (${Math.round(top / total * 100)}%)` });
-      if (!parts) lines.push({ label: splitLabel(kind), text: `${usd(iso)} / ${usd(total - iso)}` });
-    }
-    return lines;
+    const found = row, kind = levels.kind;
+    return stripeBoxLines(found, kind, this.#liqPrice(state), inTakes ? src.takesStanding() : src.standing(), kind === 'both' ? src.partStandings() : null, side => shown(found, side));
   }
 
   #paintLayers(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
@@ -3997,8 +3989,10 @@ export class HeatPane {
   #placeLiqKind(x: number | null, W: number, state: AppState): void {
     const button = this.#liqKind;
     if (x === null) { if (!button.hidden) button.hidden = true; return; }
-    const s = state.liqLevels, view = liveView(s), held = heldBack(s, plusOn()), room = liqRoom(W);
-    const fit = `${view.kind}|${view.group}|${view.takes}|${held}|${room}`;
+    const s = state.liqLevels, view = liveView(s), held = heldBack(s, plusOn()), room = liqRoom(W), html = document.documentElement.dataset;
+    // Fitted again for another frame or material too: their fonts differ (the Bevel frame's is Tahoma at 11 px), and what fits with one may
+    // not with another, so the group is always on the button or under it, never cut.
+    const fit = `${view.kind}|${view.group}|${view.takes}|${held}|${room}|${html.frame ?? ''}|${html.material ?? ''}`;
     if (fit !== this.#liqKindFit) {
       this.#liqKindFit = fit;
       button.classList.toggle('locked', held);
@@ -4215,8 +4209,9 @@ export class HeatPane {
       : { none: t('No levels in this range'), onlyThis: t('Only this side has levels'), onlyOpposite: t('Only the opposite side has levels') };
     const lines = mirrorLines(stats, { above: sideTitle(kind, 'short'), below: sideTitle(kind, 'long') }, undefined, empty);
     if (parts) {
-      // Liq + stops: under each side's total, its two parts (the longs from the price down as far, the shorts up as far).
-      const of = (side: 'long' | 'short'): MirrorLine => ({ text: splitText(side === 'long' ? partsBetween(parts, 'long', price - d, price) : partsBetween(parts, 'short', price, price + d)), color: 'muted' });
+      // Liq + stops: under each side's total, its two parts (the longs from the price down as far, the shorts up as far), adding up to it.
+      const splits = mirrorSplits(parts, price, d, below, above);
+      const of = (side: 'long' | 'short'): MirrorLine => ({ text: side === 'long' ? splits.long : splits.short, color: 'muted' });
       const here = stats.hoveredSide === 'above' ? 'short' : 'long', there = here === 'short' ? 'long' : 'short';
       const at = lines.findIndex(l => l.color === stats.hoveredSide);
       if (at >= 0) { lines.splice(at + 2, 0, of(there)); lines.splice(at + 1, 0, of(here)); }

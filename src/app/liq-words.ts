@@ -29,12 +29,33 @@ export function splitLabel(kind: LevelsKind): string {
 }
 
 /**
- * A total of liquidations and stops (Liq + stops) with its two parts, wherever the page gives that total (the stripe's box, the column's
- * reading and its Mirror box, the Liq tab's finger): "Total $330.6M = liquidations $200.5M + stops $130.1M". The total is the parts added, so
- * the figures add up as written.
+ * A total and its two parts in one unit and precision, the total's (`usd(total)`: whole dollars under $1,000, else tenths of K, M, B or T),
+ * the parts rounded by largest remainder so the printed parts add up to the printed total. Each part is its share of the total, so parts
+ * whose own sum is a hair off the total (two standings added in another order, a row's figure shown before a sliver of it was taken) still
+ * add up to the total printed. Without a printable total (not finite), each is said alone.
  */
-export function splitText(parts: { liq: number; stops: number }): string {
-  return t('Total {total} = liquidations {liq} + stops {stops}', { total: `$${usd(parts.liq + parts.stops)}`, liq: `$${usd(parts.liq)}`, stops: `$${usd(parts.stops)}` });
+export function splitAmounts(total: number, a: number, b: number): [string, string, string] {
+  const shown = usd(total), m = /^(\d+)(?:\.(\d))?([KMBT]?)$/.exec(shown);
+  if (!m) return [shown, usd(a), usd(b)];
+  const unit = m[3] ?? '', tenths = unit !== '';
+  // The printed total in its steps (a dollar, or a tenth of its unit), and each part's share of them.
+  const steps = Number(m[1]) * (tenths ? 10 : 1) + (tenths ? Number(m[2] ?? 0) : 0), sum = Math.max(0, a) + Math.max(0, b);
+  const xa = sum > 0 ? Math.max(0, a) / sum * steps : 0, xb = sum > 0 ? steps - xa : 0;
+  let na = Math.floor(xa), nb = Math.floor(xb);
+  // The step the floors leave, if any, goes to the larger remainder, the first part's on a tie.
+  if (steps - na - nb > 0) { if (xa - na >= xb - nb) na++; else nb++; }
+  const say = (n: number): string => n === 0 ? '0' : !tenths ? String(n) : `${Math.floor(n / 10)}${n % 10 ? `.${n % 10}` : ''}${unit}`;
+  return [shown, say(na), say(nb)];
+}
+
+/**
+ * A total of liquidations and stops (Liq + stops) with its two parts, wherever the page gives that total (the stripe's box, the column's
+ * reading and its Mirror box, the Liq tab's finger): "Total $330.6M = liquidations $200.5M + stops $130.1M". `shown` is the figure the line
+ * above says (the parts' sum when there is none), so the total is that figure as printed, and the parts add up to it (`splitAmounts`).
+ */
+export function splitText(parts: { liq: number; stops: number }, shown = parts.liq + parts.stops): string {
+  const [total, liq, stops] = splitAmounts(shown, parts.liq, parts.stops);
+  return t('Total {total} = liquidations {liq} + stops {stops}', { total: `$${total}`, liq: `$${liq}`, stops: `$${stops}` });
 }
 
 /** Said under the liquidation column's button (which names what its curve adds up) while take profits are shown. */
@@ -48,7 +69,7 @@ export const takesLeftOut = (): string => t('Take profits not included');
 export function columnNotes(view: LiqView, groupOnButton: boolean, takesShown: boolean): string[] {
   return [...(groupApplies(view.kind) && view.group !== 'all' && !groupOnButton ? [groupTitle(view.group)] : []), ...(takesShown ? [takesLeftOut()] : [])];
 }
-/** The same for a newcomer, in the help, the Guide and the column's tip. */
+/** What the curve adds up and leaves out, for a newcomer: in the help, the Guide and the column's tip while take profits show. */
 export const curveSentence = (): string => t('The curve totals the selected liquidations and/or stops. Take profits are shown separately.');
 
 /**

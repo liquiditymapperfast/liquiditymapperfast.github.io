@@ -8,12 +8,12 @@ import { replaying } from '../replay/clock.ts';
 import { clock, price as fmtPrice, usd } from '../format.ts';
 import { currentCoin } from '../coin.ts';
 import { niceStep } from '../view.ts';
-import { paintInfoBox, type InfoLine } from '../infobox.ts';
+import { paintInfoBox } from '../infobox.ts';
 import { ratioText } from '../mirror.ts';
-import { distanceText } from './ladder-info.ts';
-import { binsIn, dollarPriceOf, liqProfile, partsBetween, partsOnTheWay, standingBelow, TAKE_DASH, type LiqLevels, type LiqProfile, type LiqStanding } from '../liq-levels.ts';
+import { binsIn, dollarPriceOf, liqProfile, standingBelow, TAKE_DASH, type LiqLevels, type LiqProfile, type LiqStanding } from '../liq-levels.ts';
 import { groupApplies, groupTitle, heldBack, kindTitle, liveView, plusOn } from '../liq-view.ts';
-import { countLabel, liqNote, liqWhy, sideTitle, splitText, topLabel } from '../liq-words.ts';
+import { liqNote, liqWhy } from '../liq-words.ts';
+import { probeBoxLines } from '../liq-box.ts';
 import { openLiqMenu } from '../liq-menu.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 
@@ -412,19 +412,9 @@ export class LiqPane {
     ctx.fillStyle = p.bg; ctx.font = `700 10.5px ui-monospace, SFMono-Regular, Menlo, monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(fmtPrice(at), xR + (W - xR) / 2, y + 0.5);
     ctx.restore();
-    // Liq + stops: each total with its two parts under it.
-    const parts = levels.kind === 'both' ? this.hub.liqLevels.partStandings() : null, waySplit = parts ? partsOnTheWay(parts, price, at) : null;
-    const lines: InfoLine[] = [
-      { text: sideTitle(levels.kind, side), color: side === 'long' ? 'sell' : 'buy', bold: true },
-      { label: t('Distance'), text: distanceText(at, price) },
-      { label: t('If price gets here'), text: `${usd(Math.max(0, way))}`, bold: true },
-      ...(waySplit ? [{ text: splitText(waySplit), color: 'muted', wrap: true } as InfoLine] : []),
-      { label: t('At this level'), text: `${usd(level)}` },
-      ...(parts && level > 0 ? [{ text: splitText(partsBetween(parts, side, a, a + step)), color: 'muted', wrap: true } as InfoLine] : []),
-    ];
-    if (positions > 0) lines.push({ label: countLabel(levels.kind), text: String(positions) });
-    if (top > 0 && level > 0) lines.push({ label: topLabel(levels.kind), text: `$${usd(top)}` });
-    lines.push({ label: t('Same distance, other side'), text: `$${usd(Math.max(0, other))}`, color: side === 'long' ? 'buy' : 'sell' });
+    // What it says is `probeBoxLines`'s; Liq + stops gives each total with its two parts under it.
+    const parts = levels.kind === 'both' ? this.hub.liqLevels.partStandings() : null;
+    const lines = probeBoxLines({ kind: levels.kind, side, at, price, way, other, level, lo: a, hi: a + step, positions, top, parts });
     // The box on the side away from the finger's line, so the line and its bars stay in sight.
     paintInfoBox(ctx, lines, 8, y, { x0: 0, y0: 0, x1: xR, y1: H }, p, { gap: 0, placement: y < H / 2 ? 'down' : 'up', edge: color });
   }

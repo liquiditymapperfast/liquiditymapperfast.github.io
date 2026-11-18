@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DAY_MS, FREE_DAYS, freeFrom, plusApi, PLUS_API } from '../src/app/plus/config.ts';
 import { PLUS_STORE, Plus, parsePass, readGrant, readHeld, type Post } from '../src/app/plus/pass.ts';
-import { ARRIVAL_SECONDS, Arrival, countsDown, type ArrivalState } from '../src/app/plus/arrival.ts';
+import { ARRIVAL_SECONDS, Arrival, SCROLL_SETTLE_MS, countsDown, stopOnActivity, type ArrivalDocument, type ArrivalState } from '../src/app/plus/arrival.ts';
 
 const b64url = (text: string): string => Buffer.from(text, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 /** A pass as the server writes one (the signature is the server's business: the page reads only the middle part). */
@@ -453,4 +453,62 @@ test('the return to the map counts down only after a key typed into the key box:
   assert.equal(countsDown('restore', true, true), false, 'a restore shows the key too');
   assert.equal(countsDown('key', true, true), false, 'a key typed while the page shows the key (revealed before): it waits');
   assert.equal(countsDown('key', false, false), false, 'a browser that would not keep Plus: leaving would lose it');
+});
+
+/** The page's document as the countdown listens to it: the listeners it adds, and events fired at targets the test names. */
+function fakeDocument() {
+  const listeners = new Map<string, ((event: { type: string; target: unknown }) => void)[]>();
+  const doc: ArrivalDocument & { hidden: boolean } = {
+    hidden: false,
+    addEventListener(type, listener) { const list = listeners.get(type) ?? []; list.push(listener); listeners.set(type, list); },
+  };
+  return { doc, types: () => [...listeners.keys()].sort(), fire: (type: string, target: unknown = 'page') => { for (const l of listeners.get(type) ?? []) l({ type, target }); } };
+}
+
+test('on the page: a key accepted, then Reveal pressed within the five seconds: the key shows and the page stays', () => {
+  const c = fakeClock(5_000_000), went: number[] = [];
+  const a = new Arrival(c.clock, () => { went.push(c.clock.now()); }, () => {});
+  const page = fakeDocument(), BANNER = 'the confirmation';
+  stopOnActivity(page.doc, a, target => target === BANNER, c.clock.now);
+  assert.deepEqual(page.types(), ['keydown', 'pointerdown', 'scroll', 'touchstart', 'visibilitychange', 'wheel']);
+  a.start(Date.UTC(2026, 11, 18), countsDown('key', false, true));
+  c.advance(2_000);
+  page.fire('pointerdown', BANNER);
+  assert.equal(a.state!.counting, true, 'a press on the confirmation itself is its own (its buttons do what they say)');
+  page.fire('pointerdown', 'Reveal');
+  assert.equal(a.state!.counting, false, 'Reveal pressed: the countdown stops');
+  c.advance(30_000);
+  assert.deepEqual(went, [], 'and the page never leaves by itself');
+  assert.ok(a.state, 'the confirmation stays, the map a press away');
+  // Each kind of activity stops a fresh countdown: a key in a field, the wheel, a touch, a scroll once the page has settled.
+  for (const type of ['keydown', 'wheel', 'touchstart']) {
+    a.start(null, true); c.advance(1_000); page.fire(type, 'the key field');
+    assert.equal(a.state!.counting, false, type);
+  }
+  a.start(null, true);
+  page.fire('scroll', 'page');
+  assert.equal(a.state!.counting, true, 'a scroll as the confirmation comes is the page\'s own (drawn afresh, it can grow shorter)');
+  c.advance(SCROLL_SETTLE_MS + 50); page.fire('scroll', 'page');
+  assert.equal(a.state!.counting, false, 'a later scroll is the visitor\'s');
+  c.advance(30_000);
+  assert.deepEqual(went, []);
+});
+
+test('on the page: the tab hidden while the countdown runs stops it, and showing the tab again does not start it again', () => {
+  const c = fakeClock(9_000_000), went: number[] = [];
+  const a = new Arrival(c.clock, () => { went.push(c.clock.now()); }, () => {});
+  const page = fakeDocument();
+  stopOnActivity(page.doc, a, () => false, c.clock.now);
+  a.start(null, true);
+  c.advance(1_500);
+  page.doc.hidden = true; page.fire('visibilitychange', 'document');
+  assert.equal(a.state!.counting, false);
+  c.advance(60_000);
+  page.doc.hidden = false; page.fire('visibilitychange', 'document');
+  assert.equal(a.state!.counting, false, 'not resumed');
+  c.advance(60_000);
+  assert.deepEqual(went, [], 'the page stays where the visitor left it');
+  // Without any of it, the countdown still takes the page back to the map.
+  a.start(null, true); c.advance(ARRIVAL_SECONDS * 1_000 + 300);
+  assert.equal(went.length, 1);
 });

@@ -14,7 +14,7 @@ import { applyTheme } from '../theme.ts';
 import { FREE_DAYS, LEGAL, PADDLE, PLUS_CONTACT, PLUS_KEYS, plusApi, plusOnSale, type PlusPrice } from './config.ts';
 import { PLUS_NAME } from './name.ts';
 import { plus, readGrant, webPost, type Grant } from './pass.ts';
-import { ARRIVAL_SECONDS, Arrival, countsDown, type ArrivalVia } from './arrival.ts';
+import { ARRIVAL_SECONDS, Arrival, countsDown, stopOnActivity, type ArrivalVia } from './arrival.ts';
 
 /** The part of Paddle's script this page uses (Paddle.js v2). */
 interface PaddleEvent { name?: string; data?: { transaction_id?: string } }
@@ -140,6 +140,8 @@ function drawArrival(): void {
 }
 // A page the browser kept and shows again (Back from the map) does not count down a second time.
 window.addEventListener('pageshow', event => { if (event.persisted) arrival.stay(); });
+// Anything the visitor does on the page outside the confirmation (Reveal, Copy, a field, a scroll) stops the countdown, and so does a hidden tab.
+stopOnActivity(document, arrival, target => target instanceof Node && arrivalHost.contains(target), () => Date.now());
 /**
  * Plus came on here by the visitor's own doing: the confirmation, counting down to the map only after a key typed into the key box (after a
  * checkout or a restore the page shows the new key, to be copied first; and never where the browser would not keep Plus).

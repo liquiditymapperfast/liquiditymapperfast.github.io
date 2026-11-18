@@ -1,12 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LiqLevelsSource, combineTaken, onTheWay, parseLiqGroups, parseLiqLevels, parseTriggers, partsBetween, partsOnTheWay, standingBelow, sumLevels, takenByCandles, liqStanding, type LiqLevels } from '../src/app/liq-levels.ts';
+import { LiqLevelsSource, combineTaken, liqRows, onTheWay, parseLiqGroups, parseLiqLevels, parseTriggers, partsBetween, partsOnTheWay, standingBelow, sumLevels, takenByCandles, liqStanding, type LiqLevels, type LiqRow } from '../src/app/liq-levels.ts';
 import { DAY_MS, LIQ_HOLD_MS, LiqHistory, MAX_DAYS, bandOnEdge, dayText, familiesFor, readHistRows, readRollup, type LiqAnswer } from '../src/app/liq-history.ts';
 import { readLiqLevels, plusUrls } from '../src/app/liq-url.ts';
 import { FREE_VIEW, effectiveView, heldBack, isFreeChoice, viewKey, type LiqView } from '../src/app/liq-view.ts';
 import { PRESET_BANDS } from '../src/app/depth-settings.ts';
 import { changeOf, isPlusChange, liqMenuItems } from '../src/app/liq-menu.ts';
-import { columnNotes, liqNote, liqWhy, splitText, takesLeftOut } from '../src/app/liq-words.ts';
+import { columnNotes, liqNote, liqWhy, splitAmounts, splitText, takesLeftOut } from '../src/app/liq-words.ts';
+import { dollars, mirrorSplits, probeBoxLines, readingTexts, stripeBoxLines } from '../src/app/liq-box.ts';
+import { usd } from '../src/app/format.ts';
+import type { InfoLine } from '../src/app/infobox.ts';
 import { BTC } from '../src/shared/coins.ts';
 import type { CandleRow } from '../src/app/store.ts';
 
@@ -398,4 +401,115 @@ test('under the column\'s button: the group where the button had no room for it,
   assert.deepEqual(columnNotes({ kind: 'both', takes: false, group: 'profitable' }, false, false), ['Profitable traders']);
   assert.deepEqual(columnNotes({ kind: 'liq', takes: false, group: 'all' }, false, false), [], 'everyone: nothing to add');
   assert.deepEqual(columnNotes({ kind: 'stops', takes: false, group: 'proven' }, false, true), ['Take profits not included'], 'stops have no group');
+});
+
+test('a split writes its three amounts in the total\'s unit and precision, the parts adding up to the total as printed', () => {
+  // Sol's case: two parts of 1.04M each made "Total $2.1M = liquidations $1M + stops $1M".
+  assert.deepEqual(splitAmounts(2_080_000, 1_040_000, 1_040_000), ['2.1M', '1.1M', '1M'], 'the step left over goes to one part, the first on a tie');
+  assert.equal(splitText({ liq: 1_040_000, stops: 1_040_000 }), 'Total $2.1M = liquidations $1.1M + stops $1M');
+  // Across the units' edges: the parts take the total's unit, whatever their own size.
+  assert.deepEqual(splitAmounts(999_940, 600_000, 399_940), ['999.9K', '600K', '399.9K']);
+  assert.deepEqual(splitAmounts(999_960, 600_000, 399_960), ['1M', '0.6M', '0.4M'], '999.96K prints as 1M, so do its parts\' unit');
+  assert.deepEqual(splitAmounts(999_940_000, 500_000_000, 499_940_000), ['999.9M', '500M', '499.9M']);
+  assert.deepEqual(splitAmounts(999_960_000, 700_000_000, 299_960_000), ['1B', '0.7B', '0.3B']);
+  assert.deepEqual(splitAmounts(512, 300.4, 211.6), ['512', '300', '212'], 'whole dollars under $1,000');
+  assert.deepEqual(splitAmounts(2_100_000, 2_060_000, 40_000), ['2.1M', '2.1M', '0'], 'a part too small for the total\'s precision reads 0, never more than the total');
+  assert.deepEqual(splitAmounts(0, 0, 0), ['0', '0', '0']);
+  // Whatever the amounts, the parts read back in the total's unit add up to it exactly.
+  const read = (text: string): number => { const m = /^(\d+(?:\.\d)?)([KMBT]?)$/.exec(text)!; return Math.round(Number(m[1]) * 10); };
+  for (let i = 1; i < 4_000; i++) {
+    const a = (i * 7_919) % 1_000_003 * 1_137.7, b = (i * 104_729) % 999_983 * 911.3, [t, pa, pb] = splitAmounts(a + b, a, b);
+    if (t === '0') continue;
+    const unit = /[KMBT]$/.exec(t)?.[0] ?? '';
+    for (const part of [pa, pb]) assert.ok(part === '0' || part.endsWith(unit) && (unit !== '' || /^\d+$/.test(part)), part + ' in ' + t);
+    const n = (x: string): number => x === '0' ? 0 : read(x.replace(/[KMBT]$/, '') + unit);
+    assert.equal(n(pa) + n(pb), read(t), t + ' = ' + pa + ' + ' + pb);
+  }
+  // The total said is the figure the line above says, when there is one: the parts are its shares.
+  assert.equal(splitText({ liq: 996_000, stops: 0 }, 1_000_000), 'Total $1M = liquidations $1M + stops $0');
+});
+
+/** A levels service holding liquidations and stops on one grid, the view Liq + stops. */
+async function bothService() {
+  const pass = { value: 'v1.pass.sig' as string | null };
+  // Liquidations of longs at [80, 90) and shorts at [110, 120); stops closing longs at [80, 90) and shorts at [120, 130).
+  const stops = [[8, 1_300_000, 740_000, 0, 0, 2, 0, 1_300_000, 0], [12, 0, 0, 520_000, 520_000, 0, 3, 0, 520_000]];
+  const s = service({ [U.triggers]: { status: 200, body: triggers(stops, TAKES) } }, pass, () => free([[8, 0, 1_040_000, 0, 0, 2, 0, 900_000, 0], [11, 0, 0, 0, 2_500_000, 0, 1, 0, 2_500_000]]));
+  const both = view({ kind: 'both' });
+  s.src.ensure(BTC, () => {}, both); await tick(); s.src.ensure(BTC, () => {}, both); await tick();
+  assert.equal(s.src.state, 'ready');
+  return s.src;
+}
+const lineAfter = (lines: InfoLine[], label: string): { figure: InfoLine; next: InfoLine | undefined } => {
+  const i = lines.findIndex(l => l.label === label);
+  assert.ok(i >= 0, label);
+  return { figure: lines[i]!, next: lines[i + 1] };
+};
+
+test('the stripe\'s box and the phone\'s finger write every amount in dollars', async () => {
+  const src = await bothService(), levels = src.levels!, rows = liqRows(levels, src.taken(), 1, 0, 200);
+  const row = rows.find(r => r.p0 === 80)!;
+  // Liquidations alone (no parts): the level, the way there, the largest and the two parts, each with its "$".
+  const plain = stripeBoxLines(row, 'liq', 100, src.standing(), null, side => row[side + 'Left' as 'longLeft'] > 0);
+  for (const label of ['At this level', 'If price gets here']) assert.match(lineAfter(plain, label).figure.text, /^\$\d/, label);
+  assert.match(plain.find(l => l.label === 'Largest position')!.text, /^\$\d[\d.]*[KMB]? \(\d+%\)$/);
+  assert.match(plain.find(l => l.label === 'Isolated / cross margin')!.text, /^\$\S+ \/ \$\S+$/);
+  // A level partly gone: both of its amounts in dollars.
+  const part: LiqRow = { ...row, longLeft: row.long * 0.5 };
+  assert.match(lineAfter(stripeBoxLines(part, 'liq', 100, src.standing(), null, () => true), 'At this level').figure.text, /^\$\S+ of \$\S+$/);
+  // The phone's finger.
+  const probe = probeBoxLines({ kind: 'liq', side: 'long', at: 85, price: 100, way: 2_080_000, other: 300_000, level: 1_040_000, lo: 80, hi: 90, positions: 2, top: 900_000, parts: null });
+  for (const label of ['If price gets here', 'At this level', 'Largest position', 'Same distance, other side']) assert.match(probe.find(l => l.label === label)!.text, /^\$\d/, label);
+  assert.equal(dollars(1_040_000), '$1M');
+});
+
+test('under each total of Liq + stops, its parts add up to the figure the line above says, as printed: stripe, column, Mirror, phone', async () => {
+  const src = await bothService(), levels = src.levels!, standing = src.standing()!, parts = src.partStandings()!, price = 100;
+  const total = (split: string | undefined): string => /^Total (\$\S+) = /.exec(split ?? '')?.[1] ?? 'none';
+  // The stripe's box: under "At this level" (the figure said first) and under "If price gets here".
+  let checked = 0;
+  for (const row of liqRows(levels, src.taken(), 1, 0, 200)) {
+    const lines = stripeBoxLines(row, 'both', price, standing, parts, side => row[side + 'Left' as 'longLeft'] > 0);
+    for (const label of ['At this level', 'If price gets here']) {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i]!.label !== label) continue;
+        const figure = lines[i]!.text.split(' ')[0]!, next = lines[i + 1];
+        assert.ok(next?.label === undefined && next.text.startsWith('Total '), 'a split under ' + label);
+        assert.equal(total(next.text), figure, label + ' at ' + row.p0); checked++;
+      }
+    }
+    // A row partly gone: the split adds up to what still stands, said first.
+    const part: LiqRow = { ...row, longLeft: row.long * 0.6, shortLeft: row.short * 0.6 };
+    const gone = stripeBoxLines(part, 'both', price, standing, parts, side => part[side + 'Left' as 'longLeft'] > 0);
+    const at = lineAfter(gone, 'At this level');
+    assert.equal(total(at.next?.text), at.figure.text.split(' ')[0], 'partly gone');
+  }
+  assert.equal(checked, 6, 'three rows, two splits each');
+  // Those figures, written out: the parts add up as printed (3.08M of 1.04M and 2.04M is $3.1M = $1M + $2.1M).
+  const first = stripeBoxLines(liqRows(levels, src.taken(), 1, 0, 200)[0]!, 'both', price, standing, parts, () => true);
+  assert.equal(lineAfter(first, 'At this level').next?.text, 'Total $3.1M = liquidations $1M + stops $2.1M');
+  // The column's reading at the pointer, at prices both ways.
+  for (const at of [70, 75, 85, 105, 115, 125, 140]) {
+    const way = onTheWay(standing, price, at)!, r = readingTexts(way, price, at, parts);
+    assert.equal(total(r.split ?? undefined), dollars(way.usd), 'reading at ' + at);
+    assert.ok(r.full.endsWith('· ' + dollars(way.usd)) && r.short.endsWith(dollars(way.usd)));
+  }
+  // The Mirror box: each side's total over the same distance both ways.
+  for (const d of [5, 15, 25, 35]) {
+    const below = Math.max(0, standingBelow(standing, 'long', price) - standingBelow(standing, 'long', price - d));
+    const above = Math.max(0, standingBelow(standing, 'short', price + d) - standingBelow(standing, 'short', price));
+    const m = mirrorSplits(parts, price, d, below, above);
+    assert.equal(total(m.long), dollars(below), 'Mirror below, ' + d); assert.equal(total(m.short), dollars(above), 'Mirror above, ' + d);
+  }
+  // The phone's finger: under "If price gets here" and under "At this level".
+  for (const at of [75, 85, 115, 125]) {
+    const side = at >= price ? 'short' : 'long', lo = Math.floor(at / 10) * 10, hi = lo + 10;
+    const way = side === 'short' ? standingBelow(standing, 'short', at) - standingBelow(standing, 'short', price) : standingBelow(standing, 'long', price) - standingBelow(standing, 'long', at);
+    const level = Math.max(0, standingBelow(standing, side, hi) - standingBelow(standing, side, lo));
+    const lines = probeBoxLines({ kind: 'both', side, at, price, way, other: 0, level, lo, hi, positions: 1, top: 0, parts });
+    const w = lineAfter(lines, 'If price gets here');
+    assert.equal(total(w.next?.text), w.figure.text, 'phone way at ' + at);
+    if (level > 0) { const l = lineAfter(lines, 'At this level'); assert.equal(total(l.next?.text), l.figure.text, 'phone level at ' + at); }
+  }
+  assert.equal(usd(0), '0');
 });
