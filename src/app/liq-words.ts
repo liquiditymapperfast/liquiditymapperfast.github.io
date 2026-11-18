@@ -4,7 +4,7 @@
  * by a middle dot where several are said together.
  */
 import { t } from './i18n.ts';
-import { clock } from './format.ts';
+import { clock, usd } from './format.ts';
 import type { LevelsKind, LiqLevelsSource } from './liq-levels.ts';
 import type { LiqView } from './liq-view.ts';
 
@@ -27,6 +27,20 @@ export function topLabel(kind: LevelsKind): string {
 export function splitLabel(kind: LevelsKind): string {
   return kind === 'liq' ? t('Isolated / cross margin') : kind === 'both' ? t('Liquidations / stops') : t('Whole position / own size');
 }
+
+/**
+ * A total of liquidations and stops (Liq + stops) with its two parts, wherever the page gives that total (the stripe's box, the column's
+ * reading and its Mirror box, the Liq tab's finger): "Total $330.6M = liquidations $200.5M + stops $130.1M". The total is the parts added, so
+ * the figures add up as written.
+ */
+export function splitText(parts: { liq: number; stops: number }): string {
+  return t('Total {total} = liquidations {liq} + stops {stops}', { total: `$${usd(parts.liq + parts.stops)}`, liq: `$${usd(parts.liq)}`, stops: `$${usd(parts.stops)}` });
+}
+
+/** Said under the liquidation column's button (which names what its curve adds up) while take profits are shown. */
+export const takesLeftOut = (): string => t('Take profits not included');
+/** The same for a newcomer, in the help, the Guide and the column's tip. */
+export const curveSentence = (): string => t('The curve totals the selected liquidations and/or stops. Take profits are shown separately.');
 
 /**
  * Why nothing of the view is drawn (the column, the Liq tab), or '' when it is: loading, not read, out of date, or not in the snapshot (no

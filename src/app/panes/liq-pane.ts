@@ -11,9 +11,9 @@ import { niceStep } from '../view.ts';
 import { paintInfoBox, type InfoLine } from '../infobox.ts';
 import { ratioText } from '../mirror.ts';
 import { distanceText } from './ladder-info.ts';
-import { binsIn, dollarPriceOf, liqProfile, standingBelow, type LiqLevels, type LiqProfile, type LiqStanding } from '../liq-levels.ts';
+import { binsIn, dollarPriceOf, liqProfile, partsBetween, partsOnTheWay, standingBelow, TAKE_DASH, type LiqLevels, type LiqProfile, type LiqStanding } from '../liq-levels.ts';
 import { groupApplies, groupTitle, heldBack, kindTitle, liveView, plusOn } from '../liq-view.ts';
-import { countLabel, liqNote, liqWhy, sideTitle, topLabel } from '../liq-words.ts';
+import { countLabel, liqNote, liqWhy, sideTitle, splitText, topLabel } from '../liq-words.ts';
 import { openLiqMenu } from '../liq-menu.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
 
@@ -196,7 +196,7 @@ export class LiqPane {
     const yOf = (pr: number): number => mid - (pr - price) / span * half;
     const lo = price - span, hi = price + span, step = niceStep(2 * span, Math.max(24, (H - 2 * PAD) / ROW_PX));
     const prof = liqProfile(s, step, lo, hi, price);
-    // The take profits, where shown: outlined bars on the same scale, never added to the levels (they sit on the other side of the price).
+    // The take profits, where shown: dashed bars on the same scale, never added to the levels (they sit on the other side of the price).
     const ts = src.takesState === 'ready' ? src.takesStanding() : null, tprof = ts ? liqProfile(ts, step, lo, hi, price) : null;
     this.#frame = { price, span };
 
@@ -340,19 +340,21 @@ export class LiqPane {
         best[side].push({ r, v });
       }
     }
-    // The take profits: outlines on the same scale, by what the orders do (those of shorts are buys, the rising colour; those of longs sells).
+    // The take profits: dashed bars on the same scale (`TAKE_DASH`, the map's and the Depth pane's look), the dashes on one pattern from the
+    // price axis, by what the orders do (those of shorts are buys, the rising colour; those of longs sells).
     if (takes) {
-      ctx.lineWidth = 1.2; ctx.globalAlpha = 0.95;
+      ctx.globalAlpha = 0.95; ctx.setLineDash(TAKE_DASH as number[]); ctx.lineDashOffset = 0;
       for (let r = 0; r < takes.long.length; r++) {
         const a = (takes.row0 + r) * step, y0 = yOf(a + step), y1 = yOf(a);
         if (y1 < 0 || y0 > H) continue;
         const h = Math.max(1, y1 - y0 - 1);
         for (const [v, color] of [[takes.long[r]!, p.candleUp], [takes.short[r]!, p.candleDown]] as const) {
           if (!(v > 0)) continue;
-          const len = lenOf(v);
-          ctx.strokeStyle = color; this.#pill(ctx, xR - len + 0.5, y0 + 0.5, len - 1, Math.max(1, h - 1), Math.min(2, h / 2)); ctx.stroke();
+          const len = Math.max(3, lenOf(v));
+          ctx.strokeStyle = color; ctx.lineWidth = h; ctx.beginPath(); ctx.moveTo(xR, y0 + h / 2); ctx.lineTo(xR - len, y0 + h / 2); ctx.stroke();
         }
       }
+      ctx.setLineDash([]);
     }
     // The largest levels, named beside their bars' tips (and marked when one position holds at least half of the level).
     ctx.textBaseline = 'middle';
@@ -410,11 +412,15 @@ export class LiqPane {
     ctx.fillStyle = p.bg; ctx.font = `700 10.5px ui-monospace, SFMono-Regular, Menlo, monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(fmtPrice(at), xR + (W - xR) / 2, y + 0.5);
     ctx.restore();
+    // Liq + stops: each total with its two parts under it.
+    const parts = levels.kind === 'both' ? this.hub.liqLevels.partStandings() : null, waySplit = parts ? partsOnTheWay(parts, price, at) : null;
     const lines: InfoLine[] = [
       { text: sideTitle(levels.kind, side), color: side === 'long' ? 'sell' : 'buy', bold: true },
       { label: t('Distance'), text: distanceText(at, price) },
-      { label: t('If price gets here'), text: `$${usd(Math.max(0, way))}`, bold: true },
-      { label: t('At this level'), text: `$${usd(level)}` },
+      { label: t('If price gets here'), text: `${usd(Math.max(0, way))}`, bold: true },
+      ...(waySplit ? [{ text: splitText(waySplit), color: 'muted', wrap: true } as InfoLine] : []),
+      { label: t('At this level'), text: `${usd(level)}` },
+      ...(parts && level > 0 ? [{ text: splitText(partsBetween(parts, side, a, a + step)), color: 'muted', wrap: true } as InfoLine] : []),
     ];
     if (positions > 0) lines.push({ label: countLabel(levels.kind), text: String(positions) });
     if (top > 0 && level > 0) lines.push({ label: topLabel(levels.kind), text: `$${usd(top)}` });

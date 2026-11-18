@@ -48,3 +48,23 @@ body { margin: 0; background: var(--bg, #fff); color: var(--text, #1b1d1e); font
   .plus-page .cols { grid-template-columns: 1fr; gap: 18px; }
   .plus-page button.price-main, .plus-page button.price-plain { flex: 1 1 100%; }
 }
+/* The confirmation right after Plus came on here (arrival.ts): at the top of the window, over the page, on a phone too; a bar runs down with
+   the countdown (still where motion is reduced: the seconds say it). */
+.arrival-host { position: fixed; z-index: 20; top: 0; left: 0; right: 0; display: flex; justify-content: center; padding: max(12px, env(safe-area-inset-top)) 12px 0; pointer-events: none; }
+.arrival { pointer-events: auto; position: relative; overflow: hidden; box-sizing: border-box; width: min(620px, 100%); padding: 14px 18px 16px; border: 1px solid var(--line, #d7dbe0); border-left: 4px solid var(--bid, #2b8a3e); border-radius: 8px; background: var(--panel, #f6f7f9); color: var(--text, #1b1d1e); box-shadow: 0 8px 28px rgb(0 0 0 / 0.22); animation: arrival-in .2s ease-out; font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+.arrival:focus { outline: none; }
+.arrival:focus-visible { outline: 2px solid var(--ui, #1f6feb); outline-offset: 2px; }
+.arrival p { margin: 0; }
+.arrival .arrival-text { font-size: 16px; font-weight: 650; }
+.arrival .arrival-count { margin-top: 2px; color: var(--muted, #5b6470); font-size: 13px; font-variant-numeric: tabular-nums; }
+.arrival .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
+.arrival a.go { display: inline-block; padding: 8px 16px; border-radius: 6px; background: var(--ui, #1f6feb); color: var(--on-ui, #fff); text-decoration: none; font-weight: 600; }
+.arrival button { font: inherit; cursor: pointer; padding: 7px 14px; border: 1px solid var(--line, #d7dbe0); border-radius: 6px; background: var(--bg, #fff); color: var(--text, #1b1d1e); }
+.arrival button:hover { border-color: var(--text, #1b1d1e); }
+.arrival :is(a, button):focus-visible { outline: 2px solid var(--ui, #1f6feb); outline-offset: 2px; }
+.arrival .arrival-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--bid, #2b8a3e); transform-origin: left; animation: arrival-drain 5s linear forwards; }
+.arrival .arrival-bar[hidden], .arrival .arrival-count[hidden] { display: none; }
+@keyframes arrival-in { from { transform: translateY(-10px); opacity: 0; } }
+@keyframes arrival-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .arrival { animation: none; } .arrival .arrival-bar { animation: none; display: none; } }
+@media (max-width: 640px) { .arrival { padding: 12px 14px 14px; } .arrival .actions > * { flex: 1 1 auto; text-align: center; } }

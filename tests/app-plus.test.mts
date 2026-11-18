@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DAY_MS, FREE_DAYS, freeFrom, plusApi, PLUS_API } from '../src/app/plus/config.ts';
 import { PLUS_STORE, Plus, parsePass, readGrant, readHeld, type Post } from '../src/app/plus/pass.ts';
+import { ARRIVAL_SECONDS, Arrival, type ArrivalState } from '../src/app/plus/arrival.ts';
 
 const b64url = (text: string): string => Buffer.from(text, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 /** A pass as the server writes one (the signature is the server's business: the page reads only the middle part). */
@@ -371,4 +372,76 @@ test('a short pass near a membership’s end is asked again within the hour, soo
   for (let i = 0; i < 30; i++) { now += 60_000; plus.pass(); await settle(); }
   // Twenty minutes left: the next ask is about ten minutes later, not an hour (when the pass is long gone) and not each minute.
   assert.ok(times.length >= 2 && times.length <= 4, `asked ${times.length} times in 30 minutes`);
+});
+
+/** A clock the test moves, with the page's interval timers on it. */
+function fakeClock(start = 0) {
+  let now = start;
+  const timers = new Map<number, { every: number; next: number; run: () => void }>();
+  let id = 0;
+  return {
+    clock: { now: () => now, every: (ms: number, run: () => void) => { const n = ++id; timers.set(n, { every: ms, next: now + ms, run }); return () => { timers.delete(n); }; } },
+    timers,
+    advance(ms: number) {
+      const end = now + ms;
+      for (;;) {
+        const due = [...timers.values()].filter(t => t.next <= end).sort((a, b) => a.next - b.next)[0];
+        if (!due) break;
+        now = due.next; due.next += due.every; due.run();
+      }
+      now = end;
+    },
+  };
+}
+
+test('right after Plus came on, the confirmation counts down to the map, which "Stay here" stops and nothing else starts', () => {
+  const c = fakeClock(1_000_000), went: number[] = [], drawn: (ArrivalState | null)[] = [];
+  const a = new Arrival(c.clock, () => { went.push(c.clock.now()); }, () => { drawn.push(a.state && { ...a.state }); });
+  // Read through a function: an assertion that it is null would otherwise hold for the type ever after.
+  const st = (): ArrivalState | null => a.state;
+  assert.equal(a.state, null, 'nothing until the page says Plus came on');
+  const until = Date.UTC(2026, 11, 18);
+  a.start(until);
+  assert.deepEqual(a.state, { until, left: ARRIVAL_SECONDS, counting: true });
+  assert.equal(a.started, 1);
+  c.advance(1_100);
+  assert.equal(st()!.left, ARRIVAL_SECONDS - 1, 'a second gone');
+  c.advance(2_000);
+  assert.equal(st()!.left, 2);
+  assert.deepEqual(drawn.map(d => d?.left), [5, 4, 3, 2], 'drawn again once a second, not at every tick');
+  c.advance(2_000);
+  assert.deepEqual(went, [1_000_000 + ARRIVAL_SECONDS * 1_000], 'to the map after the five seconds, once');
+  assert.equal(a.state, null, 'gone before leaving: a page shown again from the browser\'s history holds no countdown');
+  assert.equal(c.timers.size, 0, 'and its timer with it');
+  c.advance(10_000);
+  assert.equal(went.length, 1);
+
+  // Stay here: the confirmation stays, the countdown stops, the map is never opened by itself; Close takes it away.
+  a.start(null);
+  assert.equal(a.started, 2, 'a new confirmation is drawn afresh');
+  c.advance(2_500);
+  a.stay();
+  assert.deepEqual(a.state, { until: null, left: 3, counting: false });
+  assert.equal(c.timers.size, 0);
+  c.advance(30_000);
+  assert.equal(went.length, 1, 'stayed');
+  a.dismiss();
+  assert.equal(a.state, null);
+
+  // A browser that would not keep Plus: no countdown at all (leaving would lose it).
+  a.start(until, false);
+  assert.equal(st()!.counting, false); assert.equal(c.timers.size, 0);
+  c.advance(30_000);
+  assert.equal(went.length, 1);
+  a.dismiss();
+
+  // Following the link: nothing more is counted, and the page kept by the browser comes back still (pageshow: stay).
+  a.start(until);
+  c.advance(1_000);
+  a.leaving();
+  assert.equal(c.timers.size, 0);
+  c.advance(30_000);
+  assert.equal(went.length, 1);
+  a.stay();
+  assert.equal(st()!.counting, false);
 });

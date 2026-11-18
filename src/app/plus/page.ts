@@ -14,6 +14,7 @@ import { applyTheme } from '../theme.ts';
 import { FREE_DAYS, LEGAL, PADDLE, PLUS_CONTACT, PLUS_KEYS, plusApi, plusOnSale, type PlusPrice } from './config.ts';
 import { PLUS_NAME } from './name.ts';
 import { plus, readGrant, webPost, type Grant } from './pass.ts';
+import { ARRIVAL_SECONDS, Arrival } from './arrival.ts';
 
 /** The part of Paddle's script this page uses (Paddle.js v2). */
 interface PaddleEvent { name?: string; data?: { transaction_id?: string } }
@@ -102,6 +103,46 @@ function take(key: string, grant: Grant): void {
   state.unkept = !member.accept({ key, pass: grant.pass, until: grant.until, ...(grant.renews !== undefined ? { renews: grant.renews } : {}), ...(grant.now !== undefined ? { now: grant.now } : {}) });
 }
 
+/**
+ * The confirmation at the top of the window right after Plus came on here (`arrival.ts`): drawn apart from the page (which is drawn afresh
+ * on every change, and would announce it again each time), built once per confirmation and given the focus, its countdown changed in place.
+ */
+const arrivalHost = el('div', { class: 'arrival-host' });
+document.body.prepend(arrivalHost);
+let arrivalDrawn: { started: number; count: HTMLElement; bar: HTMLElement; stay: HTMLButtonElement } | null = null;
+const arrival = new Arrival({ now: () => Date.now(), every: (ms, run) => { const id = window.setInterval(run, ms); return () => window.clearInterval(id); } },
+  () => { window.location.assign('../'); }, drawArrival);
+function drawArrival(): void {
+  const s = arrival.state;
+  if (!s) { arrivalHost.replaceChildren(); arrivalDrawn = null; return; }
+  if (arrivalDrawn?.started !== arrival.started) {
+    const words = s.until ? t('Plus is on in this browser, until {date}.', { date: day(s.until) }) : t('Plus is on in this browser.');
+    const title = el('p', { class: 'arrival-text', id: 'plus-arrival-text', textContent: words });
+    const count = el('p', { class: 'arrival-count' });
+    const go = el('a', { class: 'go', href: '../', textContent: t('Open the map'), onclick: () => { arrival.leaving(); } });
+    const stay = el('button', { type: 'button', id: 'plus-arrival-stay' });
+    const bar = el('i', { class: 'arrival-bar', ariaHidden: 'true' });
+    bar.style.animationDuration = `${ARRIVAL_SECONDS}s`;
+    // A region named by its sentence, given the focus: a screen reader says the sentence, the keys go on to its two buttons.
+    const box = el('section', { class: 'arrival', id: 'plus-arrival', tabIndex: -1 }, title, count, el('p', { class: 'actions' }, go, stay), bar);
+    box.setAttribute('aria-labelledby', title.id);
+    arrivalHost.replaceChildren(box);
+    arrivalDrawn = { started: arrival.started, count, bar, stay };
+    box.focus({ preventScroll: true });
+  }
+  const { count, bar, stay } = arrivalDrawn;
+  // The countdown is not a live region: it would be read out every second.
+  count.hidden = !s.counting; bar.hidden = !s.counting;
+  if (s.counting) count.textContent = t('Back to the map in {n} s', { n: s.left });
+  // The same button, so the focus stays on it: Stay here while counting, then Close.
+  stay.textContent = s.counting ? t('Stay here') : t('Close');
+  stay.onclick = () => { if (arrival.state?.counting) arrival.stay(); else arrival.dismiss(); };
+}
+// A page the browser kept and shows again (Back from the map) does not count down a second time.
+window.addEventListener('pageshow', event => { if (event.persisted) arrival.stay(); });
+/** Plus came on here by the visitor's own doing: the confirmation, counting down to the map unless the browser would not keep Plus. */
+const arrived = (): void => { arrival.start(member.until, !state.unkept); };
+
 let paddle: Promise<PaddleApi | null> | null = null;
 /** Paddle's script, fetched once, when a price is first pressed. */
 function loadPaddle(): Promise<PaddleApi | null> {
@@ -155,7 +196,7 @@ async function completed(transactionId: string): Promise<void> {
       state.busy = ''; state.fresh = true; state.shown = true;
       state.said = { where: 'buy', text: t('Thank you. Plus is on in this browser.'), good: true };
       try { window.Paddle?.Checkout.close(); } catch { /* the overlay closes itself */ }
-      render(); return;
+      render(); arrived(); return;
     }
     // Asked again while the subscription may still be on its way (not there yet, the server busy or not reached); an answer that will
     // not change (the server looked and refused) ends the wait at once.
@@ -183,6 +224,7 @@ async function useKey(key: string): Promise<void> {
   if (grant) { take(text, grant); state.typed.key = ''; state.said = { where: 'key', text: t('Plus is on in this browser.'), good: true }; }
   else state.said = { where: 'key', text: problem(answer, t('That key is not known, or its subscription has ended.')) };
   render();
+  if (grant) arrived();
 }
 
 async function restore(email: string, invoice: string): Promise<void> {
@@ -195,6 +237,7 @@ async function restore(email: string, invoice: string): Promise<void> {
   if (grant?.key) { take(grant.key, grant); state.shown = true; state.said = { where: 'restore', text: t('Found. Plus is on in this browser.'), good: true }; }
   else state.said = { where: 'restore', text: problem(answer, t('No subscription in good standing was found for that email and invoice number.')) };
   render();
+  if (grant?.key) arrived();
 }
 
 const said = (where: 'buy' | 'key' | 'restore'): HTMLElement[] => state.said?.where === where ? [el('p', { class: state.said.good ? 'said-good' : 'said-bad', role: 'status', textContent: state.said.text })] : [];

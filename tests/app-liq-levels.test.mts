@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LiqLevelsSource, STALE_MS, binsPerRow, heatScale, liqCurves, liqProfile, liqRows, onTheWay, liqStanding, parseLiqLevels, seamStats, spearman, standingBelow, takenByCandles, paintLiqStripe, type LiqLevels, type LiqRow } from '../src/app/liq-levels.ts';
+import { LiqLevelsSource, STALE_MS, TAKE_DASH, binsPerRow, captionPlace, dashPhase, heatScale, liqCurves, liqProfile, liqRows, onTheWay, liqStanding, parseLiqLevels, seamStats, spearman, standingBelow, stripeLanes, takenByCandles, paintLiqStripe, type LiqLevels, type LiqRow } from '../src/app/liq-levels.ts';
 import { View } from '../src/app/view.ts';
 import { LIQ_LEVELS_URL, liqLevelsUrl, readLiqLevels } from '../src/app/liq-url.ts';
 import { FIRST_LEAD_MS, LATE_EVERY_MS, SNAPSHOT_DUE_MS, SNAPSHOT_LATE_MS, createdOnPageClock, nextAskAt } from '../src/app/liq-schedule.ts';
@@ -442,4 +442,47 @@ test('a one-position diamond wears its side\'s colour, ringed in the page\'s gro
   const colors = { long: '#ff3030', short: '#00ff00', text: '#00ff00', muted: '#51b85c', bg: '#000000' };
   paintLiqStripe(ctx, view, 0, 100, 400, [row(50, 'long'), row(150, 'short')], () => 0.9, colors);
   assert.deepEqual(marks, [{ fill: colors.long, stroke: colors.bg }, { fill: colors.short, stroke: colors.bg }]);
+});
+
+test('the stripe\'s lanes: the take profits by the live edge, the levels beside the column that sums them, the levels alone without take profits', () => {
+  assert.deepEqual(stripeLanes(1000, 1200, false), { levels: { x0: 1000, x1: 1200 }, takes: null });
+  const both = stripeLanes(1000, 1200, true);
+  assert.deepEqual(both.takes, { x0: 1000, x1: 1080 }, 'four tenths of the stripe, from the live edge');
+  assert.deepEqual(both.levels, { x0: 1082, x1: 1200 }, 'after a 2 px gap, up to the plot\'s right edge (the column)');
+  const narrow = stripeLanes(1000, 1020, true);
+  assert.deepEqual(narrow, { takes: { x0: 1000, x1: 1010 }, levels: { x0: 1012, x1: 1020 } }, 'under 30 px: half each');
+  for (let w = 0; w < 80; w += 3) {
+    const l = stripeLanes(500, 500 + w, true);
+    assert.ok(l.takes!.x1 <= l.levels.x0 && l.levels.x0 <= l.levels.x1 && l.levels.x1 === 500 + w, `width ${w}`);
+  }
+});
+
+test('take profits are dashed strokes on one pattern, the levels solid fills', () => {
+  const ops: string[] = [];
+  let dash: number[] = [], offset = 0;
+  const ctx = {
+    save() {}, restore() {}, closePath() {}, beginPath() {}, moveTo() {}, fill() {},
+    fillRect() { ops.push('fill'); }, lineTo() {}, stroke() { ops.push(`stroke:${dash.join(',')}:${offset}`); },
+    setLineDash(d: number[]) { dash = d; }, set lineDashOffset(v: number) { offset = v; }, get lineDashOffset() { return offset; },
+    fillStyle: '', strokeStyle: '', globalAlpha: 1, lineWidth: 1,
+  } as unknown as CanvasRenderingContext2D;
+  const row: LiqRow = { p0: 50, p1: 60, long: 1e6, longIso: 0, longWallets: 1, short: 0, shortIso: 0, shortWallets: 0, longTop: 1e5, shortTop: 0, longOne: false, shortOne: false,
+    longFirst: NaN, longGone: NaN, longLeft: 1e6, shortFirst: NaN, shortGone: NaN, shortLeft: 0 };
+  const view = new View({ t0: 0, t1: 1, p0: 0, p1: 200 }), colors = { long: '#f00', short: '#0f0', text: '#fff', muted: '#888', bg: '#000' };
+  paintLiqStripe(ctx, view, 13, 100, 400, [row], () => 0.2, colors, true);
+  assert.deepEqual(ops, [`stroke:${TAKE_DASH.join(',')}:${dashPhase(13)}`], 'one dashed stroke, no fill');
+  ops.length = 0;
+  paintLiqStripe(ctx, view, 13, 100, 400, [row], () => 0.2, colors);
+  assert.deepEqual(ops, ['fill'], 'the levels: a fill');
+  assert.equal(dashPhase(7), 0); assert.equal(dashPhase(13), 6); assert.equal(dashPhase(-1), 6, 'the same pattern left of the anchor');
+  assert.equal(dashPhase(20, 6), 0, 'anchored elsewhere');
+});
+
+test('the take profits\' caption sits inside its lane where it fits, else ends at the lane\'s right edge, never off the plot', () => {
+  const wide = stripeLanes(1000, 1300, true).takes!;
+  assert.deepEqual(captionPlace(wide, 90), { x: 1002, w: 90 }, 'room in the lane: inside, from its left edge');
+  // The map following live: a stripe of 40 px.
+  const narrow = stripeLanes(1000, 1040, true).takes!;
+  assert.deepEqual(captionPlace(narrow, 90), { x: narrow.x1 - 2 - 90, w: 90 }, 'ends at the lane\'s right edge, its sample over the lane');
+  assert.equal(captionPlace(stripeLanes(0, 30, true).takes!, 90).x, 2);
 });

@@ -35,8 +35,14 @@ it (`liq-menu.ts`).
   (`combineTaken`: the orders' snapshot is often an earlier one). Stops come about one snapshot in two, so in the history a snapshot is
   drawn for both only when it has both parts (joined by `createdAt`; the rollups by their four-hour block), about one an hour.
 - **Take profits** close longs with sells above the price and shorts with buys below it, the other way round from liquidations and stops,
-  so they are held with their sides swapped and never added to the rest: a lane of their own at the stripe's right, lighter bars from the
-  column's right edge, outlines on the Liq tab, a dashed line in the Depth pane. Coloured by what they do: sells in the falling colour.
+  so they are held with their sides swapped and never added to the rest. One look everywhere, dashed strokes (`TAKE_DASH` in
+  `liq-levels.ts`): a lane of their own by the live edge (`stripeLanes`: the levels' lane is the one beside the liquidation column, whose
+  curve sums them), bars from the column's right edge, bars on the Liq tab, a line in the Depth pane. Coloured by what they do: sells in
+  the falling colour. The take profits' lane carries a caption ("Take profits"); the levels' lane needs none, since the column's button
+  beside it names what it holds and what the curve adds up, and while take profits show a note under that button says they are not in it.
+- **Liq + stops apart**: wherever the page gives a total of both (the stripe's box, the column's reading and its Mirror box, the Liq tab's
+  finger), it adds "Total $X = liquidations $Y + stops $Z" (`partStandings`, `partsBetween`, `partsOnTheWay`); the picture stays the
+  total. The Depth pane's readout does not split it: its history rows hold the sum only.
 - **Stops are never hidden for age**: an orders file older than three hours, or more than about two hours older than the liquidations beside
   it, is said under the legend ("stops as of 14:00").
 - **Live files** (`LiqLevelsSource`): the groups and orders files are asked for with the pass when the free file brings a snapshot they do

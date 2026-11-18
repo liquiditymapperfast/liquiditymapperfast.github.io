@@ -23,6 +23,7 @@ import { CARD_GAP, HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
 import { barAt, columnAt, depthCardLines, depthColumns, depthKey, liqCardLines, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
 import { LiqHistory, bandIndex, bandOnEdge, type LiqRow } from '../liq-history.ts';
+import { TAKE_DASH } from '../liq-levels.ts';
 import { groupApplies, groupTitle, liveView, viewKey, type LiqView } from '../liq-view.ts';
 import { FREE_DAYS, freeFrom, plusOnSale } from '../plus/config.ts';
 import { plus } from '../plus/pass.ts';
@@ -779,9 +780,10 @@ export class DepthPane extends TimePane {
       ctx.stroke();
     }
     ctx.lineWidth = 1;
-    // The take profits of the watched band: a dashed line in the text's ink each side, so they read apart from the levels' rings.
+    // The take profits of the watched band: a dashed line in the text's ink each side (`TAKE_DASH`, their look everywhere), so they read apart
+    // from the levels' rings; each dash cased in the page's ground, so it stands out on the bands' fills as well as on the empty plot.
     if (takes && takeBid && takeAsk) {
-      ctx.save(); ctx.strokeStyle = p.text; ctx.globalAlpha = 0.8; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+      ctx.save(); ctx.setLineDash(TAKE_DASH as number[]); ctx.lineCap = 'butt';
       for (const [values, sign] of [[takeAsk, -1], [takeBid, 1]] as const) {
         ctx.beginPath();
         let open = false;
@@ -792,7 +794,8 @@ export class DepthPane extends TimePane {
           if (!open) { ctx.moveTo(xs[x]!, y); open = true; } else ctx.lineTo(xs[x]!, y);
           ctx.lineTo(xs[x + 1]!, y);
         }
-        ctx.stroke();
+        ctx.strokeStyle = p.bg; ctx.globalAlpha = 0.85; ctx.lineWidth = 4; ctx.stroke();
+        ctx.strokeStyle = p.text; ctx.globalAlpha = 1; ctx.lineWidth = 1.75; ctx.stroke();
       }
       ctx.restore();
     }

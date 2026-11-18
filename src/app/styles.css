@@ -804,14 +804,21 @@ table.keys td:first-child { width: 34%; white-space: nowrap; }
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='9' rx='1.5'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='9' rx='1.5'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E") center / contain no-repeat; }
 .pane.heat .liq-history { height: 16px; padding: 0 5px; font-size: 10px; }
-/* What the liquidation column shows (liq-menu.ts): a small button at the top of the column that opens its menu, an arrow at its right, a lock
-   at its left while a Plus choice is held back; its words never run past the column (the script fits them, the rest is cut). */
-.pane.heat .liq-kind { position: absolute; z-index: 4; display: block; box-sizing: border-box; height: 16px; padding: 0 16px 0 5px; font-size: 10px; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+/* What the liquidation column shows (liq-menu.ts): the button at the top of the column that opens its menu, a sibling of the map's corner tools
+   on their row (their height, type, ground, corners, shadow and hover; Karl, 2026-11-18: at 16 px with no ground it read as a caption), an
+   arrow at its right, a lock at its left while a Plus choice is held back; its words never run past the column (the script fits them, the rest
+   is cut). */
+.pane.heat .liq-kind { position: absolute; z-index: 4; display: block; box-sizing: border-box; height: 26px; padding: 0 22px 0 9px; border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel) 86%, transparent); color: var(--text); box-shadow: 3px 3px 0 var(--shadow); font-size: 11px; line-height: 24px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.pane.heat .liq-kind:hover { background: var(--panel); }
 .pane.heat .liq-kind[hidden] { display: none; }
-.pane.heat .liq-kind::after { content: ""; position: absolute; right: 4px; top: 50%; width: 8px; height: 8px; margin-top: -4px; background: currentColor; -webkit-mask: var(--mark-chevron) center / contain no-repeat; mask: var(--mark-chevron) center / contain no-repeat; }
-.pane.heat .liq-kind.locked { padding-left: 17px; }
+.pane.heat .liq-kind::after { content: ""; position: absolute; right: 8px; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; background: currentColor; -webkit-mask: var(--mark-chevron) center / contain no-repeat; mask: var(--mark-chevron) center / contain no-repeat; }
+.pane.heat .liq-kind.locked { padding-left: 24px; }
 .pane.heat .liq-kind.locked::before, .plus-tag.locked::before, .menu-item .tag.locked::before { content: ""; background: currentColor; -webkit-mask: var(--mark-lock) center / contain no-repeat; mask: var(--mark-lock) center / contain no-repeat; }
-.pane.heat .liq-kind.locked::before { position: absolute; left: 4px; top: 50%; width: 10px; height: 10px; margin-top: -5px; }
+.pane.heat .liq-kind.locked::before { position: absolute; left: 8px; top: 50%; width: 11px; height: 11px; margin-top: -5.5px; }
+/* In the Bevel frame the corner tools are 23 px and cast no shadow (their bevel is the edge): the button too. */
+:root[data-frame="bevel"] .pane.heat .liq-kind { height: 23px; line-height: 21px; box-shadow: none; }
 /* The paid part's name on a choice that is part of it, small, after the choice's words; with a lock while this browser has no Plus. */
 .plus-tag, .menu-item .tag { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 0 4px; border: 1px solid color-mix(in srgb, currentColor 35%, transparent); border-radius: 3px; font-size: 9px; font-weight: 600; line-height: 12px; letter-spacing: .02em; vertical-align: 1px; opacity: .85; }
 .plus-tag.locked::before, .menu-item .tag.locked::before { flex: none; width: 8px; height: 8px; }

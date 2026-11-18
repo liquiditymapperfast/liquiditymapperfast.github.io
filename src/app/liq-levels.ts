@@ -424,6 +424,22 @@ export function onTheWay(s: LiqStanding, price: number, at: number): { side: 'lo
 }
 
 /**
+ * Liquidations and stops apart while the view adds them up ("both": `LiqLevelsSource.partStandings`), each what still stands of it: their
+ * sum, bin by bin, is the view's own standing, so the two parts always add up to the total the page shows beside them.
+ */
+export interface LiqParts { liq: LiqStanding; stops: LiqStanding }
+/** What stands of each part on one side within [lo, hi) (a row of the stripe, of the column, of the Liq tab). */
+export function partsBetween(parts: LiqParts, side: 'long' | 'short', lo: number, hi: number): { liq: number; stops: number } {
+  const of = (s: LiqStanding): number => Math.max(0, standingBelow(s, side, hi) - standingBelow(s, side, lo));
+  return { liq: of(parts.liq), stops: of(parts.stops) };
+}
+/** What of each part goes on the way from `price` to `at` (`onTheWay` of each), or null where `onTheWay` has nothing to say. */
+export function partsOnTheWay(parts: LiqParts, price: number, at: number): { liq: number; stops: number } | null {
+  const liq = onTheWay(parts.liq, price, at), stops = onTheWay(parts.stops, price, at);
+  return liq && stops ? { liq: liq.usd, stops: stops.usd } : null;
+}
+
+/**
  * The profile column's rows from `p0` to `p1`, `step` dollars each: what stands of each side in the row and everything from the price out
  * to the row's far edge (the longs that go if price falls that far, the shorts if it rises), which the column draws as a curve.
  */
@@ -481,6 +497,36 @@ export function heatScale(values: readonly number[]): (usd: number) => number {
 
 export interface LiqColors { long: string; short: string; text: string; muted: string; bg: string }
 
+/**
+ * Take profits have one look wherever they are drawn (the stripe's lane, the liquidation column, the phone's Liq tab, the Depth pane): dashed
+ * strokes in the colour of what the orders do, never a solid fill, so they never read as the levels beside them. One pattern for all.
+ */
+export const TAKE_DASH: readonly number[] = [4, 3];
+/** The dash offset that puts a stroke starting at `x` on the pattern anchored at `anchor`, so dashes line up from row to row. */
+export const dashPhase = (x: number, anchor = 0): number => { const n = TAKE_DASH.reduce((a, b) => a + b, 0); return (((x - anchor) % n) + n) % n; };
+
+/** A lane of the stripe, [x0, x1). */
+export interface Lane { x0: number; x1: number }
+/**
+ * Where the stripe's lanes go between the live edge `x0` and the plot's right edge `right`. With take profits, theirs is the lane by the live
+ * edge (four tenths of the stripe, half of one under 30 px) and the levels', after a 2 px gap, the one beside the liquidation column, whose
+ * curve sums them (Karl, 2026-11-18: the take profits' lane at the right read as the stops'). Without, the levels take the whole stripe.
+ */
+export function stripeLanes(x0: number, right: number, takes: boolean): { levels: Lane; takes: Lane | null } {
+  if (!takes) return { levels: { x0, x1: right }, takes: null };
+  const w = right - x0, lane = w >= 30 ? Math.round(w * 0.4) : Math.floor(w / 2);
+  return { takes: { x0, x1: x0 + lane }, levels: { x0: Math.min(right, x0 + lane + 2), x1: right } };
+}
+
+/**
+ * Where a lane's caption goes, given the width its plate needs (a sample and words): inside the lane from its left edge where it fits; else
+ * (a narrow stripe: the map following live leaves a few dozen pixels) ending at the lane's right edge and reaching left over the map, so the
+ * sample still stands over the lane. Never off the plot's left edge.
+ */
+export function captionPlace(lane: Lane, need: number): { x: number; w: number } {
+  return lane.x1 - lane.x0 - 4 >= need ? { x: lane.x0 + 2, w: need } : { x: Math.max(2, lane.x1 - 2 - need), w: need };
+}
+
 /** The colour strength of what still stands of the rows in view (heatScale over each side's standing dollars). */
 export const standingHeat = (rows: readonly LiqRow[]): ((usd: number) => number) => heatScale(rows.flatMap(r => [r.longLeft, r.shortLeft]));
 
@@ -488,11 +534,15 @@ export const standingHeat = (rows: readonly LiqRow[]): ((usd: number) => number)
  * Draws the rows as a stripe from `x0` (the live edge) to the plot's right edge, beside the profile column: what still stands of each row,
  * the more the darker, with a crisp edge on the strongest on the side facing the price, and a small diamond in the side's colour at the start
  * of a large row one position holds at least half of. A level price has traded through is gone; nothing is drawn over the heatmap's past.
+ * Take profits (`dashed`) are dashed strokes instead (`TAKE_DASH`), with no edge and no diamond.
  */
-export function paintLiqStripe(ctx: CanvasRenderingContext2D, view: View, x0: number, pw: number, ph: number, rows: readonly LiqRow[], heat: (usd: number) => number, colors: LiqColors): void {
+export function paintLiqStripe(ctx: CanvasRenderingContext2D, view: View, x0: number, pw: number, ph: number, rows: readonly LiqRow[], heat: (usd: number) => number, colors: LiqColors, dashed = false): void {
   const w = pw - x0;
   if (w < 2) return;
   ctx.save();
+  // Take profits (`dashed`): each row a dashed stroke as tall as the row, the dashes on one pattern from the plot's left edge, never weaker
+  // than a third so a small one still reads as dashes, not as a faint level.
+  if (dashed) { ctx.setLineDash(TAKE_DASH as number[]); ctx.lineDashOffset = dashPhase(x0); }
   for (const r of rows) {
     const y0 = view.yOf(r.p1, ph), y1 = view.yOf(r.p0, ph);
     if (y1 < 0 || y0 > ph) continue;
@@ -500,6 +550,11 @@ export function paintLiqStripe(ctx: CanvasRenderingContext2D, view: View, x0: nu
     for (const side of ['long', 'short'] as const) {
       const usd = r[`${side}Left`]; if (usd <= 0) continue;
       const a = heat(usd); if (a <= 0) continue;
+      if (dashed) {
+        ctx.strokeStyle = side === 'long' ? colors.long : colors.short; ctx.globalAlpha = Math.min(1, 0.3 + a); ctx.lineWidth = h;
+        ctx.beginPath(); ctx.moveTo(x0, y0 + h / 2); ctx.lineTo(pw, y0 + h / 2); ctx.stroke();
+        continue;
+      }
       ctx.fillStyle = side === 'long' ? colors.long : colors.short;
       ctx.globalAlpha = a; ctx.fillRect(x0, y0, w, h);
       // A strong level gets a crisp edge on the side facing the price, so the clusters read as lines.
@@ -896,6 +951,11 @@ export class LiqLevelsSource {
   taken(): { long: Taken; short: Taken } | null { return this.#main()?.derive(this.candles).taken ?? null; }
   /** What stands of each side, added up, for the profile column. */
   standing(): LiqStanding | null { return this.#main()?.derive(this.candles).standing ?? null; }
+  /** Liquidations and stops apart while the view adds them up (see `LiqParts`), else null. */
+  partStandings(): LiqParts | null {
+    const main = this.#main();
+    return main instanceof SumLayer ? { liq: main.a.derive(this.candles).standing, stops: main.b.derive(this.candles).standing } : null;
+  }
   /** The same two for the take profits. */
   takesTaken(): { long: Taken; short: Taken } | null { const t = this.#view.takes ? this.#triggers.held?.takes : null; return t ? t.derive(this.candles).taken : null; }
   takesStanding(): LiqStanding | null { const t = this.#view.takes ? this.#triggers.held?.takes : null; return t ? t.derive(this.candles).standing : null; }

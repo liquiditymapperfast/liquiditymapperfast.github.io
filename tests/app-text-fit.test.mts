@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fitText } from '../src/app/text-fit.ts';
+import { fitText, wrapText } from '../src/app/text-fit.ts';
 
 // What a canvas would measure: six pixels a letter.
 const six = (text: string): number => text.length * 6;
@@ -24,4 +24,16 @@ test('a start that ends in a space does not keep it in front of the ellipsis, an
   assert.equal(fitText(six, 'one two three', 30), 'one…', 'cut after a space: the space goes');
   assert.equal(fitText(six, 'abcdef', 3), '…', 'not even one letter fits');
   assert.equal(fitText(six, 'abcdef', 0), '…');
+});
+
+test('a text is wrapped at spaces, a word or a text without spaces wider than a line is broken between characters, and a cap ends in an ellipsis', () => {
+  const six = (text: string): number => text.length * 6;
+  assert.deepEqual(wrapText(six, 'Total $330.6M = liquidations $200.5M + stops $130.1M', 120), ['Total $330.6M =', 'liquidations $200.5M', '+ stops $130.1M']);
+  assert.deepEqual(wrapText(six, 'short', 120), ['short']);
+  assert.deepEqual(wrapText(six, '', 120), []);
+  assert.deepEqual(wrapText(six, '清算与止损合计一共是三亿美元', 36), ['清算与止损合', '计一共是三亿', '美元']);
+  const capped = wrapText(six, 'one two three four five six', 60, 2);
+  assert.equal(capped.length, 2);
+  assert.equal(capped[0], 'one two');
+  assert.ok(capped[1]!.endsWith('…') && six(capped[1]!) <= 60, capped[1]);
 });

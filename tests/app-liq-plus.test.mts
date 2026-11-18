@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LiqLevelsSource, combineTaken, parseLiqGroups, parseLiqLevels, parseTriggers, sumLevels, takenByCandles, liqStanding, type LiqLevels } from '../src/app/liq-levels.ts';
+import { LiqLevelsSource, combineTaken, onTheWay, parseLiqGroups, parseLiqLevels, parseTriggers, partsBetween, partsOnTheWay, standingBelow, sumLevels, takenByCandles, liqStanding, type LiqLevels } from '../src/app/liq-levels.ts';
 import { DAY_MS, LIQ_HOLD_MS, LiqHistory, MAX_DAYS, bandOnEdge, dayText, familiesFor, readHistRows, readRollup, type LiqAnswer } from '../src/app/liq-history.ts';
 import { readLiqLevels, plusUrls } from '../src/app/liq-url.ts';
 import { FREE_VIEW, effectiveView, heldBack, isFreeChoice, viewKey, type LiqView } from '../src/app/liq-view.ts';
 import { PRESET_BANDS } from '../src/app/depth-settings.ts';
 import { changeOf, isPlusChange, liqMenuItems } from '../src/app/liq-menu.ts';
-import { liqNote, liqWhy } from '../src/app/liq-words.ts';
+import { liqNote, liqWhy, splitText, takesLeftOut } from '../src/app/liq-words.ts';
 import { BTC } from '../src/shared/coins.ts';
 import type { CandleRow } from '../src/app/store.ts';
 
@@ -362,4 +362,34 @@ test('the note says when the orders are well behind the liquidations, and why a 
   assert.equal(grid.src.levels, null);
   assert.equal(grid.src.state, 'unavailable');
   assert.equal(liqWhy(grid.src, grid.src.asOfs().liq), 'Stop levels could not be read.');
+});
+
+test('Liq + stops apart: each part what still stands of it, the two always adding up to the total the page shows, row by row and on the way', async () => {
+  const pass = { value: 'v1.pass.sig' as string | null };
+  // Liquidations of longs at [80, 90) and shorts at [110, 120); the orders' stops at [80, 90) and [120, 130).
+  const s = service({ [U.triggers]: { status: 200, body: triggers(STOPS, TAKES) } }, pass, () => free([[8, 0, 200, 0, 0, 2, 0, 150, 0], [11, 0, 0, 0, 80, 0, 1, 0, 80]]));
+  const both = view({ kind: 'both' });
+  s.src.ensure(BTC, () => {}, both); await tick(); s.src.ensure(BTC, () => {}, both); await tick();
+  assert.equal(s.src.state, 'ready');
+  const parts = s.src.partStandings()!, total = s.src.standing()!;
+  assert.ok(parts, 'both: the parts are there');
+  for (const [side, lo, hi] of [['long', 80, 90], ['long', 60, 100], ['short', 110, 130], ['short', 100, 125]] as const) {
+    const p = partsBetween(parts, side, lo, hi), sum = standingBelow(total, side, hi) - standingBelow(total, side, lo);
+    assert.ok(Math.abs(p.liq + p.stops - sum) < 1e-6, `${side} [${lo}, ${hi}): ${p.liq} + ${p.stops} = ${sum}`);
+  }
+  assert.deepEqual(partsBetween(parts, 'long', 80, 90), { liq: 200, stops: 400 });
+  const price = 100;
+  for (const at of [85, 70, 115, 128, 140]) {
+    const p = partsOnTheWay(parts, price, at)!, way = onTheWay(total, price, at)!;
+    assert.ok(Math.abs(p.liq + p.stops - way.usd) < 1e-6, `to ${at}`);
+  }
+  assert.equal(partsOnTheWay(parts, price, price), null, 'nothing to say at the price itself');
+  // A view of one kind has no parts.
+  s.src.ensure(BTC, () => {}, view({ kind: 'stops' })); await tick();
+  assert.equal(s.src.partStandings(), null);
+  assert.equal(splitText({ liq: 200_500_000, stops: 130_100_000 }), 'Total $330.6M = liquidations $200.5M + stops $130.1M', 'the total is the parts added');
+});
+
+test('the column says under its button that the take profits are not in the curve', () => {
+  assert.equal(takesLeftOut(), 'Take profits not included');
 });

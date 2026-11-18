@@ -56,8 +56,8 @@ button.help:hover, button.help.open { color: var(--bg); background: var(--text);
 .theme-btn::after { content: ""; flex: none; width: 0; height: 0; border: 4px solid transparent; border-top-color: currentColor; border-bottom-width: 0; margin-left: 2px; }
 
 /* Over the map: nothing that blurs or softens what is painted underneath, which repaints all the time. */
-.pane.heat :is(.map-recenter, .map-select, .map-goto, .map-draw, .map-layout, .map-max) { border-radius: var(--radius); background: var(--face); -webkit-backdrop-filter: none; backdrop-filter: none; }
-.pane.heat :is(.map-recenter, .map-select, .map-goto, .map-draw, .map-layout, .map-max):hover { background: var(--face); border-color: var(--text); }
+.pane.heat :is(.map-recenter, .map-select, .map-goto, .map-draw, .map-layout, .map-max, .liq-kind) { border-radius: var(--radius); background: var(--face); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.pane.heat :is(.map-recenter, .map-select, .map-goto, .map-draw, .map-layout, .map-max, .liq-kind):hover { background: var(--face); border-color: var(--text); }
 
 /* Numbers that label things are squares, not discs. */
 .guide-link .num, .guide-hit .num, .guide-section h2 .num { border-radius: var(--radius); }
