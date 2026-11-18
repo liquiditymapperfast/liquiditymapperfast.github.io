@@ -21,7 +21,7 @@ Every path under `/v1/plus/` is paid, whatever the day.
 
 `LiqLevelSettings` (`src/app/liq-url.ts`, saved) holds `kind` (`liq`, `stops`, `both`), `takes` and `group` (`all`, `profitable`).
 The free view is liquidations of all traders without take profits; anything else is Plus. A save from before reads as the free view, and
-a group the page does not offer as everyone's. Without Plus the page draws the free view and keeps the choice, which comes back with Plus (`effectiveView` in
+any other `group` value as `all`. Without Plus the page draws the free view and keeps the choice, which comes back with Plus (`effectiveView` in
 `src/app/liq-view.ts`); the controls show the saved choice with a lock, and pressing a Plus choice opens the Plus panel without changing
 it (`liq-menu.ts`).
 

@@ -20,7 +20,7 @@ export const LIQ_GROUPS: readonly LiqGroup[] = ['all', 'profitable'];
 export interface LiqLevelSettings { on: boolean; column: boolean; kind: LiqKind; takes: boolean; group: LiqGroup }
 /**
  * A saved setting, checked; what a save from before the feature lacks reads as on (new features start on), and a save from before the
- * Plus choices reads as the free view: liquidations of all traders, no take profits. A group the page no longer offers reads as everyone's.
+ * Plus choices reads as the free view: liquidations of all traders, no take profits. Any other group value reads as everyone's (`all`).
  */
 export function readLiqLevels(saved: unknown): LiqLevelSettings {
   const s = saved && typeof saved === 'object' ? saved as { on?: unknown; column?: unknown; kind?: unknown; takes?: unknown; group?: unknown } : {};
