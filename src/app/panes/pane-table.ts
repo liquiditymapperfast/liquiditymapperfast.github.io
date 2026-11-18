@@ -6,7 +6,7 @@ import type { Pt } from '../touch.ts';
  * Interest and Long/Short panes), while its chart shows their history or their sum. Beside the plot where the columns right of it leave room, the last columns
  * going first; else over the plot's left end on a plate while the pointer (or a pinned finger) is on the pane, so it never covers the newest candles and leaves the
  * chart clear at rest; a plate keeps every column, or as many as its `plateMin` says. In a short pane the rows close up (15 px down to 12) and the titles, then the foot, are left out; where even a row each does not fit,
- * there is no table.
+ * there is no table. Where a pane draws its table it shows no hover card (the table says the moment read); with Table off, or no table, the card is back.
  */
 
 /** One cell: its words and, where it has one, its colour (else the text colour). */

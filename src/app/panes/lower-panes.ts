@@ -1167,11 +1167,12 @@ export class OiPane extends TimePane {
       const c = who?.get(there[0]);
       if (c && this.#lines.length) this.#lines.splice(this.#lines.length - 1, 0, ...nlnsWhoLines(c, coinOf(state)));
     }
-    // Who holds it and who moved it, at the bar read. On a plate the table is the popup; beside the plot the popup says other things (its rank, who made the change).
+    // Who holds it and who moved it, at the bar read. A table drawn (beside the plot or on a plate) takes the popup's place, as on every pane with one;
+    // the header still reads the bar, and with Table off the popup says the rest (its rank, who made the change).
     const venuesThen = state.oiTable && parts.length > 1 ? oiVenuesAt(parts, tf, bar[0]) : [];
     if (venuesThen.length) {
       const room: TableRoom = { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, foot = `${hover ? clock(bar[0], true) : `${t('newest')} ${clock(bar[0])}`} ${coinOf(state)}`;
-      if (this.#table.draw(ctx, p, room, { heads: ['', 'OI', 'Δ', t('Share')], minCols: 2, focus: -1, foot, rows: oiTableRows(venuesThen, p) })?.plate) this.#lines = null;
+      if (this.#table.draw(ctx, p, room, { heads: ['', 'OI', 'Δ', t('Share')], minCols: 2, focus: -1, foot, rows: oiTableRows(venuesThen, p) })) this.#lines = null;
     }
     say(`${t('base')} <b>${fmtPrice(bar[4], 1)}</b> Δ <b class="${d > 0 ? 'bid' : d < 0 ? 'ask' : ''}">${sign}${fmtPrice(Math.abs(d), 1)}</b>${whoText(who?.get(bar[0]), d)}${sigma}${source}${stale ? ` <span class="ask">${t('last sample {n} min ago', { n: Math.round(age / 60_000) })}</span>` : ''}`);
   }
@@ -1411,7 +1412,7 @@ export class LtPane extends TimePane {
     const over = state.hover && this.pointer ? readAt(slotAt(s.times.subarray(0, n), step, state.hover.t), state.hover.t, n - 1, s.times[n - 1]) : -1;
     if (over >= 0 && state.hover && state.hover.t >= s.times[over]! + step) this.cursorT = s.times[over]! + step / 2;
     if (over >= 0) this.#lines = ltCardLines({ time: s.times[over]!, bid: s.bid[over]!, ask: s.ask[over]!, halfLifeBp: lt.halfLifeBp, venues: s.ids.length });
-    // Each market at the window read (the readout's): on a plate the table is the popup; beside the plot the popup stays (it says the settings).
+    // Each market at the window read (the readout's): a table drawn takes the popup's place, as on every pane with one (Table off brings the popup back).
     if (state.ltTable && s.parts && s.ids.length > 1) {
       const parts = s.parts, windows = s.times.length;
       // The order is the series' (worked out once for it): rows keep their places while the pointer moves and as the newest window changes.
@@ -1420,7 +1421,7 @@ export class LtPane extends TimePane {
       const foot = `${s.estimated ? '≈ ' : ''}${state.hover ? clock(s.times[at]!, true) : `${t('newest')} ${clock(s.times[at]!)}`}`;
       // Per level is what the series was worked out with (its parts carry the weights), not the setting, which a new series may still be on its way for.
       const heads = ltHeads(parts);
-      if (rows.length && this.#table.draw(ctx, p, { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, { heads, minCols: 3, plateMin: heads.length - 1, focus: -1, foot, rows: ltTableRows(rows, p) })?.plate) this.#lines = null;
+      if (rows.length && this.#table.draw(ctx, p, { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, { heads, minCols: 3, plateMin: heads.length - 1, focus: -1, foot, rows: ltTableRows(rows, p) })) this.#lines = null;
     }
   }
 }

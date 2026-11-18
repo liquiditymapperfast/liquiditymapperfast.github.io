@@ -370,11 +370,11 @@ export class DeltaPane extends TimePane {
     if (hover && this.pointer) this.#lines = deltaCardLines(shown, state.timeframe);
     const since = earliest !== null && earliest > v.t0 ? ` <span class="muted">${t('flow recorded since {time}', { time: clock(earliest, true) })}</span>` : '';
     setHtml(readout, `Δ <b class="${shown.delta > 0 ? 'bid' : shown.delta < 0 ? 'ask' : ''}">${signed(shown.delta)}</b> ${t('CVD')} <b class="${shown.close > 0 ? 'bid' : shown.close < 0 ? 'ask' : ''}">${signed(shown.close)}</b>${since}`);
-    // Each market's part of the candle read (the readout's): on a plate the table is the popup; beside the plot the popup stays (it has the CVD).
+    // Each market's part of the candle read (the readout's): a table drawn takes the popup's place, as on every pane with one (the readout has the CVD).
     if (state.deltaTable && ids.length > 1) {
       const rows = this.#tableRows(state, ids, shown.t, tf, now, visible, ph);
       const foot = `${hover ? clock(shown.t, true) : `${t('newest')} ${clock(shown.t)}`} USD`;
-      if (rows.length && this.#table.draw(ctx, p, { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, { heads: ['', t('Buys'), t('Sells'), 'Δ', t('Share'), '×'], minCols: 4, plateMin: 5, focus: -1, foot, rows: deltaTableRows(rows, p) })?.plate) this.#lines = null;
+      if (rows.length && this.#table.draw(ctx, p, { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null }, { heads: ['', t('Buys'), t('Sells'), 'Δ', t('Share'), '×'], minCols: 4, plateMin: 5, focus: -1, foot, rows: deltaTableRows(rows, p) })) this.#lines = null;
     }
   }
 

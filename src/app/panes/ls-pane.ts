@@ -373,10 +373,10 @@ export class LsPane extends TimePane {
     let time = state.hover ? state.hover.t : Math.min(now, v.t1);
     if (time > newest && Number.isFinite(newest) && shown.every(s => !lsAt(s.points, time, s.periodMs))) { time = newest; if (state.hover && this.pointer) this.cursorT = newest; }
     const hover = state.hover;
-    // On a plate the table is the popup; beside the plot the popup says who each line counts.
+    // A table drawn takes the popup's place, as on every pane with one (Table off brings back who each line counts).
     const room: TableRoom = { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null };
-    const plated = state.lsTable && !blank && this.#table.draw(ctx, p, room, { heads: ['', t('Longs'), t('Shorts'), 'L/S'], minCols: 3, focus: -1, foot: hover ? clock(time, true) : `${t('newest')} ${clock(time)}`, rows: lsTableRows(series, time, p) })?.plate === true;
-    if (hover && this.pointer && !plated) this.#lines = lsCardLines(series, time, state.timeframe);
+    const placed = state.lsTable && !blank ? this.#table.draw(ctx, p, room, { heads: ['', t('Longs'), t('Shorts'), 'L/S'], minCols: 3, focus: -1, foot: hover ? clock(time, true) : `${t('newest')} ${clock(time)}`, rows: lsTableRows(series, time, p) }) : null;
+    if (hover && this.pointer && !placed) this.#lines = lsCardLines(series, time, state.timeframe);
     const parts = series.map(s => {
       const q = lsAt(s.points, time, s.periodMs), name = venueLabel(s.id);
       if (s.status === 'serverOnly') return `<span class="muted">${name} ${t('not readable here')}</span>`;
