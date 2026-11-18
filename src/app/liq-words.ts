@@ -30,20 +30,22 @@ export function splitLabel(kind: LevelsKind): string {
 
 /**
  * A total and its two parts in one unit and precision, the total's (`usd(total)`: whole dollars under $1,000, else tenths of K, M, B or T),
- * the parts rounded by largest remainder so the printed parts add up to the printed total. Each part is its share of the total, so parts
- * whose own sum is a hair off the total (two standings added in another order, a row's figure shown before a sliver of it was taken) still
- * add up to the total printed. Without a printable total (not finite), each is said alone.
+ * the parts rounded by largest remainder so the printed parts add up to the printed total. The total is what the parts add up to, or the
+ * figure shown beside them, which they match but for rounding drift (two standings added in another order): each part is its share of the
+ * printed total, which absorbs that drift. A part that is not a finite amount of at least nothing counts as nothing, so nothing prints
+ * "NaN"; without a printable total (not finite), each is said alone.
  */
 export function splitAmounts(total: number, a: number, b: number): [string, string, string] {
+  const amount = (v: number): number => Number.isFinite(v) && v > 0 ? v : 0, pa = amount(a), pb = amount(b);
   const shown = usd(total), m = /^(\d+)(?:\.(\d))?([KMBT]?)$/.exec(shown);
-  if (!m) return [shown, usd(a), usd(b)];
+  if (!m) return [shown, usd(pa), usd(pb)];
   const unit = m[3] ?? '', tenths = unit !== '';
   // The printed total in its steps (a dollar, or a tenth of its unit), and each part's share of them.
-  const steps = Number(m[1]) * (tenths ? 10 : 1) + (tenths ? Number(m[2] ?? 0) : 0), sum = Math.max(0, a) + Math.max(0, b);
-  const xa = sum > 0 ? Math.max(0, a) / sum * steps : 0, xb = sum > 0 ? steps - xa : 0;
+  const steps = Number(m[1]) * (tenths ? 10 : 1) + (tenths ? Number(m[2] ?? 0) : 0), sum = pa + pb;
+  const xa = sum > 0 ? pa / sum * steps : 0, xb = sum > 0 ? steps - xa : 0;
   let na = Math.floor(xa), nb = Math.floor(xb);
-  // The step the floors leave, if any, goes to the larger remainder, the first part's on a tie.
-  if (steps - na - nb > 0) { if (xa - na >= xb - nb) na++; else nb++; }
+  // The step the floors leave, if any, goes to the larger remainder, the first part's on a tie (parts of nothing stay nothing).
+  if (sum > 0 && steps - na - nb > 0) { if (xa - na >= xb - nb) na++; else nb++; }
   const say = (n: number): string => n === 0 ? '0' : !tenths ? String(n) : `${Math.floor(n / 10)}${n % 10 ? `.${n % 10}` : ''}${unit}`;
   return [shown, say(na), say(nb)];
 }

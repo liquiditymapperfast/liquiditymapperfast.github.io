@@ -22,9 +22,11 @@ export type ArrivalVia = 'key' | 'checkout' | 'restore';
 /**
  * Whether the confirmation counts down to the map (Karl, 2026-11-18): only after a key typed or pasted into the key box. After a checkout, and
  * wherever the page shows the key (a restore shows it), the visitor must first see and copy the new key: the confirmation then offers the map
- * and waits. Nor where the browser would not keep Plus (`kept` false): it lasts only as long as this page.
+ * and waits. Nor where the browser would not keep Plus (`kept` false): it lasts only as long as this page. Nor where the tab is hidden when the
+ * answer comes (`hidden`; Sol's review, round 2: a key sent, the tab left before the server answered, and the page left behind the visitor's
+ * back): the confirmation waits for them.
  */
-export const countsDown = (via: ArrivalVia, keyShown: boolean, kept: boolean): boolean => via === 'key' && !keyShown && kept;
+export const countsDown = (via: ArrivalVia, keyShown: boolean, kept: boolean, hidden: boolean): boolean => via === 'key' && !keyShown && kept && !hidden;
 
 /** What the confirmation says: until when Plus runs (null: not known), the whole seconds left, and whether it is counting down to the map. */
 export interface ArrivalState { until: number | null; left: number; counting: boolean }
@@ -83,34 +85,45 @@ export class Arrival {
   #halt(): void { this.#stop?.(); this.#stop = null; }
 }
 
-/** What the visitor can do on the page that stops the countdown, outside the confirmation: press, type, turn the wheel, touch, scroll. */
+/** What the visitor can do that stops the countdown: press, type, turn the wheel, touch, scroll. */
 export const STOPPING_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'] as const;
-/**
- * A scroll this soon after the confirmation came is the page's own (drawn afresh, it can grow shorter and the browser moves the view up), not
- * the visitor's.
- */
-export const SCROLL_SETTLE_MS = 400;
+/** The keys that scroll the page: they count as activity wherever the focus is, the confirmation included. */
+export const SCROLLING_KEYS: ReadonlySet<string> = new Set(['PageDown', 'PageUp', 'Home', 'End', 'ArrowDown', 'ArrowUp', ' ', 'Spacebar']);
+
+/** Where an event happened: on the page, on the confirmation, or on one of its buttons or links (which do what they say). */
+export type ArrivalPlace = 'page' | 'confirmation' | 'control';
 
 /** The part of the page's `document` the countdown listens to. */
 export interface ArrivalDocument {
   readonly hidden: boolean;
-  addEventListener(type: string, listener: (event: { type: string; target: unknown }) => void, options?: { capture?: boolean; passive?: boolean }): void;
+  addEventListener(type: string, listener: (event: { type: string; target: unknown; key?: string }) => void, options?: { capture?: boolean; passive?: boolean }): void;
 }
 
 /**
- * The countdown stops as soon as the visitor does anything on the page outside the confirmation (Sol's review, 2026-11-18: a Reveal pressed in
- * the five seconds showed the key, and the page left anyway): a press, a key, the wheel, a touch, a scroll (`inside` says what is the
- * confirmation's own: its buttons do what they say). It stops too when the tab is hidden, and does not start again when it shows. Stopping is
- * `stay`: the confirmation stays, with the map a press away. Listened to once, for every confirmation.
+ * The countdown stops as soon as the visitor does anything on the page (Sol's review, 2026-11-18: a Reveal pressed in the five seconds showed
+ * the key, and the page left anyway). Outside the confirmation (`place`): a press, a key, a touch. Anywhere, the confirmation included: the
+ * wheel, a key that scrolls (Space only off its buttons, where it presses them), and a scroll, except the page's own (drawn afresh, it can
+ * grow shorter and the browser moves the view: `redrawn` notes where the view stands right after each drawing, and a scroll that lands
+ * exactly there is let pass). It stops too when the tab is hidden, and does not start again when it shows. Stopping is `stay`: the
+ * confirmation stays, with the map a press away. Listened to once, for every confirmation.
  */
-export function stopOnActivity(doc: ArrivalDocument, arrival: Arrival, inside: (target: unknown) => boolean, now: () => number): void {
+export function stopOnActivity(doc: ArrivalDocument, arrival: Arrival, place: (target: unknown) => ArrivalPlace, scrollY: () => number): { redrawn(): void } {
   const stop = (): void => { if (arrival.state?.counting) arrival.stay(); };
-  for (const type of STOPPING_EVENTS) {
-    doc.addEventListener(type, event => {
-      if (!arrival.state?.counting || inside(event.target)) return;
-      if (type === 'scroll' && now() - arrival.startedAt < SCROLL_SETTLE_MS) return;
-      stop();
-    }, { capture: true, passive: true });
-  }
+  let own = NaN;
+  const stops = (event: { type: string; target: unknown; key?: string }): boolean => {
+    const where = place(event.target);
+    switch (event.type) {
+      case 'wheel': return true;
+      case 'scroll': {
+        // The view where the last drawing left it: that scroll is the page's own, once.
+        if (event.target === doc && scrollY() === own) { own = NaN; return false; }
+        return true;
+      }
+      case 'keydown': return where === 'page' || (SCROLLING_KEYS.has(event.key ?? '') && !(where === 'control' && (event.key === ' ' || event.key === 'Spacebar')));
+      default: return where === 'page';
+    }
+  };
+  for (const type of STOPPING_EVENTS) doc.addEventListener(type, event => { if (arrival.state?.counting && stops(event)) stop(); }, { capture: true, passive: true });
   doc.addEventListener('visibilitychange', () => { if (doc.hidden) stop(); });
+  return { redrawn: () => { own = scrollY(); } };
 }

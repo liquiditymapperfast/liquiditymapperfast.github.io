@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LiqLevelsSource, combineTaken, liqRows, onTheWay, parseLiqGroups, parseLiqLevels, parseTriggers, partsBetween, partsOnTheWay, standingBelow, sumLevels, takenByCandles, liqStanding, type LiqLevels, type LiqRow } from '../src/app/liq-levels.ts';
+import { LiqLevelsSource, combineTaken, liqRows, onTheWay, parseLiqGroups, parseLiqLevels, parseTriggers, partsBetween, partsOnTheWay, standingBelow, sumLevels, takenByCandles, liqStanding, type LiqLevels, type LiqRow, type LiqStanding } from '../src/app/liq-levels.ts';
 import { DAY_MS, LIQ_HOLD_MS, LiqHistory, MAX_DAYS, bandOnEdge, dayText, familiesFor, readHistRows, readRollup, type LiqAnswer } from '../src/app/liq-history.ts';
 import { readLiqLevels, plusUrls } from '../src/app/liq-url.ts';
 import { FREE_VIEW, effectiveView, heldBack, isFreeChoice, viewKey, type LiqView } from '../src/app/liq-view.ts';
@@ -512,4 +512,35 @@ test('under each total of Liq + stops, its parts add up to the figure the line a
     if (level > 0) { const l = lineAfter(lines, 'At this level'); assert.equal(total(l.next?.text), l.figure.text, 'phone level at ' + at); }
   }
   assert.equal(usd(0), '0');
+});
+
+test('a level partly gone says what still stands wherever that prints differently, and its split adds up to what stands, never to the whole', () => {
+  // Sol's case (round 2): a $999.94M level, 0.4 % of it gone, printed "Total $999.9M = liquidations $500M + stops $499.9M".
+  const liqLeft = 500_000_000 * 0.996, stopsLeft = 499_940_000 * 0.996;
+  const standing = (v: number): LiqStanding => ({ k: Int32Array.from([8]), step: 10, long: Float64Array.from([0, v]), short: Float64Array.from([0, 0]) });
+  const parts = { liq: standing(liqLeft), stops: standing(stopsLeft) };
+  const row = (left: number): LiqRow => ({ p0: 80, p1: 90, long: 999_940_000, longIso: 500_000_000, longWallets: 9, short: 0, shortIso: 0, shortWallets: 0, longTop: 1e8, shortTop: 0,
+    longOne: false, shortOne: false, longFirst: NaN, longGone: NaN, longLeft: left, shortFirst: NaN, shortGone: NaN, shortLeft: 0 });
+  const box = stripeBoxLines(row(liqLeft + stopsLeft), 'both', 100, null, parts, side => side === 'long');
+  const at = box.findIndex(l => l.label === 'At this level');
+  assert.equal(box[at]!.text, '$995.9M of $999.9M', 'what stands, of the whole');
+  assert.equal(box[at + 1]!.text, 'Total $995.9M = liquidations $498M + stops $497.9M', 'the parts of what stands');
+  // Gone by less than moves the printed figure: the whole is said, the split is of what stands, and it reads the same figure.
+  const sliver = 999_930_000, few = { liq: standing(sliver * 0.5), stops: standing(sliver * 0.5) };
+  const near = stripeBoxLines(row(sliver), 'both', 100, null, few, side => side === 'long'), n = near.findIndex(l => l.label === 'At this level');
+  assert.equal(near[n]!.text, '$999.9M');
+  assert.equal(near[n + 1]!.text, 'Total $999.9M = liquidations $500M + stops $499.9M');
+});
+
+test('a split never prints NaN: a part that is not a finite amount of at least nothing counts as nothing', () => {
+  assert.deepEqual(splitAmounts(100, NaN, 20), ['100', '0', '100'], 'Sol\'s probe: was 100 = 1 + 0');
+  assert.deepEqual(splitAmounts(100, Infinity, 20), ['100', '0', '100'], 'Sol\'s probe: was 100 = NaN + NaN');
+  assert.deepEqual(splitAmounts(100, -5, 20), ['100', '0', '100']);
+  assert.deepEqual(splitAmounts(2_100_000, NaN, NaN), ['2.1M', '0', '0'], 'parts of nothing stay nothing');
+  assert.deepEqual(splitAmounts(NaN, 5, 20), ['–', '5', '20'], 'no total to print: each said alone');
+  assert.deepEqual(splitAmounts(Infinity, NaN, -Infinity), ['–', '0', '0']);
+  for (const v of [NaN, Infinity, -Infinity, -1, 0, 5e6]) for (const w of [NaN, Infinity, -2, 0, 3e6]) for (const total of [NaN, 0, 8e6]) {
+    assert.ok(!splitAmounts(total, v, w).join(' ').includes('NaN'), [total, v, w].join(' '));
+    assert.ok(!splitText({ liq: v, stops: w }, total).includes('NaN'));
+  }
 });

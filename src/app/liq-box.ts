@@ -28,10 +28,11 @@ export function stripeBoxLines(row: LiqRow, kind: LevelsKind, price: number, sta
     // In the colour it is drawn in: what sells in the falling colour, what buys in the rising one (take profits of shorts are buys).
     const sells = kind === 'takes' ? side === 'short' : side === 'long';
     lines.push({ text: sideTitle(kind, side), color: sells ? 'sell' : 'buy', bold: true, rule: true });
-    // What still stands, said first where a part is gone; the split adds up to the figure said first.
-    const taken = left < total * 0.995, here = taken ? left : total;
+    // What still stands, said first wherever it prints differently from the whole (Sol's review, round 2: a level 0.4 % gone printed the whole
+    // and its standing parts scaled back up to it); the split is of what still stands, so it adds up to the figure said first.
+    const taken = usd(left) !== usd(total);
     lines.push({ label: t('At this level'), text: taken ? t('{left} of {total}', { left: dollars(left), total: dollars(total) }) : dollars(total), bold: true });
-    if (parts) lines.push({ text: splitText(partsBetween(parts, side, row.p0, row.p1), here), color: 'muted', wrap: true });
+    if (parts) lines.push({ text: splitText(partsBetween(parts, side, row.p0, row.p1), left), color: 'muted', wrap: true });
     // Measured from the edge price reaches first; on the way there, everything that still stands between the price and this level.
     const edge = side === 'long' ? row.p1 : row.p0;
     if (price > 0) lines.push({ label: t('Distance'), text: distanceText(edge, price) });

@@ -140,13 +140,16 @@ function drawArrival(): void {
 }
 // A page the browser kept and shows again (Back from the map) does not count down a second time.
 window.addEventListener('pageshow', event => { if (event.persisted) arrival.stay(); });
-// Anything the visitor does on the page outside the confirmation (Reveal, Copy, a field, a scroll) stops the countdown, and so does a hidden tab.
-stopOnActivity(document, arrival, target => target instanceof Node && arrivalHost.contains(target), () => Date.now());
+// Anything the visitor does on the page (Reveal, Copy, a field, the wheel, a scroll) stops the countdown, and so does a hidden tab; the
+// confirmation's own buttons and links do what they say.
+const activity = stopOnActivity(document, arrival,
+  target => !(target instanceof Node) || !arrivalHost.contains(target) ? 'page' : target instanceof Element && target.closest('a, button') ? 'control' : 'confirmation',
+  () => window.scrollY);
 /**
  * Plus came on here by the visitor's own doing: the confirmation, counting down to the map only after a key typed into the key box (after a
- * checkout or a restore the page shows the new key, to be copied first; and never where the browser would not keep Plus).
+ * checkout or a restore the page shows the new key, to be copied first; never where the browser would not keep Plus, nor in a hidden tab).
  */
-const arrived = (via: ArrivalVia): void => { arrival.start(member.until, countsDown(via, state.shown, !state.unkept)); };
+const arrived = (via: ArrivalVia): void => { arrival.start(member.until, countsDown(via, state.shown, !state.unkept, document.hidden)); };
 
 let paddle: Promise<PaddleApi | null> | null = null;
 /** Paddle's script, fetched once, when a price is first pressed. */
@@ -371,6 +374,8 @@ function render(): void {
       if (focus.at && again instanceof HTMLInputElement) { try { again.setSelectionRange(focus.at[0], focus.at[1]); } catch { /* an email field has no caret to set */ } }
     }
   }
+  // Where the view stands now that the page is drawn afresh: a scroll landing there is the page's own, not the visitor's.
+  activity.redrawn();
 }
 
 member.subscribe(render);
