@@ -375,7 +375,7 @@ export class LsPane extends TimePane {
     const hover = state.hover;
     // A table drawn takes the popup's place, as on every pane with one (Table off brings back who each line counts).
     const room: TableRoom = { w: this.w, h: ph, plotW: pw, axisW: AXIS_W, pointing: this.pointer !== null };
-    const placed = state.lsTable && !blank ? this.#table.draw(ctx, p, room, { heads: ['', t('Longs'), t('Shorts'), 'L/S'], minCols: 3, focus: -1, foot: hover ? clock(time, true) : `${t('newest')} ${clock(time)}`, rows: lsTableRows(series, time, p) }) : null;
+    const placed = state.lsTable && !blank && series.length > 1 ? this.#table.draw(ctx, p, room, { heads: ['', t('Longs'), t('Shorts'), 'L/S'], minCols: 3, focus: -1, foot: hover ? clock(time, true) : `${t('newest')} ${clock(time)}`, rows: lsTableRows(series, time, p) }) : null;
     if (hover && this.pointer && !placed) this.#lines = lsCardLines(series, time, state.timeframe);
     const parts = series.map(s => {
       const q = lsAt(s.points, time, s.periodMs), name = venueLabel(s.id);

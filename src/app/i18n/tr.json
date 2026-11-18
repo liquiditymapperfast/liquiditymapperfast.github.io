@@ -3203,5 +3203,6 @@
  "Ratio": "Oran",
  "longs": "long'lar",
  "shorts": "short'lar",
- "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "Tablodaki ×, büyük tarafın küçük tarafın kaç katı olduğunu o tarafın renginde gösterir: 2.50× o tarafta iki buçuk kat fazlası demektir; ∞, diğer tarafta hiç yok demektir."
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "Tablodaki ×, büyük tarafın küçük tarafın kaç katı olduğunu o tarafın renginde gösterir: 2.50× o tarafta iki buçuk kat fazlası demektir; ∞, diğer tarafta hiç yok demektir.",
+ "While the table is drawn it takes the popup's place; switch Table off to see the popup.": "Tablo çizili olduğu sürece açılır pencerenin yerini alır; açılır pencereyi görmek için Tablo'yu kapatın."
 }

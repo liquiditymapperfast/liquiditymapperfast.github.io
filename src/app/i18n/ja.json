@@ -3040,5 +3040,6 @@
  "Ratio": "倍率",
  "longs": "ロング",
  "shorts": "ショート",
- "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "表の×は、大きい側が小さい側の何倍かを、その側の色で示します。2.50×はその側が2.5倍あること、∞は反対側がゼロであることを表します。"
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "表の×は、大きい側が小さい側の何倍かを、その側の色で示します。2.50×はその側が2.5倍あること、∞は反対側がゼロであることを表します。",
+ "While the table is drawn it takes the popup's place; switch Table off to see the popup.": "表が描かれている間は、表がポップアップの代わりになります。ポップアップを見るには「表」をオフにしてください。"
 }

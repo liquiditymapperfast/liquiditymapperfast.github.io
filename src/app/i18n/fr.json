@@ -3266,5 +3266,6 @@
  "Ratio": "Rapport",
  "longs": "longs",
  "shorts": "shorts",
- "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "× dans le tableau indique combien de fois le côté le plus grand fait le plus petit, dans sa couleur : 2.50× signifie deux fois et demie plus de ce côté ; ∞, l'autre côté n'a rien."
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "× dans le tableau indique combien de fois le côté le plus grand fait le plus petit, dans sa couleur : 2.50× signifie deux fois et demie plus de ce côté ; ∞, l'autre côté n'a rien.",
+ "While the table is drawn it takes the popup's place; switch Table off to see the popup.": "Tant que le tableau est affiché, il remplace la fenêtre ; désactivez Tableau pour voir la fenêtre."
 }

@@ -247,6 +247,8 @@ export class FundingPane extends TimePane {
   #drawTable(venue: FundingVenue | null, shown: FundingView | null, tf: number, at: number, now: number, pointed: boolean, all?: { views: ReadonlyMap<FundingVenue, FundingView>; venues: readonly VenueFunding[]; median: { per8h: number } | null }): ReturnType<PaneTable['draw']> {
     const { ctx, palette: p, view: v } = this, coin = currentCoin(), room: TableRoom = { w: this.w, h: this.h, plotW: this.plotW, axisW: AXIS_W, pointing: this.pointer !== null };
     const listed = FUNDING_VENUES.filter(x => coin.markets[x]), heads = ['', t('Funding'), 'APR', t('Premium')], minCols = 2;
+    // One venue: a row that repeats the header; no table, and the popup stays.
+    if (listed.length < 2) return null;
     const sample = listed.map(x => ({ name: venueLabel(x), per8h: 0.0001, premium: -0.0004 }));
     if (all) sample.push({ name: t('Median'), per8h: 0.0001, premium: -0.0004 });
     if (!placeTable(text => ctx.measureText(text).width, room, { heads, minCols, rows: fundingTableRows(sample, p) })) return null;

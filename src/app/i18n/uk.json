@@ -3318,5 +3318,6 @@
  "Ratio": "Співвідношення",
  "longs": "лонги",
  "shorts": "шорти",
- "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "× у таблиці показує, у скільки разів більша сторона більша за меншу, її кольором: 2.50× — у два з половиною рази більше на цій стороні; ∞ — на іншій стороні нічого немає."
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "× у таблиці показує, у скільки разів більша сторона більша за меншу, її кольором: 2.50× — у два з половиною рази більше на цій стороні; ∞ — на іншій стороні нічого немає.",
+ "While the table is drawn it takes the popup's place; switch Table off to see the popup.": "Поки таблицю намальовано, вона заміняє спливне вікно; вимкніть «Таблиця», щоб побачити спливне вікно."
 }

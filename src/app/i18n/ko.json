@@ -3040,5 +3040,6 @@
  "Ratio": "배율",
  "longs": "롱",
  "shorts": "숏",
- "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "표의 ×는 큰 쪽이 작은 쪽의 몇 배인지를 그쪽 색으로 보여 줍니다. 2.50×는 그쪽이 2.5배라는 뜻이고, ∞는 반대쪽이 0이라는 뜻입니다."
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "표의 ×는 큰 쪽이 작은 쪽의 몇 배인지를 그쪽 색으로 보여 줍니다. 2.50×는 그쪽이 2.5배라는 뜻이고, ∞는 반대쪽이 0이라는 뜻입니다.",
+ "While the table is drawn it takes the popup's place; switch Table off to see the popup.": "표가 그려져 있는 동안에는 표가 팝업을 대신합니다. 팝업을 보려면 표를 끄세요."
 }

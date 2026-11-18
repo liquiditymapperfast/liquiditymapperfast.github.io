@@ -3266,5 +3266,6 @@
  "Ratio": "Proporción",
  "longs": "largos",
  "shorts": "cortos",
- "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "× en la tabla es cuántas veces el lado mayor es el menor, en su color: 2.50× es dos veces y media más en ese lado; ∞, el otro lado no tiene nada."
+ "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "× en la tabla es cuántas veces el lado mayor es el menor, en su color: 2.50× es dos veces y media más en ese lado; ∞, el otro lado no tiene nada.",
+ "While the table is drawn it takes the popup's place; switch Table off to see the popup.": "Mientras la tabla está dibujada ocupa el lugar del popup; desactiva Tabla para ver el popup."
 }
