@@ -950,3 +950,85 @@ test('a 404 or 503 for the profitable traders\' orders after a good answer drops
     assert.ok(!s.src.ordersAbsent(), `${status}: available again`); assert.equal(s.src.levels!.kind, 'both'); assert.ok(s.src.takes);
   }
 });
+
+/** A history reader whose profitable traders' orders' files answer as `answer` says (a body, or a failed read of that status), each ask counted. */
+function absentHistory(answer: (url: string) => unknown | { fail: number; retryAfter?: number }) {
+  const f = familyHistory(), asks = new Map<string, number>();
+  const h = new LiqHistory(url => {
+    asks.set(url, (asks.get(url) ?? 0) + 1);
+    if (/trigger-history-groups/.test(url)) {
+      const a = answer(url) as { fail?: number; retryAfter?: number } | undefined;
+      if (a && typeof a.fail === 'number') return Promise.reject(Object.assign(new Error(String(a.fail)), a.retryAfter !== undefined ? { retryAfter: a.retryAfter } : {}));
+      return Promise.resolve(a);
+    }
+    return url in f.files ? Promise.resolve(f.files[url]) : Promise.reject(new Error('404'));
+  }, { freeFrom: () => f.day - 7 * DAY_MS, pass: () => 'v1.member.sig', refused: () => {} });
+  const ask = async (v: LiqView, now: number, from = f.day): Promise<void> => { for (let i = 0; i < 3; i++) { h.ensure(from, f.now, now, () => {}, v); await tick(); await tick(); } };
+  const dayUrl = `https://levels.hiverust.dev/v1/plus/btc/trigger-history-groups/${dayText(f.day)}.json`, rollUrl = 'https://levels.hiverust.dev/v1/plus/btc/trigger-history-groups-4h.json';
+  return { ...f, h, ask, asks: (url: string): number => asks.get(url) ?? 0, dayUrl, rollUrl };
+}
+const MINE_STOPS = view({ liq: false, stops: true, group: 'profitable' });
+
+test('the profitable traders\' orders\' history answering 404 or 503 is not available yet, asked again when the server says or in five minutes, and read once it comes, by the same reader (Sol, round 2)', async () => {
+  for (const [label, fail, retryAfter, waitMs] of [['404', 404, undefined, 5 * 60_000], ['503 with Retry-After 120', 503, 120, 120_000], ['503 without it', 503, undefined, 5 * 60_000]] as const) {
+    for (const [from, wide] of [['days', false], ['4-hour history', true]] as const) {
+      let served: unknown = null;
+      const r = absentHistory(() => served ?? { fail, retryAfter }), start = r.now, url = wide ? r.rollUrl : r.dayUrl, at = wide ? r.wideFrom : r.day, name = `${label}, ${from}`;
+      await r.ask(MINE_STOPS, start, at);
+      assert.equal(r.asks(url), 1, `${name}: asked`);
+      assert.ok(r.h.ordersAbsent(MINE_STOPS, at, r.now), `${name}: not available yet`);
+      assert.ok(r.h.series(at, r.now, MINE_STOPS).ordersAbsent, `${name}: and the series says so`);
+      await r.ask(MINE_STOPS, start + waitMs - 5_000, at);
+      assert.equal(r.asks(url), 1, `${name}: not asked again before the wait`);
+      await r.ask(MINE_STOPS, start + waitMs + 1_000, at);
+      assert.equal(r.asks(url), 2, `${name}: asked again once it is over`);
+      // The file comes: the same reader reads it after the next wait.
+      served = wide ? { hours: 4, edges: ROLLUP_EDGES, groups: ['profitable'], kinds: ['stops', 'takes'], rows: [plusRow(r.t, part({ 9: [100, 100] }, 13), part({ 9: [100, 100] }, 13))] }
+        : { groups: ['profitable'], kinds: ['stops', 'takes'], rows: [plusRow(r.t, part({ 20: [100, 100] }), part({ 30: [100, 100] }))] };
+      await r.ask(MINE_STOPS, start + 2 * waitMs + 2_000, at);
+      assert.equal(r.asks(url), 3, `${name}: asked once more`);
+      assert.ok(!r.h.ordersAbsent(MINE_STOPS, at, r.now), `${name}: available`);
+      assert.equal(r.h.series(at, r.now, MINE_STOPS).rows.at(-1)!.long[wide ? 9 : 20], 100, `${name}: their stops drawn`);
+    }
+  }
+});
+
+test('missing profitable orders never erase their liquidations\' history: Liq + stops draws them alone and says the orders are missing, in days and in the 4-hour history; a file without such rows is not missing (Sol, round 2)', async () => {
+  let served: unknown = null;
+  const r = absentHistory(() => served ?? { fail: 404 });
+  for (const [from, label, bucket] of [[r.day, 'days', 10], [r.wideFrom, '4-hour history', 9]] as const) {
+    const both = view({ liq: true, stops: true, group: 'profitable' }), beside = view({ liq: true, takes: true, group: 'profitable' });
+    await r.ask(both, r.now, from); await r.ask(beside, r.now, from); await r.ask(MINE_STOPS, r.now, from);
+    assert.ok(r.h.shape(both).edges, `${label}: not loading`);
+    const s = r.h.series(from, r.now, both);
+    assert.ok(s.rows.length > 0, `${label}: their liquidations drawn`); assert.equal(s.rows.at(-1)!.long[bucket], 100, `${label}: alone`);
+    assert.ok(s.ordersAbsent, `${label}: and the stops said missing`);
+    const b = r.h.series(from, r.now, beside);
+    assert.ok(b.rows.length > 0 && b.ordersAbsent, `${label}: take profits beside their liquidations are said missing`); assert.deepEqual(b.takes, []);
+    const alone = r.h.series(from, r.now, MINE_STOPS);
+    assert.deepEqual(alone.rows, [], `${label}: stops alone draw nothing`); assert.ok(r.h.ordersAbsent(MINE_STOPS, from, r.now), `${label}: and say why`);
+  }
+  // A day file that holds no row of theirs (a 200): not missing, so Liq + stops keeps saying no snapshot has both.
+  served = { groups: ['profitable'], kinds: ['stops', 'takes'], rows: [] };
+  const both = view({ liq: true, stops: true, group: 'profitable' });
+  await r.ask(both, r.now + 6 * 60_000);
+  const s = r.h.series(r.day, r.now, both);
+  assert.deepEqual(s.rows, [], 'no snapshot with both parts'); assert.ok(!s.ordersAbsent, 'and nothing missing');
+});
+
+test('the Depth pane\'s Range summary says the profitable traders\' orders are missing beside what it sums, never as a stretch without snapshots (Sol, round 2)', async () => {
+  const r = absentHistory(() => ({ fail: 503, retryAfter: 300 })), summary = new DepthRangeSummary(), sel = { t0: r.t - 600_000, t1: r.t + 1_800_000, p0: null, p1: null, live: false, draft: false };
+  const held = (v: LiqView, rows: NonNullable<DepthPaneHeld['rows']>, absent: boolean): DepthPaneHeld => ({ key: depthHeldKey('liq', [], [0.01], viewKey(v)), source: 'liq', ids: [], t0: r.day, t1: r.now, w: 100, radii: [0.01],
+    bid: new Float32Array(100), ask: new Float32Array(100), bidCoin: new Float32Array(100), askCoin: new Float32Array(100), present: null, centred: null, stepMs: 0, answeredAt: Infinity,
+    rows, buckets: [20], omitted: [], view: v, holdMs: LIQ_HOLD_MS, wide: false, coins: false, coin: 'BTC', focus: 0, ordersAbsent: absent });
+  const both = view({ liq: true, stops: true, group: 'profitable' });
+  await r.ask(both, r.now);
+  const s = r.h.series(r.day, r.now, both), mine = held(both, s.rows, s.ordersAbsent), lines = summary.lines(sel, mine, true, mine.key, r.now);
+  assert.ok(lines.some(l => l.key === 'dp-absent' && l.cells[0] === ordersAbsent()), 'said beside what is summed');
+  assert.ok(lines.some(l => l.key === 'dp-grid'), 'their liquidations summed');
+  const alone = held(MINE_STOPS, [], true), none = summary.lines(sel, alone, true, alone.key, r.now);
+  assert.ok(none.some(l => l.key === 'dp-absent'), 'stops alone: said');
+  assert.ok(!none.some(l => l.key === 'dp-empty'), 'not as a selection without snapshots');
+  const empty = held(MINE_STOPS, [], false);
+  assert.ok(summary.lines(sel, empty, true, empty.key, r.now).some(l => l.key === 'dp-empty' && /No stop levels snapshot/.test(l.cells[0] ?? '')), 'a file without their rows keeps the old words');
+});

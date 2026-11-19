@@ -6,7 +6,7 @@ import { valueFormat } from './script-lines.ts';
 import type { RangeSelection } from './selection.ts';
 import type { GridItem, RangeLine } from './stats.ts';
 import { curveOf, groupTitle, takesBeside, type LiqView } from '../liq-view.ts';
-import { sideTitle } from '../liq-words.ts';
+import { ordersAbsent, sideTitle } from '../liq-words.ts';
 
 /** One snapshot of the tracked liquidation levels as the Depth pane holds it: when its positions stood, when it was fetched, its buckets. */
 export interface DepthLiqRow { asOf: number; fetchedAt: number; long: ArrayLike<number>; short: ArrayLike<number>; longCoin: ArrayLike<number>; shortCoin: ArrayLike<number> }
@@ -44,6 +44,11 @@ export interface DepthPaneHeld {
   closedFrom?: number; closedTo?: number;
   /** Liquidation levels: what the pane shows (liquidations, stops or both, whose, and whether take profits are drawn beside them), how long a row stands without a later one, and whether the rows are the four-hour rollups. Absent: the free view of day rows. */
   view?: LiqView; holdMs?: number; wide?: boolean;
+  /**
+   * Liquidation levels: the profitable traders' orders the view shows are not on the server for some of the columns drawn (404 or 503): what
+   * the pane drew holds none of them (Liq + stops: their liquidations alone), and that is said.
+   */
+  ordersAbsent?: boolean;
   /** The units the pane draws in (coins: the chart coin), and the band it watches (its index). */
   coins: boolean; coin: string; focus: number;
 }
@@ -257,12 +262,17 @@ export class DepthRangeSummary {
       const bands = held.omitted.map(band).join(', ');
       lines.push(note('dp-omitted', held.wide ? t('Not one of the 4-hour history\'s bands, left out: {bands}.', { bands }) : t('Beyond the liquidation history\'s reach, left out: {bands}.', { bands })));
     }
-    if (held.view && takesBeside(held.view)) lines.push(note('dp-takes', t('Take profits are drawn as a dashed line and not counted here.')));
+    if (held.view && takesBeside(held.view) && !held.ordersAbsent) lines.push(note('dp-takes', t('Take profits are drawn as a dashed line and not counted here.')));
+    // The profitable traders' orders the view shows are not on the server for some of what the pane drew: said, beside what is summed (their
+    // liquidations alone for Liq + stops), and not as a selection without snapshots (Sol, review 2026-11-19, round 2).
+    if (held.ordersAbsent) lines.push(note('dp-absent', ordersAbsent()));
     if (!s.rows.length) {
-      lines.push(note('dp-empty', s.closed > 0 && s.none <= 0 ? t('This stretch of the liquidation levels\' history is part of Plus.')
-        : kind === 'takes' ? t('No take-profit levels snapshot was in force in this selection.')
-        : kind === 'stops' ? t('No stop levels snapshot was in force in this selection.') : kind === 'both' ? t('No snapshot with both liquidations and stops was in force in this selection.')
-          : t('No liquidation levels snapshot was in force in this selection.')));
+      if (!held.ordersAbsent || (s.closed > 0 && s.none <= 0)) {
+        lines.push(note('dp-empty', s.closed > 0 && s.none <= 0 ? t('This stretch of the liquidation levels\' history is part of Plus.')
+          : kind === 'takes' ? t('No take-profit levels snapshot was in force in this selection.')
+          : kind === 'stops' ? t('No stop levels snapshot was in force in this selection.') : kind === 'both' ? t('No snapshot with both liquidations and stops was in force in this selection.')
+            : t('No liquidation levels snapshot was in force in this selection.')));
+      }
     }
     else {
       const first = s.rows[0]!, lastRow = s.rows[s.rows.length - 1]!;
