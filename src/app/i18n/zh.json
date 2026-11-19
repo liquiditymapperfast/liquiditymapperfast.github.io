@@ -2989,12 +2989,10 @@
  "This browser would not keep Plus: it lasts until this tab closes. Copy the key now and enter it again next time.": "此浏览器未能保存 Plus：它只能用到此标签页关闭为止。请现在复制密钥，下次重新输入。",
  "The key is your Plus on your other devices too: open this page there and enter it. Keep it to yourself.": "有了这个密钥，你在自己的其他设备上也能使用 Plus：在那台设备上打开本页并输入它。请勿告诉他人。",
  "What you type here is sent to this site's server to find your subscription; it asks Paddle, which sold it, about the invoice number.": "你在这里输入的内容会发送到本站的服务器，用来查找你的订阅；服务器会就发票编号向负责销售的 Paddle 查询。",
- "With Plus, the button at the top of the liquidation column (the panel and the phone's Liq tab have the same choice) shows stop orders instead of liquidations, or both added together; take profits, always dashed, as a lane of their own next to the newest candle and as bars from the column's right edge; and the liquidations of the profitable traders alone: the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit. The Depth pane's history follows the same choice.": "有了 Plus，强平栏顶部的按钮（面板和手机上的“强平”标签页有同样的选项）可以显示止损单而不是强平，或两者相加；可以把止盈显示为最新K线旁单独的一条，以及从这一栏右边缘画出的柱，始终为虚线；也可以只显示盈利交易者的强平，即 HyperTracker 认定为盈利的钱包，也就是其永续合约历史总盈利为正的四个群组。深度面板的历史也跟随同一选择。",
  "With Plus it shows what the liquidation column shows: stops, or liquidations and stops added together (only snapshots that have both, about one an hour, since not every snapshot has its orders read), a trader group's liquidations, and take profits as a dashed line each side of the band you watch. A view wider than 120 days reads a row per four hours, in the preset bands only.": "有了 Plus，它显示强平栏所显示的内容：止损，或强平与止损相加（只用同时包含两者的快照，大约每小时一份，因为并非每份快照都会读取订单）、某个交易者分组的强平，以及在你所关注通道两侧画成虚线的止盈。宽于 120 天的视图每四小时读取一行，且只有预设通道。",
  "Take profits": "止盈",
  "Take profits not included": "不含止盈",
  "Total {total} = liquidations {liq} + stops {stops}": "合计 {total} = 强平 {liq} + 止损 {stops}",
- "The curve totals the selected liquidations and/or stops. Take profits are shown separately.": "曲线是所选强平和/或止损的合计。止盈单独显示。",
  "Traders": "交易者",
  "Without Plus the page shows liquidations of all traders. Your choice is kept and comes back with Plus.": "没有 Plus 时，页面显示所有交易者的强平。你的选择会保留，有了 Plus 就会恢复。",
  "Stops": "止损",
@@ -3268,5 +3266,6 @@
  "Timeline: the whole history with Plus, the last 7 days free": "时间线：Plus 提供完整历史，最近 7 天免费",
  "Liquidations, stops and take profits as three separate layers": "强平、止损和止盈：三个独立的图层",
  "Everyone and profitable traders: liquidation and stop levels at each price, on one dollar scale": "全部与盈利交易者：每个价格上的强平与止损价位，同一美元刻度",
- "Play again": "重新播放"
+ "Play again": "重新播放",
+ "With Plus, the button at the top of the liquidation column opens the Levels control (the Liq levels panel, the Depth pane's levels button and the phone's Liq tab title open the same one): three switches, liquidations, stops and take profits, any of them together and one always on, and whose levels they are, everyone's or the profitable traders': the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit. Take profits are always dashed: beside the others a lane of their own next to the newest candle and bars from the column's right edge, on alone a curve of their own. Where the profitable traders' stops and take profits are not on the server yet, the page says they are not available yet and draws nothing in their place. The Depth pane's history follows the same choice.": "有了 Plus，强平栏顶部的按钮会打开价位窗口（强平价位面板、深度面板的价位按钮和手机上“强平”标签页的标题也会打开同一个窗口）：三个开关，即强平、止损和止盈，可以任意组合，并且总有一个开启；还可以选择显示谁的价位：所有人的，或盈利交易者的，即 HyperTracker 认定为盈利的钱包，也就是其永续合约历史总盈利为正的四个群组。止盈始终为虚线：与其他一起显示时，是最新K线旁单独的一条和从这一栏右边缘画出的柱；只开启止盈时，是一条单独的曲线。盈利交易者的止损和止盈还不在服务器上时，页面会说明它们尚不可用，并且不会在原处画出任何内容。深度面板的历史也跟随同一选择。"
 }

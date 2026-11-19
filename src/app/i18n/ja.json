@@ -2989,12 +2989,10 @@
  "This browser would not keep Plus: it lasts until this tab closes. Copy the key now and enter it again next time.": "このブラウザーは Plus を保存できませんでした。Plus を使えるのは、このタブを閉じるまでです。今のうちにキーをコピーして、次回もう一度入力してください。",
  "The key is your Plus on your other devices too: open this page there and enter it. Keep it to yourself.": "このキーがあれば、ほかの端末でも Plus を使えます。その端末でこのページを開いて、キーを入力してください。キーは他人に教えないでください。",
  "What you type here is sent to this site's server to find your subscription; it asks Paddle, which sold it, about the invoice number.": "ここに入力した内容は、サブスクリプションを探すためにこのサイトのサーバーへ送信されます。サーバーは、請求書番号について販売元の Paddle に問い合わせます。",
- "With Plus, the button at the top of the liquidation column (the panel and the phone's Liq tab have the same choice) shows stop orders instead of liquidations, or both added together; take profits, always dashed, as a lane of their own next to the newest candle and as bars from the column's right edge; and the liquidations of the profitable traders alone: the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit. The Depth pane's history follows the same choice.": "Plus があれば、清算レベル列の上部のボタン（パネルとスマートフォンの清算タブにも同じ選択があります）で、清算の代わりにストップ注文を、または両方の合計を表示できます。利益確定は常に破線で、最新のローソク足の隣の専用レーンと、列の右端から伸びるバーで表示できます。黒字のトレーダーだけの清算も表示できます。HyperTracker が黒字と数えるウォレット、つまり全期間のパーペチュアル損益がプラスの 4 つのコホートです。デプスパネルの履歴も同じ選択に従います。",
  "With Plus it shows what the liquidation column shows: stops, or liquidations and stops added together (only snapshots that have both, about one an hour, since not every snapshot has its orders read), a trader group's liquidations, and take profits as a dashed line each side of the band you watch. A view wider than 120 days reads a row per four hours, in the preset bands only.": "Plus があれば、清算レベル列と同じものを表示します。ストップ、または清算とストップの合計（両方があるスナップショットのみで、約 1 時間に 1 件です。すべてのスナップショットで注文が読み込まれるわけではないためです）、トレーダーグループの清算、そして注目しているバンドの両側に破線で描く利益確定です。120 日より広い表示では 4 時間ごとに 1 行を読み込み、プリセットのバンドだけになります。",
  "Take profits": "利益確定",
  "Take profits not included": "利益確定は含みません",
  "Total {total} = liquidations {liq} + stops {stops}": "合計 {total} = 清算 {liq} + ストップ {stops}",
- "The curve totals the selected liquidations and/or stops. Take profits are shown separately.": "曲線は、選んだ清算とストップ（またはそのどちらか）の合計です。利益確定は別に表示されます。",
  "Traders": "トレーダー",
  "Without Plus the page shows liquidations of all traders. Your choice is kept and comes back with Plus.": "Plus がない場合、ページにはすべてのトレーダーの清算が表示されます。選んだ設定は保存され、Plus を使うと元に戻ります。",
  "Stops": "ストップ",
@@ -3268,5 +3266,6 @@
  "Timeline: the whole history with Plus, the last 7 days free": "タイムライン：Plusでは履歴全体、直近7日間は無料",
  "Liquidations, stops and take profits as three separate layers": "清算、ストップ、利益確定を3つの別々のレイヤーで",
  "Everyone and profitable traders: liquidation and stop levels at each price, on one dollar scale": "全員と黒字のトレーダー：各価格の清算とストップのレベルを、同じドルの目盛りで",
- "Play again": "もう一度再生"
+ "Play again": "もう一度再生",
+ "With Plus, the button at the top of the liquidation column opens the Levels control (the Liq levels panel, the Depth pane's levels button and the phone's Liq tab title open the same one): three switches, liquidations, stops and take profits, any of them together and one always on, and whose levels they are, everyone's or the profitable traders': the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit. Take profits are always dashed: beside the others a lane of their own next to the newest candle and bars from the column's right edge, on alone a curve of their own. Where the profitable traders' stops and take profits are not on the server yet, the page says they are not available yet and draws nothing in their place. The Depth pane's history follows the same choice.": "Plus があれば、清算レベル列の上部のボタンでレベルウィンドウが開きます（清算レベルのパネル、デプスパネルのレベルボタン、スマートフォンの清算タブのタイトルからも同じウィンドウが開きます）。清算、ストップ、利益確定の 3 つのスイッチがあり、どれを組み合わせてもよく、常に 1 つはオンです。誰のレベルかも選べます。全員か、黒字のトレーダーです。HyperTracker が黒字と数えるウォレット、つまり全期間のパーペチュアル損益がプラスの 4 つのコホートです。利益確定は常に破線です。ほかと並べると最新のローソク足の隣の専用レーンと列の右端から伸びるバーで、利益確定だけをオンにすると専用の曲線で表示されます。黒字のトレーダーのストップと利益確定がまだサーバーにない場合は、まだ利用できないと表示され、代わりに何かを描くことはありません。デプスパネルの履歴も同じ選択に従います。"
 }

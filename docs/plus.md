@@ -11,7 +11,7 @@ store or buy can be (a copy of the code cannot remove a lock the server keeps).
 | The live liquidation levels of all traders (the stripe, the column, the phone's Liq tab) | free |
 | The levels' history in the Depth pane, today and the 7 UTC days before it | free |
 | The levels' history before that | Plus |
-| The liquidations of HyperTracker's profitable traders, live and in the history (`/v1/plus/btc/liquidations-groups.json`, `liquidation-history-groups/<day>.json`) | Plus |
+| The levels of HyperTracker's profitable traders, live and in the history: their liquidations (`/v1/plus/btc/liquidations-groups.json`, `liquidation-history-groups/<day>.json`), their stops and take profits (`triggers-groups.json`, `trigger-history-groups/<day>.json`, `trigger-history-groups-4h.json`) | Plus |
 | Stop and take-profit levels, live and in the history (`/v1/plus/btc/triggers.json`, `trigger-history/<day>.json`) | Plus |
 | The four-hour rollups a Depth view wider than 120 days reads (`/v1/plus/btc/*-4h.json`) | Plus |
 
@@ -19,28 +19,35 @@ Every path under `/v1/plus/` is paid, whatever the day.
 
 ## What the levels show (one choice for the page)
 
-`LiqLevelSettings` (`src/app/liq-url.ts`, saved) holds `kind` (`liq`, `stops`, `both`), `takes` and `group` (`all`, `profitable`).
-The free view is liquidations of all traders without take profits; anything else is Plus. A save from before reads as the free view, and
-any other `group` value as `all`. Without Plus the page draws the free view and keeps the choice, which comes back with Plus (`effectiveView` in
-`src/app/liq-view.ts`); the controls show the saved choice with a lock, and pressing a Plus choice opens the Plus panel without changing
-it (`liq-menu.ts`).
+`LiqLevelSettings` (`src/app/liq-url.ts`, saved) holds three switches, `liq`, `stops` and `takes` (at least one on), and `group` (`all`,
+`profitable`), the group of every kind. A save in the older form (`kind`: `liq`, `stops`, `both`, with `takes`) reads as those switches; a
+switch present but not a boolean, or anything else, reads as the free view, and any other `group` value as `all`. The free view is
+liquidations of all traders without take profits; anything else is Plus. Without Plus the page draws the free view and keeps the choice,
+which comes back with Plus (`effectiveView` in `src/app/liq-view.ts`).
 
-- **Where it is chosen**: the button at the top of the map's liquidation column (it names what is drawn and opens the menu; a compact map
-  has only the 16 px strip and no heading, so there it is chosen in the panel or on the Liq tab), the Liq levels panel, and the title of
-  the phone's Liq tab. The stripe, the column, the Liq tab and the Depth pane's Liquidation levels follow it, and the Range summary says
-  which kind and group it sums.
-- **Groups** are for liquidations only: the stop and take-profit files have none. The one group is HyperTracker's profitable traders:
-  the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit. The page reads that group alone from the groups files (by its name in a history file's `groups`, else
-  the first part) and leaves whatever else they hold unread.
-- **Both** adds liquidations and stops bin by bin (`sumLevels`); each part is taken away by price from its own snapshot
-  (`combineTaken`: the orders' snapshot is often an earlier one). Stops come about one snapshot in two, so in the history a snapshot is
-  drawn for both only when it has both parts (joined by `createdAt`; the rollups by their four-hour block), about one an hour.
+- **Where it is chosen**: the Levels control (`src/app/levels-control.ts`), one component in three places: a popover under the button at
+  the top of the map's liquidation column (the button names what the curve adds up), a bottom sheet on a phone (under 768 px; the title of
+  the Liq tab opens it too), and the Liq levels panel; the Depth pane's Source offers Order book or Levels, with a button that opens the
+  same control. Three switches (one always stays on) and Traders (radios). Without Plus the paid choices carry a lock: pressing one opens
+  the presentation (below) and changes nothing. The control reads and writes through a small model (`LevelsModel`: the page's settings and
+  membership, or the demo's own store). The stripe, the column, the Liq tab and the Depth pane's levels follow the choice, and the Range
+  summary says which kinds and group it sums.
+- **The curve** adds up the liquidations and the stops that are on. *Liq + stops* adds them bin by bin (`sumLevels`); each part is taken
+  away by price from its own snapshot (`combineTaken`: the orders' snapshot is often an earlier one). Stops come about one snapshot in two,
+  so in the history a snapshot is drawn for both only when it has both parts (joined by `createdAt`; the rollups by their four-hour block),
+  about one an hour.
 - **Take profits** close longs with sells above the price and shorts with buys below it, the other way round from liquidations and stops,
   so they are held with their sides swapped and never added to the rest. One look everywhere, dashed strokes (`TAKE_DASH` in
-  `liq-levels.ts`): a lane of their own by the live edge (`stripeLanes`: the levels' lane is the one beside the liquidation column, whose
-  curve sums them), bars from the column's right edge, bars on the Liq tab, a line in the Depth pane. Coloured by what they do: sells in
-  the falling colour. The take profits' lane carries a caption ("Take profits"); the levels' lane needs none, since the column's button
-  beside it names what it holds and what the curve adds up, and while take profits show a note under that button says they are not in it.
+  `liq-levels.ts`): beside the others a lane of their own by the live edge (`stripeLanes`: the levels' lane is the one beside the
+  liquidation column, whose curve sums them), bars from the column's right edge, bars on the Liq tab, a line in the Depth pane; on alone
+  they are the curve, dashed and never filled. Coloured by what they do: sells in the falling colour. The take profits' lane carries a
+  caption ("Take profits"); while take profits show beside the curve, a note under the column's button says they are not in it.
+- **The profitable traders** are one group for every kind: the wallets HyperTracker counts as profitable, its four cohorts with a positive
+  all-time perp profit. Their liquidations come from the groups files, their stops and take profits from `triggers-groups.json` and the
+  group history files only, never everyone's under their name. A 404 or 503 for those says they are **not available yet** (the note
+  under the legend, the column, the boxes, the Liq tab, the Depth pane and the Range summary), asked again after the server's
+  `Retry-After` or five minutes; the profitable traders' liquidations stay drawn alone meanwhile. Every drawing's cache is keyed by its
+  layer and order family. The page reads that group alone from the files and leaves whatever else they hold unread.
 - **Liq + stops apart**: wherever the page gives a total of both (the stripe's box, the column's reading and its Mirror box, the Liq tab's
   finger), it adds "Total $X = liquidations $Y + stops $Z" (`partStandings`, `partsBetween`, `partsOnTheWay`); the picture stays the
   total. The Depth pane's readout does not split it: its history rows hold the sum only.
@@ -68,11 +75,37 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
   - `config.ts`: the free days, the Worker's address, Paddle's client-side token, price ids, prices and portal link.
   - `pass.ts`: the membership as the browser holds it (`localStorage` `lmf.plus`: `{ v, key, pass, until, ended, renews, skew, next }`),
     and its renewal.
-  - `panel.ts`: the Plus panel (the Plus button, the lock).
-  - `page.ts`, `index.html`, `page.css`, `boot.ts`: the Plus page (`plus/`), the only page with a form or another site's script.
+  - `panel.ts`: the Plus button's status pop-up (a browser with a key) and the locks' way in (`togglePlus`), which open the presentation.
+  - `key.ts`: a key entered in the app (the pop-up, the presentation's access card): the renewal call, what its answer means, the form.
+  - `sheet-entry.ts` (what the page fetches on demand: the styles, the demo and `sheet.ts`), `sheet.ts`, `sheet.css`: the presentation
+    sheet; `present.ts` and `present.css`: the parts the Plus page shares (the hero, the feature sections, what stays free).
+  - `demo/`: the demo (made-up numbers labelled as such, its own store, never the page's settings); `demo-levels.ts` puts the page's own
+    levels control on the demo's store.
+  - `page.ts`, `index.html`, `page.css`, `boot.ts`: the Plus page (`plus/`), the only page with the checkout or another site's script.
   - `liq-history.ts` asks for a paid day only with a pass (`LiqAccess`), and for the Plus families (groups, orders, rollups) only with
     one; `panes/lower-panes.ts` draws the closed stretch and its lock.
-  - `liq-view.ts` (the choice and the view drawn), `liq-menu.ts` (its menu and panel rows), `liq-words.ts` (the words by kind).
+  - `liq-view.ts` (the choice and the view drawn), `levels-control.ts` (the Levels control), `liq-words.ts` (the words by kind).
+
+## The presentation, and the key in the app
+
+- **The Plus button** (the toolbar's, a tile of a phone's Settings): a browser without a key opens the presentation; one with a key, a
+  small status pop-up: on, "Plus is on in this browser, until <date>.", the key masked (Reveal holds for the key it was pressed for; Copy,
+  or the key shown selected where the browser gives no clipboard), Replace key, and Remove from this browser, which asks first and says it
+  does not cancel a subscription; ended, when it ended, that everything free stays, and a key field; being checked, the check, or once a
+  renewal could not reach the server "Couldn't verify Plus" with Try again. "See what Plus adds" opens the presentation. The keyboard goes
+  into the pop-up as it opens and back to the button as it closes; its key form is kept through every redraw.
+- **The presentation** is a native `<dialog>` shown open (the page's sign of a dialog on top, which the other sheets, panels and
+  shortcuts leave their keys to), 880 px wide at most and 90 % of the window's height, the whole screen under 640 px; the page behind it
+  is inert, Tab stays inside, Escape and Close give the focus back to what opened it (else to the toolbar's Plus button). It holds the
+  hero, the demo (mounted once the sheet has opened, destroyed as it closes), the three feature sections, the access card (gift keys: the
+  key form; once on sale: Subscribe to `https://liquiditymapper.com/plus/`, the one place Paddle's checkout runs, and "Have a key?"; a
+  member: until when), what stays free, and the site's terms, privacy and refunds pages. The Plus page opens on the same hero, demo and
+  sections, above its checkout, restore and key management.
+- **A key entered in the app** goes to the renewal the Plus page's key box uses (`POST /v1/pass/renew`), in a masked field with Reveal.
+  Its grant is taken only for the membership it was sent under: the generation in `lmf.plus.gen`, bumped whenever the key held changes
+  (taken, removed), is read when the key is sent and again when the grant comes (`Plus.acceptIf`), so a removal or another tab's key
+  meanwhile wins; a form given up aborts its request and drops the answer. Try again reads what is kept first and gives up when the key
+  changed elsewhere. A key is entered once on each browser and address (the membership is kept per origin).
 
 ## How the page behaves
 
@@ -125,4 +158,7 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
   stand-ins (localhost only).
 - The Plus page works on the dev server (`npm run dev:client`, `http://localhost:5173/plus/`) and in the built site
   (`npm run build:site`, then `npm run preview:site`).
-- `tests/app-plus.test.mts` covers the pass and its renewal; `tests/app-liq-history.test.mts` what is asked for with and without one.
+- `tests/app-plus.test.mts` covers the pass and its renewal; `tests/app-liq-history.test.mts` what is asked for with and without one;
+  `tests/app-liq-plus.test.mts` the choice, its files and the groups; `tests/app-plus-popup.test.mts`, `app-plus-review.test.mts`,
+  `app-plus-sheet.test.mts`, `app-plus-sheet-review.test.mts`, `app-plus-demo-control.test.mts` and `app-plus-page.test.mts` the pop-up,
+  key entry, the presentation and the Plus page (`tests/fake-dom.mts` is the small page they run on).
