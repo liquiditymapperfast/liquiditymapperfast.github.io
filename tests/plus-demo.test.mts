@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -198,6 +198,16 @@ test('a late frame counts as 100 ms; a pause holds the tour; a scene chosen by h
 
 /* ==== mounted, on a page made of plain objects ============================================================================================ */
 
+/**
+ * Errors thrown after a hand-out (whenData throws a waiter's error again in a microtask) that no test read with `page.microtasks()`: the
+ * fake page keeps them when it goes, and the check after each test fails that test with them. An error a test expects, it reads itself.
+ */
+const leftOver: unknown[] = [];
+afterEach(() => {
+  const errors = leftOver.splice(0);
+  if (errors.length) throw new assert.AssertionError({ message: `errors thrown after a hand-out that the test did not read: ${errors.map(e => (e instanceof Error ? e.message : String(e))).join('; ')}`, actual: errors.length, expected: 0, operator: 'strictEqual' });
+});
+
 type Listener = (event: FakeEvent) => void;
 interface FakeEvent { type: string; key?: string; clientX?: number; pointerId?: number; preventDefault(): void }
 
@@ -269,6 +279,8 @@ class FakePage {
   /** The media queries asked for, each one object (as a browser keeps it), and who listens to its changes. */
   media = new Map<string, { matches: boolean; media: string; listeners: Set<() => void> }>();
   network: string[] = [];
+  /** Work the page was asked to do right after the current task (queueMicrotask), run by `microtasks()`. */
+  queued: (() => void)[] = [];
   #saved = new Map<string, PropertyDescriptor | undefined>();
 
   install(): void {
@@ -305,14 +317,21 @@ class FakePage {
       requestAnimationFrame: (f: (t: number) => void) => { const id = page.nextFrame++; page.frames.set(id, f); return id; },
       cancelAnimationFrame: (id: number) => { page.frames.delete(id); },
       performance: { now: () => page.clock },
+      queueMicrotask: (f: () => void) => { page.queued.push(f); },
       fetch: count('fetch'), XMLHttpRequest: count('XMLHttpRequest'), WebSocket: count('WebSocket'), EventSource: count('EventSource'), Image: count('Image'),
       navigator: { sendBeacon: count('sendBeacon'), languages: ['en'], language: 'en' },
     };
     for (const [k, v] of Object.entries(values)) { this.#saved.set(k, Object.getOwnPropertyDescriptor(globalThis, k)); Object.defineProperty(globalThis, k, { value: v, configurable: true, writable: true }); }
   }
+  /** Take the page away: what is still queued for after the task runs first (while the page is there), and what it throws is kept for the
+   * check after the test (`leftOver`), so an error nobody read fails the test that left it; the globals are put back whatever happens. */
   uninstall(): void {
-    for (const [k, d] of this.#saved) { if (d) Object.defineProperty(globalThis, k, d); else delete (globalThis as Record<string, unknown>)[k]; }
-    this.#saved.clear();
+    let thrown: unknown[] = [];
+    try { thrown = this.microtasks(); } finally {
+      for (const [k, d] of this.#saved) { if (d) Object.defineProperty(globalThis, k, d); else delete (globalThis as Record<string, unknown>)[k]; }
+      this.#saved.clear();
+      leftOver.push(...thrown);
+    }
   }
   /** Run frames of 16 ms for `ms`, as the browser would while some are asked for. */
   run(ms: number): void {
@@ -333,6 +352,16 @@ class FakePage {
       n++;
     }
     return n;
+  }
+  /** Run the work queued for after the current task; what it threw, in order. */
+  microtasks(): unknown[] {
+    const thrown: unknown[] = [];
+    // Until nothing is queued: a task may queue more (one that finishes a build with demoData() queues its waiters' errors), and those count.
+    for (let batches = 0; this.queued.length; batches++) {
+      if (batches > 10_000) throw new Error('tasks after the task keep queueing more');
+      for (const f of this.queued.splice(0)) { try { f(); } catch (error) { thrown.push(error); } }
+    }
+    return thrown;
   }
   /** The demo shows this share of itself (and the window this tall). */
   view(ratio: number): void { for (const cb of [...this.views.values()]) cb([{ isIntersecting: ratio > 0, intersectionRatio: ratio, intersectionRect: { height: 500 * ratio }, rootBounds: { height: 800 } }]); }
@@ -674,17 +703,46 @@ test('the feature pictures: three still pictures, each labelled as illustrative,
   } finally { page.uninstall(); }
 });
 
+/**
+ * A fake page for a test that builds the numbers cold. What the body leaves behind (the mounts it tracked, a build under way) is taken down
+ * while the page's globals are still installed, and only then are they removed: an assertion that fails in the middle of a build is the
+ * error the test reports, not a teardown that reaches for a `window` already gone. The numbers are warm again for the tests after.
+ */
+function coldPage(body: (page: FakePage, track: <T extends { destroy(): void }>(handle: T) => T) => void, page = new FakePage()): void {
+  const handles: { destroy(): void }[] = [];
+  page.install();
+  try {
+    body(page, handle => { handles.push(handle); return handle; });
+  } finally {
+    for (const handle of handles) handle.destroy();
+    forgetData();
+    page.uninstall();
+    demoData();
+  }
+}
+
+test('a cold test that fails while the numbers are being built reports its own failure, not its teardown', () => {
+  const page = new FakePage();
+  assert.throws(() => coldPage((p, track) => {
+    forgetData();
+    track(mountDemo(new FakeElement('div', p) as unknown as HTMLElement));
+    assert.equal(p.idles.size, 1, 'a build under way');
+    assert.fail('the body failed in the middle of the build');
+  }, page), (error: unknown) => error instanceof assert.AssertionError && /the body failed in the middle of the build/.test(error.message));
+  assert.equal(page.idles.size, 0, 'the build was stopped before the page went');
+  assert.equal(typeof (globalThis as Record<string, unknown>).window, 'undefined', 'and the page is gone');
+  assert.ok(demoData(), 'the numbers are warm again');
+});
+
 test('cold: the demo paints its frame first and builds the numbers in idle turns; warm mounts have them at once; destroy() stops the build', () => {
   const same = (a: DemoData, b: DemoData): boolean => (['price', 'liqL', 'liqS', 'stopL', 'stopS', 'tpL', 'tpS', 'pfLiq', 'pfStop', 'pfTp', 'band'] as const).every(k => Buffer.from(a[k].buffer).equals(Buffer.from(b[k].buffer)));
   const reference = createData(SEED);
   forgetData();
-  const page = new FakePage();
-  page.install();
-  try {
+  coldPage((page, track) => {
     // A cold mount: the frame, the controls and the scrubber at once, the chart's room kept, nothing drawn and nothing played yet.
     const host = new FakeElement('div', page);
     const states: DemoLevels[] = [];
-    const handle = mountDemo(host as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states.push(x)); return { destroy() {} }; } });
+    const handle = track(mountDemo(host as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states.push(x)); return { destroy() {} }; } }));
     const stage = byClass(host, 'pd-stage'), svg = byClass(host, 'pd-ch');
     assert.equal(stage.getAttribute('aria-busy'), 'true', 'the stage says it is getting ready');
     assert.equal(svg.children.length, 0, 'the chart waits for the numbers');
@@ -701,7 +759,7 @@ test('cold: the demo paints its frame first and builds the numbers in idle turns
     // A second cold mount picks the build up and finishes it in further turns: then the chart is drawn and the tour plays.
     const host2 = new FakeElement('div', page);
     const states2: DemoLevels[] = [];
-    const handle2 = mountDemo(host2 as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states2.push(x)); return { destroy() {} }; } });
+    const handle2 = track(mountDemo(host2 as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states2.push(x)); return { destroy() {} }; } }));
     assert.ok(page.idle() > 0);
     assert.ok(same(demoData(), reference), 'built in turns, the same numbers as all at once');
     assert.equal(byClass(host2, 'pd-stage').getAttribute('aria-busy'), null, 'ready');
@@ -712,7 +770,7 @@ test('cold: the demo paints its frame first and builds the numbers in idle turns
     handle2.destroy();
     // A warm mount: drawn in its first frame, nothing left to build.
     const host3 = new FakeElement('div', page);
-    const handle3 = mountDemo(host3 as unknown as HTMLElement);
+    const handle3 = track(mountDemo(host3 as unknown as HTMLElement));
     page.run(20);
     assert.equal(page.idles.size, 0, 'nothing to build');
     assert.ok(byClass(host3, 'pd-ch').all().length > 60, 'drawn at once');
@@ -720,7 +778,7 @@ test('cold: the demo paints its frame first and builds the numbers in idle turns
     // The pictures: frames at once (their room kept by their size), drawn when the numbers are here.
     forgetData();
     const hosts = { history: new FakeElement('div', page), layers: new FakeElement('div', page), groups: new FakeElement('div', page) };
-    const v = mountVisuals(hosts as unknown as { history: HTMLElement; layers: HTMLElement; groups: HTMLElement });
+    const v = track(mountVisuals(hosts as unknown as { history: HTMLElement; layers: HTMLElement; groups: HTMLElement }));
     for (const h of Object.values(hosts)) {
       const pic = byClass(h, 'pd-vis');
       assert.equal(pic.children.length, 0, 'a frame, not yet drawn');
@@ -736,7 +794,7 @@ test('cold: the demo paints its frame first and builds the numbers in idle turns
     assert.equal(got, demoData());
     assert.equal(page.idles.size, 0);
     assert.deepEqual(page.network, []);
-  } finally { page.uninstall(); demoData(); }
+  });
 });
 
 test('the scenes keep targets of 44 px at every width: six in a row while 294 px hold them, then two rows of three', () => {
@@ -779,15 +837,13 @@ test('the Depth strip\'s dates: three where there is room; on a narrow strip the
 });
 
 test('cold: Play or Play again pressed while the numbers are built shows Pause, waits, and starts the tour at its first scene when they arrive', () => {
-  const page = new FakePage();
-  page.install();
-  try {
+  coldPage((page, track) => {
     for (const button of ['Play', 'Play again'] as const) {
       for (const then of ['arrive', 'Pause', 'destroy'] as const) {
         forgetData();
         const host = new FakeElement('div', page);
         const states: DemoLevels[] = [];
-        const handle = mountDemo(host as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states.push(x)); return { destroy() {} }; } });
+        const handle = track(mountDemo(host as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states.push(x)); return { destroy() {} }; } }));
         const label = `${button}, then ${then}`;
         page.view(0.9);
         byLabel(host, button).fire('click');
@@ -812,13 +868,11 @@ test('cold: Play or Play again pressed while the numbers are built shows Pause, 
         assert.equal(page.idles.size + page.timers.size + page.frames.size, 0, `${label}: nothing left behind`);
       }
     }
-  } finally { page.uninstall(); demoData(); }
+  });
 });
 
 test('cold: when the numbers arrive, a waiter that an earlier one stopped is not called (a mount destroyed by the first one stays quiet)', () => {
-  const page = new FakePage();
-  page.install();
-  try {
+  coldPage((page, track) => {
     // whenData itself: the first waiter's call stops the second; the second is never called, and a third still is.
     forgetData();
     const called: string[] = [];
@@ -833,8 +887,8 @@ test('cold: when the numbers arrive, a waiter that an earlier one stopped is not
     const hostA = new FakeElement('div', page), hostB = new FakeElement('div', page);
     const statesB: DemoLevels[] = [];
     let handleB: { destroy(): void } | null = null;
-    const handleA = mountDemo(hostA as unknown as HTMLElement, { control: (_h, st) => { const stop = st.subscribe(() => { handleB?.destroy(); stop(); }); return { destroy() { stop(); } }; } });
-    handleB = mountDemo(hostB as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => statesB.push(x)); return { destroy() {} }; } });
+    const handleA = track(mountDemo(hostA as unknown as HTMLElement, { control: (_h, st) => { const stop = st.subscribe(() => { handleB?.destroy(); stop(); }); return { destroy() { stop(); } }; } }));
+    handleB = track(mountDemo(hostB as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => statesB.push(x)); return { destroy() {} }; } }));
     page.view(0.9);
     page.idle();
     page.run(5000);
@@ -848,12 +902,189 @@ test('cold: when the numbers arrive, a waiter that an earlier one stopped is not
     let v: { destroy(): void } | null = null;
     let drawnAfter = -1;
     whenData(() => { const svg = byClass(hosts.history, 'pd-vis'); v?.destroy(); drawnAfter = svg.children.length; });
-    v = mountVisuals(hosts as unknown as { history: HTMLElement; layers: HTMLElement; groups: HTMLElement });
+    v = track(mountVisuals(hosts as unknown as { history: HTMLElement; layers: HTMLElement; groups: HTMLElement }));
     const svg = byClass(hosts.history, 'pd-vis');
     page.idle();
     assert.equal(drawnAfter, 0);
     assert.equal(svg.children.length, 0, 'the pictures taken away before their turn draw nothing');
-  } finally { page.uninstall(); demoData(); }
+  });
+});
+
+test('cold: a waiter that throws when the numbers arrive does not keep them from the others, and its error is still thrown after', () => {
+  coldPage((page, track) => {
+    // whenData itself: the first throws, the second is still called, and the error comes out afterwards as it was.
+    forgetData();
+    const called: string[] = [];
+    whenData(() => { called.push('first'); throw new Error('first waiter failed'); });
+    whenData(() => { called.push('second'); });
+    page.idle();
+    assert.deepEqual(called, ['first', 'second']);
+    assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['first waiter failed'], 'thrown again after the hand-out');
+    // Several that throw: every error comes out, each on its own, in the order of the waiters; the one between them is still called.
+    forgetData();
+    const order: string[] = [];
+    whenData(() => { order.push('A'); throw new Error('A failed'); });
+    whenData(() => { order.push('B'); });
+    whenData(() => { order.push('C'); throw new Error('C failed'); });
+    page.idle();
+    assert.deepEqual(order, ['A', 'B', 'C']);
+    assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['A failed', 'C failed'], 'both, in order');
+    // A waiter that joins during the hand-out (asked for by a waiter's own call) is given the numbers at once, once, with nothing left to build.
+    forgetData();
+    const joined: DemoData[] = [];
+    let first: DemoData | null = null;
+    whenData(d => { first = d; whenData(e => joined.push(e)); });
+    page.idle();
+    assert.ok(first);
+    assert.deepEqual(joined, [first], 'called once, at once, with the same numbers');
+    assert.equal(page.idles.size, 0);
+    // Two cold demos: Play queued on the first, whose control's store listener throws in the first scene; the second still gets the numbers.
+    forgetData();
+    const hostA = new FakeElement('div', page), hostB = new FakeElement('div', page);
+    track(mountDemo(hostA as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(() => { throw new Error('the listener failed'); }); return { destroy() {} }; } }));
+    track(mountDemo(hostB as unknown as HTMLElement));
+    page.view(0.9);
+    byLabel(hostA, 'Play').fire('click');
+    page.idle();
+    page.run(50);
+    for (const [name, host] of [['the second', hostB], ['the first', hostA]] as const) {
+      assert.equal(byClass(host, 'pd-stage').getAttribute('aria-busy'), null, `${name} demo is ready`);
+      assert.ok(byClass(host, 'pd-ch').all().length > 60, `${name} demo's chart is drawn`);
+    }
+    assert.equal(page.idles.size, 0, 'and no build is left waiting');
+    assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['the listener failed'], 'the error is not swallowed');
+  });
+});
+
+/** Everything the chart shows, as text: each element's shape and how strongly it is drawn. Two equal pictures are the same drawing. */
+const chartPicture = (host: FakeElement): string => byClass(host, 'pd-ch').all()
+  .map(e => `${e.tagName}|${e.getAttribute('d') ?? ''}|${e.style.opacity ?? ''}|${e.style.display ?? ''}|${e.textContent.length < 40 ? e.textContent : ''}`).join('\n');
+
+test('cold: Play pressed while loading, then the tab hidden or the demo under 45 % in view: the queued tour starts held, its chart still and no frame asked for', () => {
+  coldPage((page, track) => {
+    for (const away of ['under 45 % in view', 'tab hidden'] as const) {
+      forgetData();
+      const host = new FakeElement('div', page);
+      const states: DemoLevels[] = [];
+      const handle = track(mountDemo(host as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states.push(x)); return { destroy() {} }; } }));
+      page.view(0.9);
+      byLabel(host, 'Play').fire('click');
+      if (away === 'tab hidden') page.setHidden(true); else page.view(0.4);
+      page.idle();
+      page.run(16);
+      assert.deepEqual(states.map(x => [+x.liq, +x.stops, +x.takes]), [[1, 0, 0]], `${away}: the tour started at its first scene`);
+      const held = chartPicture(host);
+      assert.ok(held.split('\n').length > 60, `${away}: the chart is drawn`);
+      page.run(48);
+      assert.equal(page.frames.size, 0, `${away}: no frame is asked for while it is held (its first move, 220 ms long, would still be asking)`);
+      page.run(1000);
+      assert.equal(page.frames.size, 0, `${away}: nor later`);
+      assert.equal(chartPicture(host), held, `${away}: the chart holds still (its first move waits too)`);
+      assert.equal(states.length, 1, `${away}: no further scene`);
+      // Back in view: the tour goes on, its first move with it.
+      if (away === 'tab hidden') page.setHidden(false); else page.view(0.9);
+      page.run(300);
+      assert.notEqual(chartPicture(host), held, `${away}: back in view, the chart moves on`);
+      page.run(4000);
+      assert.equal(states.length, 2, `${away}: and the tour goes on to its next scene`);
+      handle.destroy();
+    }
+  });
+});
+
+test('cold: Play queued, the demo at 40 % in view, and a store listener that throws once in the first scene: the tour is still held for the view', () => {
+  coldPage((page, track) => {
+    forgetData();
+    const host = new FakeElement('div', page);
+    const states: DemoLevels[] = [];
+    let threw = false;
+    track(mountDemo(host as unknown as HTMLElement, { control: (_h, st) => {
+      st.subscribe(x => { states.push(x); if (!threw) { threw = true; throw new Error('the listener failed once'); } });
+      return { destroy() {} };
+    } }));
+    page.view(0.9);
+    byLabel(host, 'Play').fire('click');
+    page.view(0.4);
+    page.idle();
+    assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['the listener failed once'], 'the error is reported, not swallowed');
+    page.run(16);
+    assert.deepEqual(states.map(x => [+x.liq, +x.stops, +x.takes]), [[1, 0, 0]], 'the tour started at its first scene');
+    const held = chartPicture(host);
+    page.run(48);
+    assert.equal(page.frames.size, 0, 'no frame is asked for while it is held for the view');
+    page.run(10_000);
+    assert.equal(chartPicture(host), held, 'the chart holds still');
+    assert.equal(states.length, 1, 'and no scene goes by under 45 % in view');
+    assert.equal(byLabel(host, 'Play').getAttribute('aria-label'), 'Play', 'the button says it is paused');
+    page.view(0.9);
+    page.run(300);
+    assert.notEqual(chartPicture(host), held, 'back in view, the chart moves on');
+    page.run(4000);
+    assert.equal(states.length, 2, 'and the tour goes on to its next scene');
+  });
+});
+
+test('an error thrown after a hand-out that no test read fails the test that left it; one read on purpose does not', () => {
+  // Left unread: the page runs it when it goes and keeps the error for the check after the test (taken here, so this test can pass).
+  const page = new FakePage();
+  page.install();
+  queueMicrotask(() => { throw new Error('left unread'); });
+  page.uninstall();
+  assert.deepEqual(leftOver.splice(0).map(e => (e as Error).message), ['left unread']);
+  assert.equal(typeof (globalThis as Record<string, unknown>).window, 'undefined', 'the page is gone all the same');
+  // Read on purpose: nothing is left for the check.
+  page.install();
+  queueMicrotask(() => { throw new Error('read'); });
+  assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['read']);
+  page.uninstall();
+  assert.deepEqual(leftOver, []);
+  // The case it is for: a waiter that changes what a test looks at and then throws. The test's own checks pass, and the error does not vanish.
+  let ready = false;
+  coldPage(p => {
+    forgetData();
+    whenData(() => { ready = true; throw new Error('thrown after the change'); });
+    p.idle();
+    assert.equal(ready, true);
+  });
+  assert.deepEqual(leftOver.splice(0).map(e => (e as Error).message), ['thrown after the change'], 'kept: the check after the test would fail it');
+});
+
+test('the page runs, when it goes, what its queued tasks queue in turn: an error two tasks deep is not lost', () => {
+  const page = new FakePage();
+  page.install();
+  // A build under way with a waiter that throws, and a queued task that finishes the build (demoData), which queues the waiter's error.
+  forgetData();
+  whenData(() => { throw new Error('the waiter failed two tasks deep'); });
+  queueMicrotask(() => { demoData(); });
+  page.uninstall();
+  assert.deepEqual(leftOver.splice(0).map(e => (e as Error).message), ['the waiter failed two tasks deep'], 'kept for the check after the test');
+  // Read on purpose, the same: microtasks() runs the tasks queued by tasks too.
+  page.install();
+  queueMicrotask(() => { queueMicrotask(() => { throw new Error('queued by a queued task'); }); });
+  assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['queued by a queued task']);
+  page.uninstall();
+  assert.deepEqual(leftOver, []);
+});
+
+test('cold: a demo that its own listener destroys (and throws) in the queued first scene does nothing more, and the error is reported', () => {
+  coldPage((page, track) => {
+    forgetData();
+    const host = new FakeElement('div', page);
+    const states: DemoLevels[] = [];
+    let handle: { destroy(): void } | null = null;
+    handle = track(mountDemo(host as unknown as HTMLElement, { control: (_h, st) => {
+      st.subscribe(x => { states.push(x); handle?.destroy(); throw new Error('destroyed by its own listener'); });
+      return { destroy() {} };
+    } }));
+    page.view(0.9);
+    byLabel(host, 'Play').fire('click');
+    page.idle();
+    assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['destroyed by its own listener']);
+    assert.equal(host.children.length, 0, 'the demo is gone');
+    page.run(5000);
+    assert.equal(states.length, 1, 'and nothing of it ran after');
+    assert.equal(page.frames.size + page.idles.size + page.timers.size + page.resizes.size + page.views.size + page.listenerCount(), 0, 'nothing left behind');
+  });
 });
 
 /* ==== no network, no app settings ======================================================================================================= */

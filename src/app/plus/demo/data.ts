@@ -145,7 +145,13 @@ let build: Build | null = null;
 function done(b: Build, d: DemoData): void {
   shared = d; build = null;
   // Each waiter is taken off as its turn comes, not all at once: one that an earlier one stopped waiting (a mount it destroyed) is not called.
-  for (const ready of [...b.waiters]) if (b.waiters.delete(ready)) ready(d);
+  // One that throws does not keep the numbers from the rest; its error is thrown again afterwards, on its own, so it is still seen.
+  const failed: unknown[] = [];
+  for (const ready of [...b.waiters]) {
+    if (!b.waiters.delete(ready)) continue;
+    try { ready(d); } catch (error) { failed.push(error); }
+  }
+  for (const error of failed) queueMicrotask(() => { throw error; });
 }
 function unplan(b: Build): void {
   if (b.job === null) return;

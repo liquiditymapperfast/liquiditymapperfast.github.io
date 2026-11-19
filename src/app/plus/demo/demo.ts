@@ -317,11 +317,17 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   const stopWaiting = whenData(d => {
     if (destroyed) return;
     data = d;
-    // A Play or Play again pressed while loading starts the tour now, at its first scene.
-    if (queued) { queued = false; player.start(now()); }
     stage.removeAttribute('aria-busy');
     fit(); dirty = true;
-    consider();
+    // A Play or Play again pressed while loading starts the tour now, at its first scene: after the demo's own readiness above, so a store
+    // listener that throws in that first scene still leaves this chart drawn. The start is followed at once (`syncPlay`), so a pause for
+    // the view that `consider` applies right after (the tab hidden, the demo under 45 % in view) holds its first motion like any other; both
+    // run even when that listener throws (the error goes on to `whenData`, which reports it), unless the listener destroyed the demo.
+    try {
+      if (queued) { queued = false; player.start(now()); }
+    } finally {
+      if (!destroyed) { syncPlay(); consider(); }
+    }
   });
 
   return {
