@@ -1099,18 +1099,19 @@ test('a saved levels setting in the older form with a switch that is not a boole
 /**
  * A stand-in page for one pane in Node: elements that keep their classes, text and children, a 2D context that draws nothing, and the page's
  * timers held for the test to run, so a frame can be drawn without the second's tick (as the page does after a change of the setting). The
- * Liq tab's range is `range` (±10% unless said).
+ * Liq tab's range is `range` (±10% unless said), its ladder `height` high.
  */
-function standInPage(width = 390, drawn?: { texts: { t: string; x: number; y: number }[]; lines: { x: number; y: number }[] }, range = '0.1') {
+function standInPage(width = 390, drawn?: { texts: { t: string; x: number; y: number }[]; lines: { x: number; y: number }[]; rects?: { x: number; y: number; w: number; h: number }[] }, range = '0.1', height = 640) {
   const g = globalThis as unknown as Record<string, unknown>, saved = { document: g.document, window: g.window, ResizeObserver: g.ResizeObserver };
-  // Draws nothing; given `drawn`, it keeps the texts and the line ends drawn, and measures a text at 6 px a character.
+  // Draws nothing; given `drawn`, it keeps the texts, the line ends and the outlined boxes drawn, and measures a text at 6 px a character.
   const ctx: unknown = new Proxy(function () { /* draws nothing */ }, { get: (_t, k) => k === Symbol.toPrimitive ? () => 0 : k === 'then' ? undefined
     : drawn && k === 'fillText' ? (t: unknown, x: number, y: number) => { drawn.texts.push({ t: String(t), x, y }); return ctx; }
     : drawn && k === 'lineTo' ? (x: number, y: number) => { drawn.lines.push({ x, y }); return ctx; }
+    : drawn && k === 'strokeRect' ? (x: number, y: number, w: number, h: number) => { drawn.rects?.push({ x, y, w, h }); return ctx; }
     : drawn && k === 'measureText' ? (t: unknown) => ({ width: String(t).length * 6 }) : ctx, apply: () => ctx, set: () => true });
   class StandIn {
     children: (StandIn | string)[] = []; dataset: Record<string, string> = {}; style: Record<string, string> = {}; className = ''; hidden = false;
-    clientWidth = width; clientHeight = 640; width = 0; height = 0;
+    clientWidth = width; clientHeight = height; width = 0; height = 0;
     #text: string | null = null;
     constructor(readonly tagName: string) {}
     #classes(): string[] { return this.className.split(/\s+/).filter(Boolean); }
@@ -1137,7 +1138,7 @@ function standInPage(width = 390, drawn?: { texts: { t: string; x: number; y: nu
     closest(): null { return null; }
     querySelector(): null { return null; }
     getContext(): unknown { return ctx; }
-    getBoundingClientRect(): { top: number; left: number; width: number; height: number } { return { top: 0, left: 0, width: this.clientWidth, height: 640 }; }
+    getBoundingClientRect(): { top: number; left: number; width: number; height: number } { return { top: 0, left: 0, width: this.clientWidth, height: this.clientHeight }; }
     setPointerCapture(): void { /* no pointer */ }
     /** The first element at or below this one holding every class of `names`. */
     find(names: string): StandIn | null {
@@ -1500,8 +1501,8 @@ test('the phone\'s Liq tab under a split: halves at a phone\'s width, named by t
 
 /** The phone's Liq tab at a phone's width with a split chosen, on the stand-in page; `files` are the Plus answers. */
 async function tabWith(files: Record<string, LiqAnswer>, lv: Partial<import('../src/app/liq-url.ts').LiqLevelSettings>, freeDoc: () => unknown = () => free(NEAR.all.liq),
-  drawn?: { texts: { t: string; x: number; y: number }[]; lines: { x: number; y: number }[] }, range?: string) {
-  const page = standInPage(390, drawn, range), now = Date.now();
+  drawn?: { texts: { t: string; x: number; y: number }[]; lines: { x: number; y: number }[]; rects?: { x: number; y: number; w: number; h: number }[] }, range?: string, height?: number) {
+  const page = standInPage(390, drawn, range, height), now = Date.now();
   plus().accept({ key: 'standin-key-0123456789', pass: standInPass(now + 23 * 3_600_000), until: now + 20 * DAY_MS });
   const s = service(files, { value: 'v1.pass.sig' }, freeDoc);
   const store = new Store(initialState());
@@ -1665,4 +1666,31 @@ test('a finger on the phone\'s halves: each box kept on the ladder, the left hal
     assert.ok(boxes[1]!.top > boxes[0]!.bottom || boxes[1]!.bottom < boxes[0]!.top, `one beside the other, not over it: ${JSON.stringify(boxes.map(b => [b.top, b.bottom]))}`);
     assert.ok(boxes[1]!.title.x > boxes[0]!.title.x, 'the right half\'s further right');
   } finally { t.done(); }
+});
+
+test('a finger dragged down the phone\'s halves, at three heights, in both splits: both boxes on the ladder at every step, never one over the other (Sol, review 2026-11-19)', async () => {
+  const xR = 390 - 60;
+  for (const height of [480, 640, 844]) for (const split of ['kinds', 'groups'] as const) {
+    // Liquidations and stops on: beside each other (kinds), or added up, everyone's beside the profitable traders' (groups: the longer boxes).
+    const drawn = { ...drawnOf(), rects: [] as { x: number; y: number; w: number; h: number }[] };
+    const t = await tabWith({ [U.groups]: { status: 200, body: groups(NEAR.profitable.liq, null) }, [U.triggers]: { status: 200, body: triggers(NEAR.all.stops, NEAR.all.takes) },
+      [U.triggersGroups]: { status: 200, body: triggerGroups(NEAR.profitable.stops, NEAR.profitable.takes) } }, { liq: true, stops: true, takes: false, group: 'all', split }, () => free(NEAR.all.liq), drawn, undefined, height);
+    try {
+      const canvas = (t.page.parent as unknown as { findTag(tag: string): { listeners: Map<string, ((e: unknown) => void)[]> } | null }).findTag('canvas')!;
+      const fire = (type: string, y: number): void => { for (const fn of canvas.listeners.get(type) ?? []) fn({ clientY: y, pointerId: 1 }); };
+      // Put down in the middle and dragged from the top to the bottom, a frame at each step; the outlined boxes are the finger's.
+      fire('pointerdown', height / 2); fire('pointermove', height / 2 + 10);
+      let steps = 0;
+      for (let y = 1; y < height; y += 7) {
+        fire('pointermove', y); drawn.rects.length = 0; t.page.frames();
+        const where = `${split} at ${height} px, the finger at ${y}`, boxes = drawn.rects;
+        assert.equal(boxes.length, 2, `${where}: a box for each half`);
+        for (const b of boxes) assert.ok(b.x >= 0 && b.y >= 0 && b.x + b.w <= xR && b.y + b.h <= height, `${where}: off the ladder ${JSON.stringify(b)}`);
+        const [p, q] = boxes as [typeof boxes[0], typeof boxes[0]];
+        assert.ok(p.y + p.h <= q.y || q.y + q.h <= p.y || p.x + p.w <= q.x || q.x + q.w <= p.x, `${where}: one over the other ${JSON.stringify(boxes)}`);
+        steps++;
+      }
+      assert.ok(steps > height / 8, `${split} at ${height} px: ${steps} steps`);
+    } finally { t.done(); }
+  }
 });

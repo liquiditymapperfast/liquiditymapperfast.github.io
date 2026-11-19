@@ -104,3 +104,34 @@ export function splitHeads(measure: (text: string) => number, o: { captions: [st
   const tall = (sub: { caption: string[]; scale: string[] }): number => sub.caption.length + sub.scale.length;
   return { subs, across, rows: Math.max(tall(subs[0]), tall(subs[1])) + across.length };
 }
+
+/** A box's size, and where its top left corner goes. */
+export interface BoxSize { w: number; h: number }
+export interface BoxAt { x: number; y: number }
+/**
+ * Where a finger's boxes go on the phone's split ladder (`W` wide, `H` high), measured and placed together: the left half's box from the
+ * ladder's left, the right half's to its right. Side by side where the ladder has room for both, else one above the other (the left half's
+ * first), on the far side of the finger's line `y` (below it in the ladder's upper half, above it in the lower), else on the near side, else
+ * shifted until both fit, over the line. Either way both stay on the ladder (2 px in) and never lie over each other while their heights
+ * fit the ladder together (Sol, review 2026-11-19: placed one at a time, the second could be pushed back over the first near an edge).
+ */
+export function placeProbeBoxes(sizes: readonly [BoxSize | null, BoxSize | null], y: number, W: number, H: number): [BoxAt | null, BoxAt | null] {
+  const [a, b] = sizes, down = y < H / 2, edge = 2, line = 14, gap = 4;
+  const xOf = (s: BoxSize, right: boolean): number => Math.max(edge, Math.min(right ? W - 8 - s.w : 8, W - s.w - edge));
+  const topFor = (h: number): number => Math.max(edge, Math.min(down ? y + line : y - line - h, H - h - edge));
+  if (!a || !b) {
+    const one = a ?? b;
+    if (!one) return [null, null];
+    const at = { x: xOf(one, !a), y: topFor(one.h) };
+    return a ? [at, null] : [null, at];
+  }
+  if (a.w + b.w + gap + 16 <= W) {
+    const top = topFor(Math.max(a.h, b.h));
+    return [{ x: xOf(a, false), y: top }, { x: xOf(b, true), y: top }];
+  }
+  const tall = a.h + gap + b.h, below = y + line, above = y - line - tall;
+  const fitsBelow = below + tall <= H - edge, fitsAbove = above >= edge;
+  const top = (down ? (fitsBelow ? below : fitsAbove ? above : null) : (fitsAbove ? above : fitsBelow ? below : null))
+    ?? Math.max(edge, Math.min(down ? below : above, H - edge - tall));
+  return [{ x: xOf(a, false), y: top }, { x: xOf(b, true), y: Math.min(top + a.h + gap, H - edge - b.h) }];
+}

@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { LADDER_SUB_MIN, SPLIT_COLUMN_W, SPLIT_SUB_W, kindLanes, ladderSplitFits, liqColumnWidth, splitFits, splitHeads, splitScales, stackCaptions, subAt, subColumns } from '../src/app/liq-split.ts';
+import { LADDER_SUB_MIN, SPLIT_COLUMN_W, SPLIT_SUB_W, kindLanes, ladderSplitFits, liqColumnWidth, placeProbeBoxes, splitFits, splitHeads, splitScales, stackCaptions, subAt, subColumns, type BoxAt, type BoxSize } from '../src/app/liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../src/app/layouts/dock-model.ts';
 import { readLiqLevels } from '../src/app/liq-url.ts';
 import { FREE_VIEW, narrowView, splitPair } from '../src/app/liq-view.ts';
@@ -220,4 +220,27 @@ test('the seam beside a column too narrow to split weighs what the column draws 
   assert.match(heat, /  #paintSeam\(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number\): void \{\n    const hv = this\.#profileHover, src: LiqSet = this\.#liqDrawnSet \?\? this\.hub\.liqLevels,/);
   assert.match(heat, /const set: LiqSet = pair\?\.split === 'kinds' \? src\.setOf\(narrowView\(pair\)\) : src;\n    this\.#liqDrawnSet = set;/, 'the unsplit column keeps what it drew');
   assert.match(heat, /  #paintLiqSplit\(ctx: CanvasRenderingContext2D[^\n]*\n[^\n]*\n[^\n]*\n    this\.#liqDrawnSet = null;/, 'a drawn split keeps none: the seam weighs the left set');
+});
+
+test('the finger\'s two boxes on the phone\'s split ladder are placed together: Sol\'s case, a sweep of heights, sizes and fingers, side by side where there is room', () => {
+  const on = (at: BoxAt, s: BoxSize, W: number, H: number): boolean => at.x >= 2 && at.y >= 2 && at.x + s.w <= W - 2 && at.y + s.h <= H - 2;
+  const apart = (p: BoxAt, ps: BoxSize, q: BoxAt, qs: BoxSize): boolean => p.y + ps.h <= q.y || q.y + qs.h <= p.y || p.x + ps.w <= q.x || q.x + qs.w <= p.x;
+  // Sol: a 480 px ladder, a finger at 241, two 120 px boxes. Placed one at a time they took 107-227 and 2-122.
+  const two: [BoxSize, BoxSize] = [{ w: 230, h: 120 }, { w: 230, h: 120 }];
+  const [a, b] = placeProbeBoxes(two, 241, 330, 480);
+  assert.ok(a && b && on(a, two[0], 330, 480) && on(b, two[1], 330, 480) && apart(a, two[0], b, two[1]), JSON.stringify([a, b]));
+  // Every finger, on ladders 480 to 844 px high, boxes 64 to 176 px high (both fitting the ladder together), on a phone's 330 px ladder.
+  for (const H of [480, 560, 640, 760, 844]) for (const [ha, hb] of [[64, 64], [120, 120], [152, 152], [176, 120], [88, 176]] as const) for (let y = 0; y <= H; y += 3) {
+    const s: [BoxSize, BoxSize] = [{ w: 222, h: ha }, { w: 234, h: hb }];
+    const [p, q] = placeProbeBoxes(s, y, 330, H);
+    assert.ok(p && q && on(p, s[0], 330, H) && on(q, s[1], 330, H), `${H} px, ${ha}/${hb}, finger ${y}: on the ladder ${JSON.stringify([p, q])}`);
+    assert.ok(apart(p, s[0], q, s[1]), `${H} px, ${ha}/${hb}, finger ${y}: apart ${JSON.stringify([p, q])}`);
+    assert.ok(p.x < q.x, 'the left half\'s from the left, the right half\'s to the right');
+  }
+  // Where the ladder has room for both side by side: beside each other, on the far side of the line, clear of it.
+  const [l, r] = placeProbeBoxes(two, 100, 700, 480);
+  assert.ok(l && r && l.y === r.y && l.y === 114 && l.x + 230 <= r.x, JSON.stringify([l, r]));
+  // One box alone: from its own half's edge, on the far side of the line.
+  assert.deepEqual(placeProbeBoxes([null, two[1]], 300, 330, 480), [null, { x: 330 - 8 - 230, y: 300 - 14 - 120 }]);
+  assert.deepEqual(placeProbeBoxes([two[0], null], 100, 330, 480), [{ x: 8, y: 114 }, null]);
 });
