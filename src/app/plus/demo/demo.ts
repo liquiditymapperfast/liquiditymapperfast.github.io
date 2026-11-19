@@ -315,6 +315,7 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   syncScrub(); syncPlay(); fit(); schedule();
   stage.setAttribute('aria-busy', 'true');
   const stopWaiting = whenData(d => {
+    if (destroyed) return;
     data = d;
     // A Play or Play again pressed while loading starts the tour now, at its first scene.
     if (queued) { queued = false; player.start(now()); }

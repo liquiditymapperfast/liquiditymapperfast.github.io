@@ -144,9 +144,8 @@ let build: Build | null = null;
 
 function done(b: Build, d: DemoData): void {
   shared = d; build = null;
-  const waiters = [...b.waiters];
-  b.waiters.clear();
-  for (const ready of waiters) ready(d);
+  // Each waiter is taken off as its turn comes, not all at once: one that an earlier one stopped waiting (a mount it destroyed) is not called.
+  for (const ready of [...b.waiters]) if (b.waiters.delete(ready)) ready(d);
 }
 function unplan(b: Build): void {
   if (b.job === null) return;

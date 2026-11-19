@@ -158,6 +158,7 @@ export function mountVisuals(hosts: VisualHosts): { destroy(): void } {
     placed.push(box);
     pending.push({ svg, draw: p.draw });
   }
-  const stop = pending.length ? whenData(d => { for (const { svg, draw } of pending) { draw(svg, d); svg.removeAttribute('aria-busy'); } }) : () => {};
-  return { destroy() { stop(); for (const box of placed.splice(0)) box.remove(); } };
+  let gone = false;
+  const stop = pending.length ? whenData(d => { if (gone) return; for (const { svg, draw } of pending) { draw(svg, d); svg.removeAttribute('aria-busy'); } }) : () => {};
+  return { destroy() { gone = true; stop(); for (const box of placed.splice(0)) box.remove(); } };
 }

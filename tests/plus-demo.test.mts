@@ -801,6 +801,47 @@ test('cold: Play or Play again pressed while the numbers are built shows Pause, 
   } finally { page.uninstall(); demoData(); }
 });
 
+test('cold: when the numbers arrive, a waiter that an earlier one stopped is not called (a mount destroyed by the first one stays quiet)', () => {
+  const page = new FakePage();
+  page.install();
+  try {
+    // whenData itself: the first waiter's call stops the second; the second is never called, and a third still is.
+    forgetData();
+    const called: string[] = [];
+    let stopSecond: () => void = () => {};
+    whenData(() => { called.push('first'); stopSecond(); });
+    stopSecond = whenData(() => { called.push('second'); });
+    whenData(() => { called.push('third'); });
+    page.idle();
+    assert.deepEqual(called, ['first', 'third']);
+    // Two cold demos in view: the first one's autoplay changes its store, and that destroys the second, which waits too.
+    forgetData();
+    const hostA = new FakeElement('div', page), hostB = new FakeElement('div', page);
+    const statesB: DemoLevels[] = [];
+    let handleB: { destroy(): void } | null = null;
+    const handleA = mountDemo(hostA as unknown as HTMLElement, { control: (_h, st) => { const stop = st.subscribe(() => { handleB?.destroy(); stop(); }); return { destroy() { stop(); } }; } });
+    handleB = mountDemo(hostB as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => statesB.push(x)); return { destroy() {} }; } });
+    page.view(0.9);
+    page.idle();
+    page.run(5000);
+    assert.equal(hostB.children.length, 0, 'the second demo was taken away');
+    assert.deepEqual(statesB, [], 'and nothing of it ran after: no tour, no store change');
+    handleA.destroy();
+    assert.equal(page.idles.size + page.timers.size + page.frames.size, 0, 'nothing left behind');
+    // The pictures the same: destroyed by an earlier waiter, they draw nothing.
+    forgetData();
+    const hosts = { history: new FakeElement('div', page), layers: new FakeElement('div', page), groups: new FakeElement('div', page) };
+    let v: { destroy(): void } | null = null;
+    let drawnAfter = -1;
+    whenData(() => { const svg = byClass(hosts.history, 'pd-vis'); v?.destroy(); drawnAfter = svg.children.length; });
+    v = mountVisuals(hosts as unknown as { history: HTMLElement; layers: HTMLElement; groups: HTMLElement });
+    const svg = byClass(hosts.history, 'pd-vis');
+    page.idle();
+    assert.equal(drawnAfter, 0);
+    assert.equal(svg.children.length, 0, 'the pictures taken away before their turn draw nothing');
+  } finally { page.uninstall(); demoData(); }
+});
+
 /* ==== no network, no app settings ======================================================================================================= */
 
 test('the module asks nothing of the network and touches none of the app\'s settings: its files and what they import', () => {
