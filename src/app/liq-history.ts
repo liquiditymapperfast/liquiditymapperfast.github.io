@@ -106,7 +106,7 @@ export interface HistPart { long: Float64Array; short: Float64Array }
 /** A history row of any family: its snapshot's times and mark, and its parts (free: all positions; groups: the profitable traders; orders: stops, takes). */
 export interface HistRow { asOf: number; createdAt: number; fetchedAt: number; mark: number; parts: (HistPart | null)[] }
 /** The families of files: all positions (free days, paid before the free week), by group, and the stop and take-profit orders. */
-export type LiqFamily = 'free' | 'groups' | 'orders';
+export type LiqFamily = 'free' | 'groups' | 'orders' | 'orderGroups';
 
 /** The history's two addresses beside the levels file's (`…/liquidations.json`), or null when there is no levels service. */
 export function historyUrls(levelsUrl: string): { index: string; day: (day: string) => string } | null {
@@ -230,7 +230,8 @@ export function bandOnEdge(edges: readonly number[], radius: number): number {
 export function familiesFor(view: LiqView): LiqFamily[] {
   const out: LiqFamily[] = [];
   if (view.liq) out.push(view.group !== 'all' ? 'groups' : 'free');
-  if (ordersShown(view)) out.push('orders');
+  // The profitable traders' orders come from their own family, never everyone's under their name.
+  if (ordersShown(view)) out.push(view.group !== 'all' ? 'orderGroups' : 'orders');
   return out;
 }
 
@@ -350,7 +351,7 @@ export class LiqHistory {
     // Files with a pass: every one once the first after a change was answered, else the newest alone (`#paid`).
     const asks: { day: number; go: (probe: boolean) => void }[] = [];
     if (wide) {
-      for (const family of families) if (this.#rollupDue(family, now)) asks.push({ day: Infinity, go: probe => this.#ensureRollup(family, plusAt!.rollup[family === 'orders' ? 'triggers' : family], pass!, now, changed, probe) });
+      for (const family of families) if (this.#rollupDue(family, now)) asks.push({ day: Infinity, go: probe => this.#ensureRollup(family, plusAt!.rollup[family === 'orders' ? 'triggers' : family === 'orderGroups' ? 'triggersGroups' : family], pass!, now, changed, probe) });
       this.#askPaid(asks, now);
       return;
     }
@@ -378,7 +379,7 @@ export class LiqHistory {
     const waitLead = !onSale && pass === null && lead >= firstDay && lead >= refused && !((leadEntry?.at ?? -Infinity) > -Infinity || leadEntry?.missing === true);
     for (const family of families) {
       if (family !== 'free' && (pass === null || !plusAt)) continue;
-      const dayUrl = family === 'free' ? urls.day : family === 'groups' ? plusAt!.groupsDay : plusAt!.triggersDay;
+      const dayUrl = family === 'free' ? urls.day : family === 'groups' ? plusAt!.groupsDay : family === 'orderGroups' ? plusAt!.triggersGroupsDay : plusAt!.triggersDay;
       for (let day = firstDay; day <= lastDay; day += DAY_MS) {
         if (!this.#dayDue(family, day, now)) continue;
         // Any day of a Plus family, and a free family's day before the boundary, goes with a pass when there is one. Without one: a day the
@@ -413,6 +414,22 @@ export class LiqHistory {
     if (this.#paid === 'probing' || now < this.#probeWait) return;
     this.#paid = 'probing';
     asks.reduce((best, a) => a.day > best.day ? a : best).go(true);
+  }
+
+  /**
+   * Whether the view asks for the profitable traders' orders and every day of [t0, t1] asked for them was answered as not there (the server has
+   * none yet): the Depth pane says so rather than that nothing was recorded.
+   */
+  ordersAbsent(view: LiqView, t0: number, t1: number): boolean {
+    if (view.group === 'all' || !ordersShown(view)) return false;
+    let any = false;
+    for (let day = Math.floor(t0 / DAY_MS) * DAY_MS; day < t1; day += DAY_MS) {
+      const held = this.#days.get(`orderGroups|${day}`);
+      if (!held) continue;
+      if (held.rows.length || held.missing !== true) return false;
+      any = true;
+    }
+    return any;
   }
 
   /** Whether a day is to be asked for now: not held, or still being written and due, and not on its way or waiting after a failure. */
@@ -516,7 +533,7 @@ export class LiqHistory {
       const fam = view.group !== 'all' ? 'groups' : 'free';
       for (const row of by[fam] ?? []) { const part = row.parts[0]; if (part) liq.push({ row, part }); }
     }
-    const orders = by.orders ?? [], curve = curveOf(view);
+    const orders = by[view.group !== 'all' ? 'orderGroups' : 'orders'] ?? [], curve = curveOf(view);
     const takes = (): LiqRow[] => orders.flatMap(row => row.parts[1] ? [cumulate(row, row.parts[1], edges, true)] : []);
     if (curve === 'takes') return { rows: takes(), takes: [] };
     let main: { row: HistRow; part: HistPart }[];

@@ -129,7 +129,7 @@ export class LiqPane {
     const s = this.store.state.liqLevels, view = liveView(s), title = kindTitle(curveOf(view));
     if (this.#title.textContent !== title) this.#title.textContent = title;
     this.#title.classList.toggle('locked', heldBack(s, plusOn()));
-    const sub = view.liq && view.group !== 'all' ? `${groupTitle(view.group)} · ${t('BTC · Hyperliquid')}` : t('BTC · Hyperliquid');
+    const sub = view.group !== 'all' ? `${groupTitle(view.group)} · ${t('BTC · Hyperliquid')}` : t('BTC · Hyperliquid');
     if (this.#sub.textContent !== sub) this.#sub.textContent = sub;
   }
 

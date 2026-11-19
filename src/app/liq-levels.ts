@@ -176,6 +176,21 @@ export function parseTriggers(raw: unknown, coin: string): LiqTriggers | null {
 }
 
 /**
+ * The profitable traders' stop and take-profit levels (Plus, `triggers-groups.json` format 1): triggers.json's two parts, made from the same
+ * order file (the same snapshot times), inside `groups.profitable`, counting only that group's orders. Checked as triggers.json is;
+ * anything malformed is refused whole.
+ */
+export function parseTriggerGroups(raw: unknown, coin: string): LiqTriggers | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const d = raw as Record<string, unknown>, groups = d.groups;
+  if (!groups || typeof groups !== 'object' || Array.isArray(groups)) return null;
+  const mine = (groups as Record<string, unknown>).profitable;
+  if (!mine || typeof mine !== 'object' || Array.isArray(mine)) return null;
+  const parts = mine as Record<string, unknown>;
+  return parseTriggers({ ...d, groups: undefined, stops: parts.stops, takes: parts.takes }, coin);
+}
+
+/**
  * Liquidations and stops added bin by bin into one set of levels ("both"), on the liquidations' snapshot, mark and grid (the stops' grid is
  * the same $10). Each side's first part is the liquidations' and its second the stops'; the positions and orders are counted together, the
  * largest is the larger of the two. `ia` and `ib` give each bin's place in `a` and `b` (-1: none there), so what price has taken of each can
@@ -632,8 +647,8 @@ interface PlusPart<T> {
   doneFor: number;
   /** Answers holding an older snapshot than the free file's, for the snapshot asked for. */
   tries: number;
-  /** How the last read went: not asked yet, being asked, answered, failed, or not there yet (a 503). */
-  status: 'idle' | 'loading' | 'ready' | 'failed' | 'waiting';
+  /** How the last read went: not asked yet, being asked, answered, failed, not there yet (a 503), or none on the server (`absent`). */
+  status: 'idle' | 'loading' | 'ready' | 'failed' | 'waiting' | 'absent';
 }
 const plusPart = <T>(): PlusPart<T> => ({ held: null, pending: false, nextAt: 0, doneFor: -1, tries: 0, status: 'idle' });
 /** A Plus file holding an older snapshot than the free file's is asked again this soon, at most this many times a snapshot. */
@@ -676,6 +691,8 @@ export class LiqLevelsSource {
   #free: Layer | null = null;
   #groups: PlusPart<{ data: LiqGroups; profitable: Layer }> = plusPart();
   #triggers: PlusPart<{ data: LiqTriggers; stops: Layer; takes: Layer }> = plusPart();
+  /** The profitable traders' own stops and take profits (`triggers-groups.json`): the only orders drawn under their name. */
+  #orderGroups: PlusPart<{ data: LiqTriggers; stops: Layer; takes: Layer }> = plusPart();
   #both: SumLayer | null = null;
   #target: HistoryTarget | null = null;
   /** Which part of the view the state is about: the liquidations' or the orders' (`#settle`). */
@@ -696,15 +713,23 @@ export class LiqLevelsSource {
     const g = this.#groups.held;
     return g ? g.profitable : null;
   }
+  /** The stop and take-profit orders of the view's traders: everyone's, or the profitable traders' own (never everyone's under their name). */
+  #orders(): { data: LiqTriggers; stops: Layer; takes: Layer } | null { return this.#view.group === 'all' ? this.#triggers.held : this.#orderGroups.held; }
+  /** Whether the view asks for the profitable traders' orders and the server has none (404, or 503 for this snapshot): nothing is drawn for them. */
+  ordersAbsent(): boolean {
+    const v = this.#view, og = this.#orderGroups;
+    return ordersShown(v) && v.group !== 'all' && !og.held && og.status === 'absent';
+  }
   /** What the view draws as its levels, its curve's (the take profits beside it apart). */
   #main(): Layer | SumLayer | null {
-    const curve = curveOf(this.#view);
-    if (curve === 'stops') return this.#triggers.held?.stops ?? null;
-    if (curve === 'takes') return this.#triggers.held?.takes ?? null;
+    const curve = curveOf(this.#view), orders = this.#orders();
+    if (curve === 'stops') return orders?.stops ?? null;
+    if (curve === 'takes') return orders?.takes ?? null;
     const liq = this.#liqLayer();
     if (curve === 'liq' || !liq) return curve === 'liq' ? liq : null;
-    const stops = this.#triggers.held?.stops;
-    if (!stops) return null;
+    const stops = orders?.stops;
+    // The profitable traders' stops not on the server: their liquidations alone are drawn, and the missing part is said (`ordersAbsent`).
+    if (!stops) return this.ordersAbsent() ? liq : null;
     // Added up only on one grid (both files bin on the coin's $10 today): another would put the stops in the wrong rows.
     if (stops.levels.step !== liq.levels.step) return null;
     if (this.#both?.a !== liq || this.#both.b !== stops) this.#both = new SumLayer(liq, stops);
@@ -714,15 +739,16 @@ export class LiqLevelsSource {
   /** The levels the view draws, or null. */
   get levels(): LiqLevels | null { return this.#main()?.levels ?? null; }
   /** The take profits beside the curve (sides swapped: see `LevelsKind`) while the view shows them so and they are held, else null. */
-  get takes(): LiqLevels | null { return takesBeside(this.#view) ? this.#triggers.held?.takes.levels ?? null : null; }
+  get takes(): LiqLevels | null { return takesBeside(this.#view) ? this.#orders()?.takes.levels ?? null : null; }
   /** Where the take profits beside the curve stand: drawn, loading, not read, not there yet (`missing`), or off (none beside it). */
   get takesState(): LiqState {
     if (!takesBeside(this.#view)) return 'off';
-    return this.#triggers.held ? 'ready' : this.#partState(this.#triggers);
+    const part = this.#view.group === 'all' ? this.#triggers : this.#orderGroups;
+    return part.held ? 'ready' : this.#partState(part);
   }
   /** When the positions of the liquidations drawn stood, and the stop and take-profit orders (null: not part of the view or not held). */
   asOfs(): { liq: number | null; orders: number | null } {
-    const v = this.#view, orders = ordersShown(v) ? this.#triggers.held?.data.asOf ?? null : null;
+    const v = this.#view, orders = ordersShown(v) ? this.#orders()?.data.asOf ?? null : null;
     return { liq: v.liq ? this.#liqLayer()?.levels.asOf ?? null : null, orders };
   }
   /**
@@ -733,11 +759,12 @@ export class LiqLevelsSource {
     const { liq, orders } = this.asOfs();
     return orders !== null && (this.now() - orders > STALE_MS || (liq !== null && liq - orders > ORDERS_BEHIND_MS));
   }
-  /** Why nothing of the view is drawn where the state is `missing`: no groups or stops there yet. */
-  missing(): 'groups' | 'orders' | null {
+  /** Why nothing of the view is drawn where the state is `missing`: no groups or orders there yet, or none of the profitable traders' orders on the server. */
+  missing(): 'groups' | 'orders' | 'profitable-orders' | null {
     if (this.state !== 'missing') return null;
     const v = this.#view;
-    return v.liq && v.group !== 'all' && !this.#groups.held ? 'groups' : 'orders';
+    if (v.liq && v.group !== 'all' && !this.#groups.held) return 'groups';
+    return this.ordersAbsent() ? 'profitable-orders' : 'orders';
   }
 
   /** Which part of the view the state is about (a view of both: the first part that is not ready). */
@@ -751,13 +778,13 @@ export class LiqLevelsSource {
     if (coin.coin !== BTC.coin) { this.state = 'other-coin'; return; }
     if (url !== this.#url) {
       this.#url = url; this.#free = null; this.#both = null; this.#nextAt = 0; this.#created = 0; this.#lead = 0; this.#offset = null; this.#askedAt = -Infinity; this.#failed = false; this.version++;
-      this.#groups = plusPart(); this.#triggers = plusPart();
+      this.#groups = plusPart(); this.#triggers = plusPart(); this.#orderGroups = plusPart();
     }
     const now = this.now();
     // The page's clock went back since it was last read: what the old clock placed and planned is no good (`clockSetBack`).
     if (clockSetBack(this.#lastNow, now)) {
       this.#created = now; this.#lead = MAX_LEAD_MS; this.#offset = null; this.#nextAt = now; this.#askedAt = -Infinity; this.#steps++;
-      for (const part of [this.#groups, this.#triggers]) { part.nextAt = now; part.doneFor = -1; part.tries = 0; }
+      for (const part of [this.#groups, this.#triggers, this.#orderGroups]) { part.nextAt = now; part.doneFor = -1; part.tries = 0; }
     }
     this.#lastNow = now;
     // Asked when the next snapshot can be there (`liq-schedule.ts`), and not while the page is out of sight: it asks as it shows again.
@@ -789,7 +816,7 @@ export class LiqLevelsSource {
     this.#askPlus(onChange);
     this.#settle();
     // The candles from the earliest snapshot drawn (the stops' is often older than the liquidations').
-    const from = [this.#main(), takesBeside(this.#view) ? this.#triggers.held?.takes ?? null : null, curveOf(this.#view) === 'both' ? this.#triggers.held?.stops ?? null : null]
+    const from = [this.#main(), takesBeside(this.#view) ? this.#orders()?.takes ?? null : null, curveOf(this.#view) === 'both' ? this.#orders()?.stops ?? null : null]
       .reduce((m, layer) => layer ? Math.min(m, layer instanceof SumLayer ? Math.min(layer.a.levels.asOf, layer.b.levels.asOf) : layer.levels.asOf) : m, Infinity);
     if (Number.isFinite(from)) {
       const id = instrumentIdFor('hyperliquid', BTC), listing = BTC.markets.hyperliquid;
@@ -807,10 +834,11 @@ export class LiqLevelsSource {
   #askPlus(onChange: () => void): void {
     const v = this.#view;
     this.#askPart(this.#groups, v.liq && v.group !== 'all', 'groups', onChange);
-    this.#askPart(this.#triggers, ordersShown(v), 'triggers', onChange);
+    this.#askPart(this.#triggers, ordersShown(v) && v.group === 'all', 'triggers', onChange);
+    this.#askPart(this.#orderGroups, ordersShown(v) && v.group !== 'all', 'triggersGroups', onChange);
   }
 
-  #askPart(part: PlusPart<unknown>, want: boolean, which: 'groups' | 'triggers', onChange: () => void): void {
+  #askPart(part: PlusPart<unknown>, want: boolean, which: 'groups' | 'triggers' | 'triggersGroups', onChange: () => void): void {
     const urls = plusUrls(this.#url), free = this.#free?.levels, now = this.now();
     if (!want || !urls || !free || part.pending || now < part.nextAt || part.doneFor === free.createdAt || pageHidden()) return;
     const pass = this.access.pass(now);
@@ -819,11 +847,12 @@ export class LiqLevelsSource {
     if (!part.held) part.status = 'loading';
     const asked = this.#url, steps = this.#steps, target = free.createdAt;
     const done = (): void => { this.#settle(); onChange(); };
-    void this.read(which === 'groups' ? urls.groups : urls.triggers, pass).then(answer => {
+    void this.read(which === 'groups' ? urls.groups : which === 'triggers' ? urls.triggers : urls.triggersGroups, pass).then(answer => {
       if (asked !== this.#url || steps !== this.#steps) return;
       const at = this.now();
       if (answer.status === 200) {
-        const took = which === 'groups' ? this.#takeGroups(parseLiqGroups(answer.body, BTC.coin)) : this.#takeTriggers(parseTriggers(answer.body, BTC.coin));
+        const took = which === 'groups' ? this.#takeGroups(parseLiqGroups(answer.body, BTC.coin))
+          : which === 'triggers' ? this.#takeTriggers(this.#triggers, parseTriggers(answer.body, BTC.coin)) : this.#takeTriggers(this.#orderGroups, parseTriggerGroups(answer.body, BTC.coin));
         if (took === null) { part.status = 'failed'; part.nextAt = at + RETRY_MS; done(); return; }
         part.status = 'ready';
         // The snapshot asked for, or a newer one: settled until the free file brings another. An older one (the order file not read yet, an
@@ -834,6 +863,11 @@ export class LiqLevelsSource {
         this.access.refused(pass);
         if (!part.held) part.status = 'failed';
         part.nextAt = at + RETRY_MS;
+      } else if (which === 'triggersGroups' && (answer.status === 404 || answer.status === 503)) {
+        // The profitable traders' orders: none on the server (404: not deployed yet), or none for this snapshot (503). Said as not available
+        // yet, nothing drawn for them; asked again later (what the server says, else five minutes).
+        if (!part.held) part.status = 'absent';
+        part.nextAt = at + (answer.retryAfter !== undefined ? Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, answer.retryAfter * 1_000)) : 5 * MINUTE);
       } else if (answer.status === 503) {
         // Not there yet (no groups for this snapshot, no order file read yet): asked again when the server says.
         if (!part.held) part.status = 'waiting';
@@ -860,12 +894,12 @@ export class LiqLevelsSource {
     }
     return g.createdAt;
   }
-  /** Keeps an orders file when it is newer than the one held; returns its snapshot's `createdAt`, or null for a malformed file. */
-  #takeTriggers(o: LiqTriggers | null): number | null {
+  /** Keeps an orders file (everyone's, or the profitable traders') when it is newer than the one held; returns its snapshot's `createdAt`, or null for a malformed file. */
+  #takeTriggers(part: PlusPart<{ data: LiqTriggers; stops: Layer; takes: Layer }>, o: LiqTriggers | null): number | null {
     if (!o) return null;
-    const held = this.#triggers.held?.data;
+    const held = part.held?.data;
     if (!held || o.asOf > held.asOf || (o.asOf === held.asOf && o.fetchedAt > held.fetchedAt)) {
-      this.#triggers.held = { data: o, stops: new Layer(o.stops), takes: new Layer(o.takes) }; this.version++;
+      part.held = { data: o, stops: new Layer(o.stops), takes: new Layer(o.takes) }; this.version++;
     }
     return o.createdAt;
   }
@@ -878,7 +912,7 @@ export class LiqLevelsSource {
 
   /** Where a Plus part not held stands. */
   #partState(part: PlusPart<unknown>): LiqState {
-    return part.status === 'failed' ? 'unavailable' : part.status === 'waiting' ? 'missing' : 'loading';
+    return part.status === 'failed' ? 'unavailable' : part.status === 'waiting' || part.status === 'absent' ? 'missing' : 'loading';
   }
 
   /**
@@ -899,15 +933,18 @@ export class LiqLevelsSource {
       const liq = this.#liqLayer();
       return s === 'ready' && liq && this.now() - liq.levels.asOf > STALE_MS ? 'stale' : s;
     };
-    const stops = (): LiqState => this.#triggers.held ? 'ready' : freeState !== 'ready' ? freeState : this.#partState(this.#triggers);
+    // The orders of the view's traders: everyone's file, or the profitable traders' own (none on the server: missing, `ordersAbsent`).
+    const ordersPart = v.group === 'all' ? this.#triggers : this.#orderGroups;
+    const stops = (): LiqState => ordersPart.held ? 'ready' : freeState !== 'ready' ? freeState : this.#partState(ordersPart);
     // Both on two grids cannot be added up (`#main`): said as orders that could not be read.
-    const grids = (): boolean => { const liq = this.#liqLayer(), o = this.#triggers.held; return !liq || !o || liq.levels.step === o.stops.levels.step; };
+    const grids = (): boolean => { const liq = this.#liqLayer(), o = ordersPart.held; return !liq || !o || liq.levels.step === o.stops.levels.step; };
     const curve = curveOf(v);
     if (curve === 'liq') { this.state = fresh(liqState()); this.#blame = 'liq'; return; }
     // Stops or take profits alone: the order file's state.
     if (curve === 'stops' || curve === 'takes') { this.state = stops(); this.#blame = 'orders'; return; }
     // Both: the first part not ready says why nothing is drawn.
-    const a = fresh(liqState()), b = stops();
+    // The profitable traders' stops not on the server: their liquidations alone stand for the view (said, `ordersAbsent`).
+    const a = fresh(liqState()), b = this.ordersAbsent() ? 'ready' : stops();
     this.state = a !== 'ready' ? a : b !== 'ready' ? b : grids() ? 'ready' : 'unavailable'; this.#blame = a !== 'ready' ? 'liq' : 'orders';
   }
 
@@ -917,8 +954,8 @@ export class LiqLevelsSource {
    */
   observe(price: number): void {
     if (!(price > 0) || !Number.isFinite(price)) return;
-    const now = this.now(), g = this.#groups.held, o = this.#triggers.held;
-    for (const layer of [this.#free, g?.profitable, o?.stops, o?.takes]) layer?.observe(price, now);
+    const now = this.now(), g = this.#groups.held, o = this.#triggers.held, og = this.#orderGroups.held;
+    for (const layer of [this.#free, g?.profitable, o?.stops, o?.takes, og?.stops, og?.takes]) layer?.observe(price, now);
   }
 
   /** Hyperliquid's price as last read (the newest candle's close), or the snapshot's mark before any candle came. */
@@ -937,7 +974,7 @@ export class LiqLevelsSource {
   /** Changes whenever what is drawn from the levels can change, for the pane's caches. */
   key(): string { const main = this.#main(); return main ? `${viewKey(this.#view)}|${main.key(this.candles)}` : ''; }
   /** The same for the take profits. */
-  takesKey(): string { const t = takesBeside(this.#view) ? this.#triggers.held?.takes : null; return t ? t.key(this.candles) : ''; }
+  takesKey(): string { const t = takesBeside(this.#view) ? this.#orders()?.takes : null; return t ? t.key(this.candles) : ''; }
 
   /** How far price has traded through each bin, worked out again only when the levels, the candles or the prices seen changed. */
   taken(): { long: Taken; short: Taken } | null { return this.#main()?.derive(this.candles).taken ?? null; }
@@ -949,8 +986,8 @@ export class LiqLevelsSource {
     return main instanceof SumLayer ? { liq: main.a.derive(this.candles).standing, stops: main.b.derive(this.candles).standing } : null;
   }
   /** The same two for the take profits. */
-  takesTaken(): { long: Taken; short: Taken } | null { const t = takesBeside(this.#view) ? this.#triggers.held?.takes : null; return t ? t.derive(this.candles).taken : null; }
-  takesStanding(): LiqStanding | null { const t = takesBeside(this.#view) ? this.#triggers.held?.takes : null; return t ? t.derive(this.candles).standing : null; }
+  takesTaken(): { long: Taken; short: Taken } | null { const t = takesBeside(this.#view) ? this.#orders()?.takes : null; return t ? t.derive(this.candles).taken : null; }
+  takesStanding(): LiqStanding | null { const t = takesBeside(this.#view) ? this.#orders()?.takes : null; return t ? t.derive(this.candles).standing : null; }
 }
 
 /** One side of what the seam between the liquidation column and the profile column weighs: the book against the liquidations. */

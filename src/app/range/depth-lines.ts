@@ -252,7 +252,7 @@ export class DepthRangeSummary {
     const s = depthLiqStretch(held, sel, now), c = held.coins, coin = held.coin, kind = held.view ? curveOf(held.view) : 'liq', group = held.view?.group ?? 'all';
     // Which levels are summed up, and whose: the pane shows what the page's one choice says (`liq-view.ts`).
     const what = kind === 'takes' ? t('Tracked take-profit orders') : kind === 'stops' ? t('Tracked stop orders') : kind === 'both' ? t('Tracked liquidations and stops') : t('Tracked liquidation levels');
-    lines.push(note('dp-status', [what, ...((kind === 'liq' || kind === 'both') && group !== 'all' ? [groupTitle(group)] : []), tn(s.rows.length, '{n} snapshot in force', '{n} snapshots in force')].join(' · ')));
+    lines.push(note('dp-status', [what, ...(group !== 'all' ? [groupTitle(group)] : []), tn(s.rows.length, '{n} snapshot in force', '{n} snapshots in force')].join(' · ')));
     if (held.omitted.length) {
       const bands = held.omitted.map(band).join(', ');
       lines.push(note('dp-omitted', held.wide ? t('Not one of the 4-hour history\'s bands, left out: {bands}.', { bands }) : t('Beyond the liquidation history\'s reach, left out: {bands}.', { bands })));

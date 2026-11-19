@@ -3043,7 +3043,6 @@
  "Stop levels are not ready yet.": "손절 레벨이 아직 준비되지 않았습니다.",
  "Stop levels are loading.": "손절 레벨을 불러오는 중입니다.",
  "Hyperliquid stop orders at {time} · Powered by HyperTracker": "Hyperliquid 손절 주문 {time} 기준 · Powered by HyperTracker",
- "Profitable traders' liquidations and all stops at {time} · Powered by HyperTracker": "수익을 내는 트레이더의 청산과 모든 손절 {time} 기준 · Powered by HyperTracker",
  "Hyperliquid liquidations and stops at {time} · Powered by HyperTracker": "Hyperliquid 청산과 손절 {time} 기준 · Powered by HyperTracker",
  "Profitable traders' liquidation levels at {time} · Powered by HyperTracker": "수익을 내는 트레이더의 청산 레벨 {time} 기준 · Powered by HyperTracker",
  "stops and take profits as of {time}": "{time} 기준 손절과 익절",
@@ -3206,8 +3205,7 @@
  "shorts": "숏",
  "× in the table is how many times the larger side is the smaller, in its colour: 2.50× is two and a half times as much on that side; ∞, the other side has none.": "표의 ×는 큰 쪽이 작은 쪽의 몇 배인지를 그쪽 색으로 보여 줍니다. 2.50×는 그쪽이 2.5배라는 뜻이고, ∞는 반대쪽이 0이라는 뜻입니다.",
  "While the table is drawn it takes the popup's place; switch Table off to see the popup.": "표가 그려져 있는 동안에는 표가 팝업을 대신합니다. 팝업을 보려면 표를 끄세요.",
- "One kind stays on. To hide the levels, use Liq levels in the top bar.": "최소 한 종류는 켜져 있어야 합니다. 레벨을 숨기려면 위쪽 막대의 ‘청산 레벨’을 사용하세요.",
- "Stops and take profits have no trader groups: the choice is for liquidations.": "손절과 익절에는 트레이더 그룹이 없습니다. 이 선택은 청산에 적용됩니다.",
+ "One kind stays on. To hide the levels, use Liq levels in the top bar.": "한 종류는 켜진 채로 남습니다. 레벨을 숨기려면 위쪽 막대의 ‘청산 레벨’을 사용하세요.",
  "How levels work": "레벨의 작동 방식",
  "{name}, Plus required": "{name}, Plus 필요",
  "Take-profit levels": "익절 레벨",
@@ -3227,5 +3225,9 @@
  "Tracked take-profit orders": "추적 중인 익절 주문",
  "No take-profit levels snapshot was in force in this selection.": "이 선택에서 적용된 익절 레벨 스냅샷이 없습니다.",
  "Take-profit orders resting at each snapshot, not orders that filled.": "각 스냅샷에 걸려 있던 익절 주문이며, 체결된 주문이 아닙니다.",
- "Profitable traders: the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit.": "수익을 내는 트레이더: HyperTracker가 수익을 내고 있다고 보는 지갑, 즉 전체 기간 무기한 선물 수익이 플러스인 4개 코호트입니다."
+ "Profitable traders: the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit.": "수익을 내는 트레이더: HyperTracker가 수익을 내고 있다고 보는 지갑, 즉 전체 기간 무기한 선물 수익이 플러스인 4개 코호트입니다.",
+ "Profitable traders' stops and take profits are not available yet.": "수익을 내는 트레이더의 손절과 익절은 아직 사용할 수 없습니다.",
+ "Profitable traders' take-profit orders at {time} · Powered by HyperTracker": "수익을 내는 트레이더의 익절 주문 {time} 기준 · Powered by HyperTracker",
+ "Profitable traders' stop orders at {time} · Powered by HyperTracker": "수익을 내는 트레이더의 손절 주문 {time} 기준 · Powered by HyperTracker",
+ "Profitable traders' liquidations and stops at {time} · Powered by HyperTracker": "수익을 내는 트레이더의 청산과 손절 {time} 기준 · Powered by HyperTracker"
 }

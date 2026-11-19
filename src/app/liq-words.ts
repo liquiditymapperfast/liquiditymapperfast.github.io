@@ -60,6 +60,12 @@ export function splitText(parts: { liq: number; stops: number }, shown = parts.l
   return t('Total {total} = liquidations {liq} + stops {stops}', { total: `$${total}`, liq: `$${liq}`, stops: `$${stops}` });
 }
 
+/**
+ * Said where the profitable traders' stops or take profits are part of the view but their file is not there (the server has none yet, or not
+ * for this snapshot): nothing is drawn for them, never everyone's orders under their name.
+ */
+export const ordersAbsent = (): string => t('Profitable traders\' stops and take profits are not available yet.');
+
 /** Said under the liquidation column's button (which names what its curve adds up) while take profits are shown. */
 export const takesLeftOut = (): string => t('Take profits not included');
 
@@ -68,8 +74,8 @@ export const takesLeftOut = (): string => t('Take profits not included');
  * room for it (`groupOnButton` false: at 11 px the column's 128 px hold "Liquidations" but not "Liquidations · Profitable"), then that the take
  * profits are not in the curve while they show.
  */
-export function columnNotes(view: LiqView, groupOnButton: boolean, takesShown: boolean): string[] {
-  return [...(view.liq && view.group !== 'all' && !groupOnButton ? [groupTitle(view.group)] : []), ...(takesShown ? [takesLeftOut()] : [])];
+export function columnNotes(view: LiqView, groupOnButton: boolean, takesShown: boolean, absent = false): string[] {
+  return [...(view.group !== 'all' && !groupOnButton ? [groupTitle(view.group)] : []), ...(takesShown ? [takesLeftOut()] : []), ...(absent ? [ordersAbsent()] : [])];
 }
 /** What the curve adds up and leaves out, for a newcomer: in the levels control, the help and the column's tip while take profits show. */
 export const curveSentence = (): string => t('The curve totals the liquidations and stops that are on. Take profits are dashed bars beside it, or, on alone, a dashed curve of their own.');
@@ -88,7 +94,7 @@ export function liqWhy(src: Pick<LiqLevelsSource, 'state' | 'view' | 'levels' | 
     case 'stale': return newest !== null ? t('Liquidation levels are out of date: the newest are from {time}.', { time: clock(newest) }) : t('Liquidation levels are loading.');
     case 'missing': {
       const why = src.missing();
-      return why === 'groups' ? t('No trader groups for this snapshot yet.') : takes ? t('Take-profit levels are not ready yet.') : t('Stop levels are not ready yet.');
+      return why === 'groups' ? t('No trader groups for this snapshot yet.') : why === 'profitable-orders' ? ordersAbsent() : takes ? t('Take-profit levels are not ready yet.') : t('Stop levels are not ready yet.');
     }
     default: return takes ? t('Take-profit levels are loading.') : orders ? t('Stop levels are loading.') : t('Liquidation levels are loading.');
   }
@@ -98,20 +104,23 @@ export function liqWhy(src: Pick<LiqLevelsSource, 'state' | 'view' | 'levels' | 
  * The line under the map's legend (and the Liq tab's foot) while levels are drawn: what they are, whose, when the positions or orders
  * stood, the take profits' state (beside the curve), and whose data it is.
  */
-export function liqNote(src: Pick<LiqLevelsSource, 'view' | 'takesState' | 'asOfs' | 'ordersOld'>, view: LiqView, at: number): string {
+export function liqNote(src: Pick<LiqLevelsSource, 'view' | 'takesState' | 'asOfs' | 'ordersOld' | 'ordersAbsent'>, view: LiqView, at: number): string {
   const time = clock(at), group = view.group, curve = curveOf(view), beside = takesBeside(view);
-  const head = curve === 'takes' ? t('Hyperliquid take-profit orders at {time} · Powered by HyperTracker', { time })
-    : curve === 'stops' ? t('Hyperliquid stop orders at {time} · Powered by HyperTracker', { time })
+  const mine = group === 'profitable';
+  const head = curve === 'takes' ? mine ? t('Profitable traders\' take-profit orders at {time} · Powered by HyperTracker', { time }) : t('Hyperliquid take-profit orders at {time} · Powered by HyperTracker', { time })
+    : curve === 'stops' ? mine ? t('Profitable traders\' stop orders at {time} · Powered by HyperTracker', { time }) : t('Hyperliquid stop orders at {time} · Powered by HyperTracker', { time })
     : curve === 'both'
-      ? group === 'profitable' ? t('Profitable traders\' liquidations and all stops at {time} · Powered by HyperTracker', { time })
+      ? mine ? t('Profitable traders\' liquidations and stops at {time} · Powered by HyperTracker', { time })
         : t('Hyperliquid liquidations and stops at {time} · Powered by HyperTracker', { time })
       : group === 'profitable' ? t('Profitable traders\' liquidation levels at {time} · Powered by HyperTracker', { time })
         : t('Hyperliquid liquidation levels at {time} · Powered by HyperTracker', { time });
-  const parts = [head], orders = src.asOfs().orders;
+  const parts = [head], orders = src.asOfs().orders, absent = src.ordersAbsent();
+  // The profitable traders' orders the view asks for are not there: said, and nothing drawn for them.
+  if (absent) parts.push(ordersAbsent());
   // The orders come from the newest snapshot an order file was read with: said when that is well behind the liquidations (or old).
   const old = orders !== null && view.liq && src.ordersOld();
   if (old && curve === 'both') parts.push(beside ? t('stops and take profits as of {time}', { time: clock(orders) }) : t('stops as of {time}', { time: clock(orders) }));
-  if (beside) {
+  if (beside && !absent) {
     const state = src.takesState;
     // Both with old orders has said when the take profits are from already ("stops and take profits as of").
     if (state === 'ready') { if (!(old && curve === 'both')) parts.push(old && curve === 'liq' ? t('take profits as of {time}', { time: clock(orders) }) : t('with take profits')); }

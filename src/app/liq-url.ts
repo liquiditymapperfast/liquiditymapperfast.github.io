@@ -64,14 +64,18 @@ export function liqLevelsUrl(search: string = typeof location === 'undefined' ? 
  * The Plus files beside the levels file (`…/v1/btc/liquidations.json` → `…/v1/plus/btc/…`), so a local stand-in (`?levels=`) answers for
  * them too; null when the levels file's address is not of that shape.
  */
-export function plusUrls(levelsUrl: string): { groups: string; triggers: string; groupsDay: (day: string) => string; triggersDay: (day: string) => string; rollup: { free: string; groups: string; triggers: string } } | null {
+export function plusUrls(levelsUrl: string): {
+  groups: string; triggers: string; triggersGroups: string; groupsDay: (day: string) => string; triggersDay: (day: string) => string; triggersGroupsDay: (day: string) => string;
+  rollup: { free: string; groups: string; triggers: string; triggersGroups: string };
+} | null {
   const m = /^(.*)\/v1\/([a-z0-9]+)\/liquidations\.json$/.exec(levelsUrl);
   if (!m) return null;
   const base = `${m[1]}/v1/plus/${m[2]}`;
   return {
-    groups: `${base}/liquidations-groups.json`, triggers: `${base}/triggers.json`,
+    groups: `${base}/liquidations-groups.json`, triggers: `${base}/triggers.json`, triggersGroups: `${base}/triggers-groups.json`,
     groupsDay: day => `${base}/liquidation-history-groups/${day}.json`, triggersDay: day => `${base}/trigger-history/${day}.json`,
-    rollup: { free: `${base}/liquidation-history-4h.json`, groups: `${base}/liquidation-history-groups-4h.json`, triggers: `${base}/trigger-history-4h.json` },
+    triggersGroupsDay: day => `${base}/trigger-history-groups/${day}.json`,
+    rollup: { free: `${base}/liquidation-history-4h.json`, groups: `${base}/liquidation-history-groups-4h.json`, triggers: `${base}/trigger-history-4h.json`, triggersGroups: `${base}/trigger-history-groups-4h.json` },
   };
 }
 

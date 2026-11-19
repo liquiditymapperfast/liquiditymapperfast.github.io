@@ -26,6 +26,7 @@ import { LiqHistory, bandIndex, bandOnEdge, type LiqRow } from '../liq-history.t
 import { TAKE_DASH } from '../liq-levels.ts';
 import { curveOf, groupTitle, kindName, levelsDescription, liveView, viewKey, type LiqView } from '../liq-view.ts';
 import { toggleLevels } from '../levels-control.ts';
+import { ordersAbsent } from '../liq-words.ts';
 import { FREE_DAYS, freeFrom, plusOnSale } from '../plus/config.ts';
 import { plus } from '../plus/pass.ts';
 import { togglePlus } from '../plus/panel.ts';
@@ -740,6 +741,8 @@ export class DepthPane extends TimePane {
     if (liq && lastX < 0) {
       if (closed) { say(t('This stretch of the liquidation levels\' history is part of Plus.')); this.#lockAt = closedX; return; }
       const kind = liqHeld ? curveOf(liqHeld.view) : 'liq';
+      // The profitable traders' orders the server does not have yet: said so, never everyone's drawn under their name.
+      if (liqHeld && this.#history.ordersAbsent(liqHeld.view, v.t0, v.t1)) { say(ordersAbsent()); return; }
       say(kind === 'takes' ? t('No take-profit levels recorded for this stretch of time.') : kind === 'stops' ? t('No stop levels recorded for this stretch of time.') : kind === 'both' ? t('No snapshot with both liquidations and stops in this stretch of time.')
         : t('No liquidation levels recorded for this stretch of time.'));
       return;
@@ -748,7 +751,7 @@ export class DepthPane extends TimePane {
     if (liq) {
       const b = bid[at(lastX, top)]!, a = ask[at(lastX, top)]!, row = rowOf(lastX), view = liqHeld!.view, r = sideRatio(b, a);
       // Whose levels (the Source names which), and the take profits beside them: the sells that close longs above, the buys that close shorts below.
-      const whose = view.liq && view.group !== 'all' ? `${groupTitle(view.group)} · ` : '';
+      const whose = view.group !== 'all' ? `${groupTitle(view.group)} · ` : '';
       // Take profits on alone are resting orders: the buys below the price are bids, the sells above asks.
       const alone = curveOf(view) === 'takes', names = alone ? [t('bids'), t('asks')] : [t('longs'), t('shorts')];
       const larger = r?.lead ? ` <b class="${r.lead > 0 ? 'bid' : 'ask'}">${r.lead > 0 ? names[0] : names[1]} ${ratioFigure(r.ratio)}</b>` : '';

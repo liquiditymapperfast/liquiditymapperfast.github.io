@@ -24,8 +24,6 @@ const POP_W = 312, EDGE = 8;
 
 /** Said by the one kind still on, whose switch is disabled. */
 export const lastOnTip = (): string => t('One kind stays on. To hide the levels, use Liq levels in the top bar.');
-/** Why Traders do nothing while liquidations are off. */
-export const noGroupsTip = (): string => t('Stops and take profits have no trader groups: the choice is for liquidations.');
 /** Whether a kind is part of Plus: everything but the liquidations. */
 export const paidPart = (part: LiqPart): boolean => part !== 'liq';
 
@@ -41,10 +39,9 @@ export function pressPart(s: LiqChoice, part: LiqPart, member: boolean): { chang
   next[part] = on; change[part] = on;
   return next.liq || next.stops || next.takes ? { change } : 'last';
 }
-/** What pressing a group does: a change, the Plus panel (the profitable traders without Plus), or nothing (no liquidations on: no groups). */
-export function pressGroup(s: LiqChoice, group: LiqGroup, member: boolean): { change: Partial<LiqLevelSettings> } | 'plus' | 'none' {
-  if (!member && group !== 'all') return 'plus';
-  return shownChoice(s, member).liq ? { change: { group } } : 'none';
+/** What pressing a group does: a change (the group is every kind's), or the Plus panel (the profitable traders without Plus). */
+export function pressGroup(_s: LiqChoice, group: LiqGroup, member: boolean): { change: Partial<LiqLevelSettings> } | 'plus' {
+  return !member && group !== 'all' ? 'plus' : { change: { group } };
 }
 
 /**
@@ -129,7 +126,6 @@ export function createLevelsControl(store: Store, o: LevelsOptions): LevelsContr
     r.addEventListener('click', () => {
       const p = pressGroup(store.state.liqLevels, group, plusOn());
       if (p === 'plus') o.locked(r);
-      else if (p === 'none') say(noGroupsTip());
       else set(p.change);
     });
     // Arrow keys move the choice between the two (a radio group: one tab stop), where both can be chosen.
@@ -171,12 +167,9 @@ export function createLevelsControl(store: Store, o: LevelsOptions): LevelsContr
       if (last) b.setAttribute('aria-disabled', 'true'); else b.removeAttribute('aria-disabled');
       setTip(b, last ? lastOnTip() : null);
     }
-    // Locked, the two segments are plain buttons (the free one pressed, the paid one an upgrade); without liquidations they do nothing; else a
-    // radio group with one tab stop.
-    const groups = s.liq, radio = member && groups;
+    // Locked, the two segments are plain buttons (the free one pressed, the paid one an upgrade); else a radio group with one tab stop.
+    const radio = member;
     seg.setAttribute('role', radio ? 'radiogroup' : 'group');
-    seg.classList.toggle('off', !groups);
-    setTip(seg, groups ? null : noGroupsTip());
     for (const [group, r] of radios) {
       const chosen = s.group === group, locked = !member && group !== 'all', lock = r.querySelector<HTMLElement>('.lv-lock');
       if (lock) lock.hidden = !locked;
@@ -184,9 +177,8 @@ export function createLevelsControl(store: Store, o: LevelsOptions): LevelsContr
       if (radio) { r.setAttribute('role', 'radio'); r.setAttribute('aria-checked', String(chosen)); r.removeAttribute('aria-pressed'); r.tabIndex = chosen ? 0 : -1; }
       else { r.removeAttribute('role'); r.removeAttribute('aria-checked'); r.setAttribute('aria-pressed', String(chosen)); r.tabIndex = 0; }
       if (locked) r.setAttribute('aria-label', t('{name}, Plus required', { name: groupName(group) })); else r.removeAttribute('aria-label');
-      if (groups) r.removeAttribute('aria-disabled'); else r.setAttribute('aria-disabled', 'true');
     }
-    const text = levelsSummary(member ? { ...s, group: s.liq ? s.group : 'all' } : FREE_VIEW);
+    const text = levelsSummary(member ? s : FREE_VIEW);
     if (sum.textContent !== text) sum.textContent = text;
     kept.hidden = !heldBack(saved, member);
   };

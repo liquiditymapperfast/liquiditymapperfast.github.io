@@ -1,8 +1,8 @@
 /**
  * What the levels show (Plus, 2026-11-17; three switches since 2026-11-19): one choice for the whole page, kept in `LiqLevelSettings`
  * (`liq`, `stops`, `takes`, at least one on, and `group`). The free view is liquidations of all traders; every other choice is Plus.
- * Without Plus the page draws the free view and keeps the choice, which comes back with Plus (`effectiveView`). The stop and take-profit
- * files have no trader groups, so the group is for liquidations alone.
+ * Without Plus the page draws the free view and keeps the choice, which comes back with Plus (`effectiveView`). The group is every kind's:
+ * the profitable traders' liquidations, stops and take profits each come from files of their own, never everyone's under their name.
  */
 import { t } from './i18n.ts';
 import { plus } from './plus/pass.ts';
@@ -25,22 +25,20 @@ export const takesBeside = (v: Pick<LiqView, 'liq' | 'stops' | 'takes'>): boolea
 /** Whether the view needs the stop and take-profit file: stops or take profits are on. */
 export const ordersShown = (v: Pick<LiqView, 'stops' | 'takes'>): boolean => v.stops || v.takes;
 
-/** Whether a choice is the free view (anything else is Plus). Without liquidations the group counts for nothing. */
+/** Whether a choice is the free view (anything else is Plus). */
 export const isFreeChoice = (v: LiqChoice): boolean => v.liq && !v.stops && !v.takes && v.group === 'all';
-/** Whether the trader group applies: liquidations have groups, stops and take profits do not. */
-export const groupApplies = (v: Pick<LiqView, 'liq'>): boolean => v.liq;
 
-/** What is drawn: the choice with Plus, the free view without it. Without liquidations there is no group. */
+/** What is drawn: the choice with Plus, the free view without it. */
 export function effectiveView(s: LiqChoice, plusOn: boolean): LiqView {
   if (!plusOn) return FREE_VIEW;
-  return { liq: s.liq, stops: s.stops, takes: s.takes, group: s.liq ? s.group : 'all' };
+  return { liq: s.liq, stops: s.stops, takes: s.takes, group: s.group };
 }
 
 /** A saved Plus choice that is not drawn (no Plus here): the controls say it is kept and comes back with Plus. */
 export const heldBack = (s: LiqChoice, plusOn: boolean): boolean => !plusOn && !isFreeChoice(effectiveView(s, true));
 
 /** The same view, the same key: caches and snapshots of what is drawn are made again under another. */
-export const viewKey = (v: LiqView): string => `${v.liq ? 1 : 0}${v.stops ? 1 : 0}${v.takes ? 1 : 0}|${v.liq ? v.group : 'all'}`;
+export const viewKey = (v: LiqView): string => `${v.liq ? 1 : 0}${v.stops ? 1 : 0}${v.takes ? 1 : 0}|${v.group}`;
 
 /** What the curve adds up, as the column's button and the levels control say it. */
 export function kindName(curve: LiqCurve): string {
@@ -65,16 +63,16 @@ export function groupTitle(group: LiqGroup): string {
  * where they are drawn beside the curve ("Liquidation levels · Profitable traders · Take profits"), as parts joined by a middle dot.
  */
 export function viewParts(v: LiqView): string[] {
-  return [kindTitle(curveOf(v)), ...(v.liq && v.group !== 'all' ? [groupTitle(v.group)] : []), ...(takesBeside(v) ? [t('Take profits')] : [])];
+  return [kindTitle(curveOf(v)), ...(v.group !== 'all' ? [groupTitle(v.group)] : []), ...(takesBeside(v) ? [t('Take profits')] : [])];
 }
 
 /** The levels control's live line: what the curve adds up, the take-profit bars beside it, whose ("Curve: Liq + stops · TP bars · Profitable"). */
 export function levelsSummary(v: LiqView): string {
-  return [t('Curve: {what}', { what: kindName(curveOf(v)) }), ...(takesBeside(v) ? [t('TP bars')] : []), ...(v.liq && v.group !== 'all' ? [groupName(v.group)] : [])].join(' · ');
+  return [t('Curve: {what}', { what: kindName(curveOf(v)) }), ...(takesBeside(v) ? [t('TP bars')] : []), ...(v.group !== 'all' ? [groupName(v.group)] : [])].join(' · ');
 }
 /** Everything a view draws, in words, for a tip and an accessible description ("Curve: Liquidation and stop levels. Take-profit bars shown. Traders: Everyone."). */
 export function levelsDescription(v: LiqView): string {
-  return [t('Curve: {what}.', { what: kindTitle(curveOf(v)) }), ...(takesBeside(v) ? [t('Take-profit bars shown.')] : []), ...(v.liq ? [t('Traders: {who}.', { who: groupName(v.group) })] : [])].join(' ');
+  return [t('Curve: {what}.', { what: kindTitle(curveOf(v)) }), ...(takesBeside(v) ? [t('Take-profit bars shown.')] : []), t('Traders: {who}.', { who: groupName(v.group) })].join(' ');
 }
 
 let plusOnHeld: boolean | null = null;

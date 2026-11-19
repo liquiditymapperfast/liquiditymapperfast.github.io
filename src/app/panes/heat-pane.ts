@@ -54,7 +54,7 @@ import { blockMsOf, editScope, withEdits } from '../tpo/settings.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
 import { liqLevelsUrl } from '../liq-url.ts';
 import { curveOf, groupName, heldBack, kindName, levelsDescription, liveView, plusOn, viewKey, viewParts, type LiqView } from '../liq-view.ts';
-import { columnNotes, liqNote, liqWhy, sideTitle } from '../liq-words.ts';
+import { columnNotes, liqNote, liqWhy, ordersAbsent, sideTitle } from '../liq-words.ts';
 import { mirrorSplits, readingTexts, stripeBoxLines } from '../liq-box.ts';
 import { toggleLevels } from '../levels-control.ts';
 import { linesToAsk } from '../sizes.ts';
@@ -1476,7 +1476,9 @@ export class HeatPane {
     ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
     const text = ctx.measureText(reading.full).width <= W - 14 ? reading.full : reading.short;
     ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
-    const more = reading.split ? wrapText(words => ctx.measureText(words).width, reading.split, W - 14, 4) : [];
+    // Under the figure: its two parts (Liq + stops), and that the profitable traders' orders are not on the server where the view asks for them.
+    const wrapped = (words: string): string[] => wrapText(w => ctx.measureText(w).width, words, W - 14, 4);
+    const more = [...(reading.split ? wrapped(reading.split) : []), ...(src.ordersAbsent() ? wrapped(ordersAbsent()) : [])];
     const tw = Math.max(...[text, ...more].map((words, i) => { ctx.font = `${i ? '' : '600 '}10px ui-sans-serif, system-ui, sans-serif`; return ctx.measureText(words).width; }));
     // Above the line, or below it near the top, and never on the column's heading (its band hides the curve there anyway).
     const tall = 13 + 12 * more.length, right = x0 + W - 4, room = this.#liqHeadH + 8;
@@ -2304,7 +2306,9 @@ export class HeatPane {
     }
     if (!row) return [];
     const found = row, kind = levels.kind;
-    return stripeBoxLines(found, kind, this.#liqPrice(state), inTakes ? src.takesStanding() : src.standing(), kind === 'both' ? src.partStandings() : null, side => shown(found, side));
+    const lines = stripeBoxLines(found, kind, this.#liqPrice(state), inTakes ? src.takesStanding() : src.standing(), kind === 'both' ? src.partStandings() : null, side => shown(found, side));
+    // The profitable traders' orders the view asks for are not on the server: said where a level is read, never drawn from everyone's.
+    return src.ordersAbsent() ? [...lines, { text: ordersAbsent(), color: 'muted', wrap: true, rule: true }] : lines;
   }
 
   #paintLayers(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
@@ -4002,7 +4006,7 @@ export class HeatPane {
       this.#liqKindFit = fit;
       button.classList.toggle('locked', held);
       button.style.maxWidth = `${room}px`;
-      const kind = kindName(curveOf(view)), group = view.liq && view.group !== 'all' ? groupName(view.group) : '';
+      const kind = kindName(curveOf(view)), group = view.group !== 'all' ? groupName(view.group) : '';
       // Everything drawn, for the tip and a screen reader: what the curve sums, the take-profit bars beside it, whose.
       const tip = held ? t('Shown: {what}. Your choice is part of Plus and comes back with it. Press to choose what the levels show.', { what: viewParts(view).join(' · ') })
         : `${levelsDescription(view)} ${t('Press to choose what the levels show.')}`;
@@ -4042,7 +4046,7 @@ export class HeatPane {
     const wide = (words: string): number => ctx.measureText(words).width;
     // Under the button, which names what the curve adds up, as part of its caption: the group where the button had no room for it, then that
     // the take profits are not in the curve while they show; at most two lines each.
-    const notes = s && !strip ? columnNotes(liveView(state.liqLevels), !this.#liqKindGroupOff, takesShown) : [];
+    const notes = s && !strip ? columnNotes(liveView(state.liqLevels), !this.#liqKindGroupOff, takesShown, src.ordersAbsent()) : [];
     const left = notes.flatMap(note => wrapText(wide, note, liqRoom(W), 2));
     const head = LIQ_HEAD_H + 12 * left.length;
     this.#placeLiqHistory(s && !strip && !(state.show.depth && state.depthSource === 'liq') ? x0 : null, head);
