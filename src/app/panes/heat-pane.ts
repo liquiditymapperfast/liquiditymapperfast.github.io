@@ -1461,7 +1461,8 @@ export class HeatPane {
     if (!(y >= 0 && y <= ph)) return;
     const s = src.standing(), price = this.#liqPrice(state), at = this.view.pOf(y, ph), way = s ? onTheWay(s, price, at) : null;
     if (!way) return;
-    const p = this.#palette, color = way.side === 'long' ? p.candleDown : p.candleUp, { x0, W } = scale, line = Math.round(y) + 0.5;
+    // Take profits on alone are coloured by what the orders do, as their curve is: the buys below the price in the rising colour.
+    const alone = src.levels?.kind === 'takes', p = this.#palette, color = (way.side === 'long') !== alone ? p.candleDown : p.candleUp, { x0, W } = scale, line = Math.round(y) + 0.5;
     // The dot on the curve, whole even where nothing goes yet (the curve then runs along the column's left edge), and on the dashed line.
     const x = Math.min(x0 + W - 4, Math.max(x0 + 4, x0 + Math.min(1, way.usd / scale.maxCum) * scale.width));
     ctx.save();
@@ -4137,7 +4138,7 @@ export class HeatPane {
     const box = this.#profileBox as { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null; // set by #paintLiqColumnMirror above
     if (box) {
       this.#profileBox = null;
-      paintMirrorBox(ctx, box.lines, x0, box.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, c => c === 'above' ? p.candleUp : c === 'below' ? p.candleDown : c === 'muted' ? p.muted : p.text, box.placement);
+      paintMirrorBox(ctx, box.lines, x0, box.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, c => c === 'above' ? (alone ? p.candleDown : p.candleUp) : c === 'below' ? (alone ? p.candleUp : p.candleDown) : c === 'muted' ? p.muted : p.text, box.placement);
       ctx.textBaseline = 'middle';
     }
     ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(x0 + 0.5, 0); ctx.lineTo(x0 + 0.5, ph); ctx.stroke();
