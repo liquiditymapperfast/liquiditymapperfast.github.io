@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LiqLevelsSource, binsIn, parseTriggerGroups, combineTaken, laneRows, liqCurves, liqProfile, liqRows, onTheWay, parseLiqGroups, parseLiqLevels, parseTriggers, partsBetween, partsOnTheWay, standingBelow, sumLevels, takenByCandles, liqStanding, type LaneRows, type LiqLevels, type LiqRow, type LiqStanding } from '../src/app/liq-levels.ts';
-import { DAY_MS, LIQ_HOLD_MS, LiqHistory, MAX_DAYS, bandOnEdge, dayText, familiesFor, readHistRows, readRollup, type LiqAnswer } from '../src/app/liq-history.ts';
+import { DAY_MS, LIQ_HOLD_MS, LiqHistory, MAX_DAYS, bandOnEdge, dayText, familiesFor, readHistRows, readRollup, retryAfterSeconds, webFetch, type LiqAnswer } from '../src/app/liq-history.ts';
 import { readLiqLevels, plusUrls } from '../src/app/liq-url.ts';
 import { FREE_VIEW, curveOf, effectiveView, heldBack, isFreeChoice, levelsDescription, levelsSummary, takesBeside, viewKey, type LiqView } from '../src/app/liq-view.ts';
 import { PRESET_BANDS } from '../src/app/depth-settings.ts';
@@ -9,10 +9,12 @@ import { controlListeners, paidPart, popoverPlace, pressGroup, pressPart, shownC
 import { holdPanelControl, releaseLiqLevelPanel } from '../src/app/liq-panel.ts';
 import { Store, initialState, readSettings } from '../src/app/store.ts';
 import { carriedSettings } from '../src/app/layouts/layouts.ts';
-import { columnNotes, liqNote, liqWhy, ordersAbsent, splitAmounts, splitText, takesLeftOut } from '../src/app/liq-words.ts';
+import { columnNotes, liqNote, liqWhy, ordersAbsent, readFailed, splitAmounts, splitText, takesLeftOut } from '../src/app/liq-words.ts';
 import { dollars, mirrorSplits, probeBoxLines, readingTexts, stripeBoxLines } from '../src/app/liq-box.ts';
 import { usd } from '../src/app/format.ts';
 import { DepthRangeSummary, depthHeldKey, type DepthPaneHeld } from '../src/app/range/depth-lines.ts';
+import { LiqPane } from '../src/app/panes/liq-pane.ts';
+import { plus } from '../src/app/plus/pass.ts';
 import type { InfoLine } from '../src/app/infobox.ts';
 import { BTC } from '../src/shared/coins.ts';
 import type { CandleRow } from '../src/app/store.ts';
@@ -1041,7 +1043,7 @@ test('the profitable traders\' orders\' history is read only from a file that na
   assert.deepEqual(ok.map(r => [r.fetchedAt, r.parts[0]!.long[20], r.parts[1]!.short[30]]), [[1, 5, 5], [2, 7, 7]], 'read, ordered by fetch time');
   const second = read({ groups: ['other', 'profitable'], kinds, rows: [[1, 1, 1, 100_000, part({ 20: [1, 0] }), part({}), part({ 20: [9, 0] }), part({ 30: [0, 8] })]] })!;
   assert.deepEqual([second[0]!.parts[0]!.long[20], second[0]!.parts[1]!.short[30]], [9, 8], 'the cells at their place, the other group\'s left unread');
-  // Everyone's file (no group named), a file of everyone (\`all\`), of another group, of other kinds, or of kinds in another order: refused whole.
+  // Everyone's file (no group named), a file of everyone (`all`), of another group, of other kinds, or of kinds in another order: refused whole.
   const rows = [mine([1, 5])];
   assert.equal(read({ kinds, rows }), null, 'everyone\'s trigger history names no group');
   assert.equal(read({ groups: ['all'], kinds, rows }), null, 'everyone is not the profitable traders');
@@ -1088,4 +1090,215 @@ test('a saved levels setting in the older form with a switch that is not a boole
   assert.deepEqual(readSettings({ liqLevels: { kind: 'stops', takes: 'invalid', group: 'profitable' } }).liqLevels, free, 'nor in a saved page');
   assert.deepEqual(carriedSettings({ liqLevels: { kind: 'stops', takes: 'invalid', group: 'profitable' } } as never).liqLevels, free, 'nor through a layout');
   assert.deepEqual(carriedSettings({ liqLevels: { kind: 'both', takes: 0 } } as never).liqLevels, free);
+});
+
+// Sol's review, round 3.
+
+/**
+ * A stand-in page for one pane in Node: elements that keep their classes, text and children, a 2D context that draws nothing, and the page's
+ * timers held for the test to run, so a frame can be drawn without the second's tick (as the page does after a change of the setting).
+ */
+function standInPage() {
+  const g = globalThis as unknown as Record<string, unknown>, saved = { document: g.document, window: g.window, ResizeObserver: g.ResizeObserver };
+  const ctx: unknown = new Proxy(function () { /* draws nothing */ }, { get: (_t, k) => k === Symbol.toPrimitive ? () => 0 : k === 'then' ? undefined : ctx, apply: () => ctx, set: () => true });
+  class StandIn {
+    children: (StandIn | string)[] = []; dataset: Record<string, string> = {}; style: Record<string, string> = {}; className = ''; hidden = false;
+    clientWidth = 390; clientHeight = 640; width = 0; height = 0;
+    #text: string | null = null;
+    constructor(readonly tagName: string) {}
+    #classes(): string[] { return this.className.split(/\s+/).filter(Boolean); }
+    readonly classList = {
+      add: (...names: string[]): void => { this.className = [...new Set([...this.#classes(), ...names])].join(' '); },
+      remove: (...names: string[]): void => { this.className = this.#classes().filter(c => !names.includes(c)).join(' '); },
+      toggle: (name: string, on?: boolean): boolean => { const want = on ?? !this.#classes().includes(name); if (want) this.classList.add(name); else this.classList.remove(name); return want; },
+      contains: (name: string): boolean => this.#classes().includes(name),
+    };
+    get textContent(): string { return this.#text ?? this.children.map(c => typeof c === 'string' ? c : c.textContent).join(''); }
+    set textContent(value: string) { this.#text = String(value); this.children = []; }
+    append(...nodes: (StandIn | string)[]): void { this.children.push(...nodes); }
+    setAttribute(): void { /* not read */ }
+    getAttribute(): null { return null; }
+    addEventListener(): void { /* no events */ }
+    removeEventListener(): void { /* no events */ }
+    closest(): null { return null; }
+    querySelector(): null { return null; }
+    getContext(): unknown { return ctx; }
+    getBoundingClientRect(): { top: number; left: number; width: number; height: number } { return { top: 0, left: 0, width: 390, height: 640 }; }
+    setPointerCapture(): void { /* no pointer */ }
+    /** The first element at or below this one holding every class of `names`. */
+    find(names: string): StandIn | null {
+      if (names.split(' ').every(n => this.#classes().includes(n))) return this;
+      for (const c of this.children) { const hit = typeof c === 'string' ? null : c.find(names); if (hit) return hit; }
+      return null;
+    }
+  }
+  const timeouts = new Map<number, () => void>(), intervals = new Map<number, () => void>();
+  let ids = 0;
+  g.document = { createElement: (tag: string) => new StandIn(tag), addEventListener() { /* none */ }, removeEventListener() { /* none */ }, hidden: false };
+  g.window = { devicePixelRatio: 1, localStorage: { getItem: (key: string) => key === 'hlm-liq-range' ? '0.1' : null, setItem() { /* kept nowhere */ }, removeItem() { /* kept nowhere */ } },
+    setTimeout: (fn: () => void) => { timeouts.set(++ids, fn); return ids; }, clearTimeout: (id: number) => { timeouts.delete(id); },
+    setInterval: (fn: () => void) => { intervals.set(++ids, fn); return ids; }, clearInterval: (id: number) => { intervals.delete(id); } };
+  g.ResizeObserver = class { observe(): void { /* sized once */ } disconnect(): void { /* nothing held */ } };
+  const parent = new StandIn('div');
+  return {
+    parent,
+    /** The frames waiting (the pane's `invalidate`), not the tick. */
+    frames(): void { for (const [id, fn] of [...timeouts]) { timeouts.delete(id); fn(); } },
+    /** The second's tick. */
+    tick(): void { for (const fn of [...intervals.values()]) fn(); },
+    text: (names: string): string | undefined => parent.find(names)?.textContent,
+    restore(): void { g.document = saved.document; g.window = saved.window; g.ResizeObserver = saved.ResizeObserver; },
+  };
+}
+/** A pass the page reads as one in force until `exp` (its signature is the server's business). */
+const standInPass = (exp: number): string => `v1.${Buffer.from(JSON.stringify({ sub: 'standin', exp })).toString('base64url')}.sig`;
+/** Both families' levels around the price (100): stops of longs at [90, 100) and of shorts at [100, 110), everyone's ten times theirs. */
+const NEAR = {
+  all: { liq: [[9, 0, 100, 0, 0, 5, 0, 100, 0]], stops: [[9, 100, 0, 0, 0, 5, 0, 100, 0], [10, 0, 0, 100, 0, 0, 5, 0, 100]], takes: [[10, 100, 0, 0, 0, 5, 0, 100, 0]] },
+  profitable: { liq: [[9, 0, 10, 0, 0, 1, 0, 10, 0]], stops: [[9, 10, 0, 0, 0, 1, 0, 10, 0], [10, 0, 0, 10, 0, 0, 1, 0, 10]], takes: [[10, 10, 0, 0, 0, 1, 0, 10, 0]] },
+};
+
+test('the phone\'s Liq tab draws a new choice from its first frame, never the last tick\'s source under the new caption, both ways (Sol, round 3)', async () => {
+  const page = standInPage(), now = Date.now();
+  plus().accept({ key: 'standin-key-0123456789', pass: standInPass(now + 23 * 3_600_000), until: now + 20 * DAY_MS });
+  try {
+    const s = service({ [U.groups]: { status: 200, body: groups(NEAR.profitable.liq, null) }, [U.triggers]: { status: 200, body: triggers(NEAR.all.stops, NEAR.all.takes) },
+      [U.triggersGroups]: { status: 200, body: triggerGroups(NEAR.profitable.stops, NEAR.profitable.takes) } }, { value: 'v1.pass.sig' }, () => free(NEAR.all.liq));
+    const store = new Store(initialState());
+    const choose = (group: 'all' | 'profitable'): void => store.set({ liqLevels: { ...store.state.liqLevels, liq: false, stops: true, takes: false, group } });
+    const settle = async (): Promise<void> => { for (let i = 0; i < 3; i++) { page.tick(); await tick(); } page.frames(); };
+    choose('all');
+    const pane = new LiqPane(page.parent as never, store, { liqLevels: s.src } as never);
+    pane.setShown(true);
+    await settle();
+    // Both families held, as after a visit to each.
+    choose('profitable'); await settle(); choose('all'); await settle();
+    assert.equal(page.text('liq-sub'), 'BTC · Hyperliquid'); assert.equal(page.text('liq-usd long'), '$100');
+    // The choice changes: the page draws the tab again at once (main.ts), before the next tick.
+    choose('profitable'); pane.invalidate(); page.frames();
+    assert.equal(page.text('liq-sub'), 'Profitable traders · BTC · Hyperliquid');
+    assert.equal(page.text('liq-usd long'), '$10', 'their stops below the price from the first frame');
+    assert.equal(page.text('liq-usd short'), '$10', 'and above it');
+    choose('all'); pane.invalidate(); page.frames();
+    assert.equal(page.text('liq-sub'), 'BTC · Hyperliquid'); assert.equal(page.text('liq-usd long'), '$100', 'everyone\'s again from the first frame');
+    pane.setShown(false);
+  } finally { plus().forget(); page.restore(); }
+});
+
+/** A history reader over `files` (by path on the levels host), each ask counted; anything not there answers 404. */
+function historyOf(files: Record<string, unknown>, day: number) {
+  const host = (u: string): string => u.replace(/^https?:\/\/[^/]+/, 'https://levels.hiverust.dev'), asks = new Map<string, number>(), held: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(files)) held[host(k)] = v;
+  const h = new LiqHistory(url => { asks.set(url, (asks.get(url) ?? 0) + 1); return url in held ? Promise.resolve(held[url]) : Promise.reject(new Error('404')); },
+    { freeFrom: () => day - 7 * DAY_MS, pass: () => 'v1.member.sig', refused: () => {} });
+  return { h, put: (u: string, body: unknown): void => { held[host(u)] = body; }, asks: (u: string): number => asks.get(host(u)) ?? 0 };
+}
+
+test('a day whose profitable orders are missing still says so after midnight, while its last snapshot is in force (Sol, round 3)', async () => {
+  const day = Date.UTC(2026, 10, 15), yesterday = day - DAY_MS, late = day - 10 * MIN, now = day + 30 * MIN, t0 = day + 5 * MIN, t1 = day + 20 * MIN;
+  const kinds = ['stops', 'takes'];
+  // Yesterday's orders are not on the server (404); today's are a valid file with no row yet; yesterday's 23:50 liquidations are in force at 00:05.
+  const { h } = historyOf({
+    'https://x/v1/btc/liquidation-history.json': { edges: EDGES, first: yesterday - DAY_MS, last: now - 60_000 },
+    [U.groupsDay(dayText(yesterday))]: { groups: ['profitable'], rows: [plusRow(late, part({ 10: [100, 100] }), null)] },
+    [U.groupsDay(dayText(day))]: { groups: ['profitable'], rows: [] },
+    [U.triggersGroupsDay(dayText(day))]: { groups: ['profitable'], kinds, rows: [] },
+  }, day);
+  const both = view({ liq: true, stops: true, group: 'profitable' }), stops = view({ liq: false, stops: true, group: 'profitable' });
+  for (const v of [both, stops]) for (let i = 0; i < 3; i++) { h.ensure(t0, t1, now, () => {}, v); await tick(); await tick(); }
+  const s = h.series(t0, t1, both);
+  assert.deepEqual(s.rows.map(r => r.fetchedAt), [late], 'yesterday\'s liquidations alone, in force after midnight');
+  assert.ok(s.ordersAbsent, 'and the missing orders said there');
+  const alone = h.series(t0, t1, stops);
+  assert.deepEqual(alone.rows, []); assert.ok(alone.ordersAbsent, 'their stops alone: nothing drawn, the missing day said');
+  // Past the hold of yesterday's last snapshot, only today counts.
+  assert.ok(!h.series(day + 3 * 3_600_000, day + 4 * 3_600_000, both).ordersAbsent, 'a stretch no snapshot of yesterday reaches');
+});
+
+test('a wide view whose rollup could not be read says so instead of loading, keeps asking, and draws once a valid file comes (Sol, round 3)', async () => {
+  const f = familyHistory(), both = view({ liq: true, stops: true, group: 'profitable' }), roll = U.rollup.triggersGroups;
+  const asks = new Map<string, number>(), count = (u: string): number => asks.get(u.replace(/^https?:\/\/[^/]+/, 'https://levels.hiverust.dev')) ?? 0;
+  // Everyone's rollup where theirs is asked for (no group named): refused whole, every time it is read.
+  f.put(roll, { hours: 4, edges: ROLLUP_EDGES, kinds: ['stops', 'takes'], rows: [plusRow(f.t, part({ 9: [1_000, 1_000] }, 13), part({}, 13))] });
+  const h = new LiqHistory(url => { asks.set(url, (asks.get(url) ?? 0) + 1); return url in f.files ? Promise.resolve(f.files[url]) : Promise.reject(new Error('404')); },
+    { freeFrom: () => f.day - 7 * DAY_MS, pass: () => 'v1.member.sig', refused: () => {} });
+  const ask = async (now: number): Promise<void> => { for (let i = 0; i < 3; i++) { h.ensure(f.wideFrom, f.now, now, () => {}, both); await tick(); await tick(); } };
+  await ask(f.now);
+  assert.equal(h.shape(both).edges, null, 'nothing to draw from');
+  assert.equal(h.shape(both).failed, 'orderGroups', 'their orders\' rollup could not be read: said, not loading');
+  assert.equal(readFailed(h.shape(both).failed!, both), 'Stop levels could not be read.');
+  assert.equal(readFailed('orderGroups', view({ liq: true, takes: true, group: 'profitable' })), 'Take-profit levels could not be read.');
+  assert.equal(readFailed('groups', both), 'Liquidation levels could not be read.');
+  const first = count(roll);
+  await ask(f.now + 61_000);
+  assert.equal(count(roll), first + 1, 'asked again a minute on'); assert.equal(h.shape(both).failed, 'orderGroups');
+  // Their own rollup comes: drawn, nothing failed.
+  f.put(roll, { hours: 4, edges: ROLLUP_EDGES, groups: ['profitable'], kinds: ['stops', 'takes'], rows: [plusRow(f.t, part({ 9: [100, 100] }, 13), part({}, 13))] });
+  await ask(f.now + 122_000);
+  assert.equal(h.shape(both).failed, null); assert.ok(h.shape(both).edges);
+  assert.equal(h.series(f.wideFrom, f.now, both).rows.at(-1)!.long[9], 200, 'their liquidations and stops added');
+});
+
+/** The page's `fetch` answering each address as `answer` says (a status, a JSON body, a Retry-After header), each ask counted, until `restore`. */
+function stubFetch(answer: (url: string) => { status: number; body?: unknown; retryAfter?: string }) {
+  const real = globalThis.fetch, asks = new Map<string, number>();
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input instanceof Request ? input.url : input);
+    asks.set(url, (asks.get(url) ?? 0) + 1);
+    const a = answer(url);
+    return new Response(a.body === undefined ? 'not there' : JSON.stringify(a.body), { status: a.status, headers: a.retryAfter === undefined ? {} : { 'retry-after': a.retryAfter } });
+  }) as typeof fetch;
+  return { asks: (url: string): number => asks.get(url) ?? 0, restore: (): void => { globalThis.fetch = real; } };
+}
+const inMinutes = (m: number): string => new Date(Date.now() + m * MIN).toUTCString();
+
+test('a Retry-After header is read as delta-seconds or an HTTP date, and anything else as none (Sol, round 3)', async () => {
+  let header: string | undefined;
+  const stub = stubFetch(() => ({ status: 503, ...(header === undefined ? {} : { retryAfter: header }) }));
+  try {
+    const read = async (h: string | undefined): Promise<number | undefined> => { header = h; return (await webFetch('https://levels.hiverust.dev/v1/plus/btc/triggers-groups.json')).retryAfter; };
+    const near = (got: number | undefined, want: number, what: string): void => assert.ok(got !== undefined && Math.abs(got - want) <= 2, `${what}: ${got} for ${want}`);
+    near(await read(inMinutes(10)), 600, 'an HTTP date ten minutes on');
+    near(await read('120'), 120, 'delta-seconds');
+    near(await read(' 300 '), 300, 'delta-seconds with spaces around');
+    assert.equal(await read('0'), 0, 'now: the caller\'s shortest wait applies');
+    assert.equal(await read(new Date(Date.now() - 60_000).toUTCString()), 0, 'a date already past: now');
+    near(await read(new Date(Date.now() + 600_000).toUTCString().replace(/^(\w{3}), (\d{2}) (\w{3}) (\d{4}) (.+) GMT$/, (_m, d, n, mo, y, t) => `${({ Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' } as Record<string, string>)[d]}, ${n}-${mo}-${String(y).slice(2)} ${t} GMT`)), 600, 'the obsolete RFC 850 form');
+    for (const bad of ['0x10', '1e3', '10.5', '-5', '1 2', 'soon', '', 'Wed, 21 Oct 2015 07:28:00']) assert.equal(await read(bad), undefined, `${JSON.stringify(bad)} is not a Retry-After`);
+    assert.equal(await read(undefined), undefined, 'none said');
+    assert.equal(retryAfterSeconds('Wed Oct 21 07:28:00 2015', Date.UTC(2015, 9, 21, 7, 18)), 600, 'asctime, read as GMT');
+  } finally { stub.restore(); }
+});
+
+test('the profitable traders\' live orders, days and rollup wait what an HTTP-date Retry-After says, not the five-minute fallback (Sol, round 3)', async () => {
+  const day = Date.UTC(2026, 10, 15), wideFrom = day + 12 * 3_600_000 - (MAX_DAYS + 10) * DAY_MS;
+  const tooBusy = (url: string): boolean => /triggers-groups|trigger-history-groups/.test(url);
+  const stub = stubFetch(url => tooBusy(url) ? { status: 503, retryAfter: inMinutes(10) }
+    : /liquidation-history\.json$/.test(url) ? { status: 200, body: { edges: EDGES, first: day - 3 * DAY_MS, last: day + 12 * 3_600_000 } }
+    : /liquidation-history-groups-4h/.test(url) ? { status: 200, body: { hours: 4, edges: ROLLUP_EDGES, groups: ['profitable'], rows: [] } }
+    : /liquidation-history-groups\//.test(url) ? { status: 200, body: { groups: ['profitable'], rows: [] } } : { status: 404 });
+  try {
+    // Live: the source's own read (`webFetch`), its clock moved by the test.
+    let now = AS_OF + 45 * MIN;
+    const src = new LiqLevelsSource(async url => url.includes('hyperliquid') ? [] : free(FAM.all.liq), () => now, () => LEVELS_URL, undefined, { pass: () => 'v1.pass.sig', refused: () => {} });
+    const mine = view({ liq: false, stops: true, group: 'profitable' }), live = (): number => stub.asks(U.triggersGroups);
+    for (let i = 0; i < 3; i++) { src.ensure(BTC, () => {}, mine); await tick(); await tick(); }
+    assert.equal(live(), 1); assert.ok(src.ordersAbsent());
+    now += 5 * MIN + 1_000; src.ensure(BTC, () => {}, mine); await tick();
+    assert.equal(live(), 1, 'live: not asked again at the fallback\'s five minutes');
+    now += 5 * MIN; src.ensure(BTC, () => {}, mine); await tick();
+    assert.equal(live(), 2, 'live: asked again once the ten minutes are over');
+    // Days and the rollup: the history's own read.
+    for (const [from, url] of [[day, `https://levels.hiverust.dev/v1/plus/btc/trigger-history-groups/${dayText(day)}.json`], [wideFrom, 'https://levels.hiverust.dev/v1/plus/btc/trigger-history-groups-4h.json']] as const) {
+      const h = new LiqHistory(undefined, { freeFrom: () => day - 7 * DAY_MS, pass: () => 'v1.member.sig', refused: () => {} }), at = day + 12 * 3_600_000;
+      const ask = async (when: number): Promise<void> => { for (let i = 0; i < 3; i++) { h.ensure(from, day + 12 * 3_600_000, when, () => {}, mine); await tick(); await tick(); await tick(); } };
+      await ask(at);
+      const asked = stub.asks(url);
+      assert.ok(asked >= 1 && h.ordersAbsent(mine, from, day + 12 * 3_600_000), url);
+      await ask(at + 5 * MIN + 1_000);
+      assert.equal(stub.asks(url), asked, `${url}: not asked again at five minutes`);
+      await ask(at + 10 * MIN + 2_000);
+      assert.equal(stub.asks(url), asked + 1, `${url}: asked again after ten`);
+    }
+  } finally { stub.restore(); }
 });

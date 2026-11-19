@@ -6,6 +6,7 @@
 import { t } from './i18n.ts';
 import { clock, usd } from './format.ts';
 import type { LevelsKind, LiqLevelsSource } from './liq-levels.ts';
+import type { LiqFamily } from './liq-history.ts';
 import { curveOf, groupTitle, takesBeside, type LiqView } from './liq-view.ts';
 
 /** What a side of a set of levels is called. Take profits are held with their sides swapped: the long side is the take profits of shorts. */
@@ -65,6 +66,14 @@ export function splitText(parts: { liq: number; stops: number }, shown = parts.l
  * for this snapshot): nothing is drawn for them, never everyone's orders under their name.
  */
 export const ordersAbsent = (): string => t('Profitable traders\' stops and take profits are not available yet.');
+
+/**
+ * Why the levels' history draws nothing where a file it needs could not be read (a rollup refused whole, or not reached): the part named as the
+ * live column names it (`liqWhy`), the orders by what the view shows of them.
+ */
+export function readFailed(family: LiqFamily, view: Pick<LiqView, 'stops'>): string {
+  return family === 'orders' || family === 'orderGroups' ? (view.stops ? t('Stop levels could not be read.') : t('Take-profit levels could not be read.')) : t('Liquidation levels could not be read.');
+}
 
 /** Said under the liquidation column's button (which names what its curve adds up) while take profits are shown. */
 export const takesLeftOut = (): string => t('Take profits not included');
