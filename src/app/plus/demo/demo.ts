@@ -178,20 +178,24 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
     const b = node('button', 'pd-scene', node('i', '', bar), node('span', '', s.label()));
     b.type = 'button';
     b.setAttribute('aria-label', t('Scene {n}: {name}', { n: i + 1, name: s.label() }));
-    b.addEventListener('click', () => { autoplayed = true; dropTourMotion(); player.jump(i); syncPlay(); schedule(); });
+    b.addEventListener('click', () => { autoplayed = true; queued = false; dropTourMotion(); player.jump(i); syncPlay(); schedule(); });
     scenesBox.append(b);
     return { b, bar, width: '', current: false };
   });
+  /** Play or Play again pressed before the numbers are here: the button shows Pause at once, and the tour starts at its first scene when
+   * they arrive. Pause, a scene's button, the person's other use, pause() or destroy() in between cancels it. */
+  let queued = false;
   let shownRunning: boolean | null = null, tourRunning = false;
   const syncPlay = (): void => {
     const running = player.running;
     // The tour's own motions follow it: still while it is paused (not at its end, where what is left may finish), on again with it.
     if (running !== tourRunning) { tourRunning = running; if (running) release(); else if (player.pausedBy !== 'end') hold(); }
-    if (running !== shownRunning) {
-      shownRunning = running;
-      playIcon.style.display = running ? 'none' : '';
-      pauseIcon.style.display = running ? '' : 'none';
-      const words = running ? t('Pause') : t('Play');
+    const shown = running || queued;
+    if (shown !== shownRunning) {
+      shownRunning = shown;
+      playIcon.style.display = shown ? 'none' : '';
+      pauseIcon.style.display = shown ? '' : 'none';
+      const words = shown ? t('Pause') : t('Play');
       playLabel.textContent = words;
       playBtn.setAttribute('aria-label', words);
     }
@@ -206,6 +210,7 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
    * has not played yet never starts by itself over their choice. */
   const interrupt = (fromControls: boolean): void => {
     autoplayed = true;
+    queued = false;
     player.interrupt();
     dropTourMotion();
     if (fromControls) setCaption(idleCaption());
@@ -213,10 +218,11 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   };
   playBtn.addEventListener('click', () => {
     autoplayed = true;
-    if (player.running) player.pause('user'); else { startedBy = 'person'; player.resume(now()); }
+    if (player.running || queued) { queued = false; player.pause('user'); }
+    else { startedBy = 'person'; if (data) player.resume(now()); else queued = true; }
     syncPlay(); schedule();
   });
-  replayBtn.addEventListener('click', () => { autoplayed = true; startedBy = 'person'; player.start(now()); syncPlay(); schedule(); });
+  replayBtn.addEventListener('click', () => { autoplayed = true; startedBy = 'person'; if (data) player.start(now()); else queued = true; syncPlay(); schedule(); });
 
   // ---- frames: only while something moves or the tour plays
   function frame(at: number): void {
@@ -310,6 +316,8 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   stage.setAttribute('aria-busy', 'true');
   const stopWaiting = whenData(d => {
     data = d;
+    // A Play or Play again pressed while loading starts the tour now, at its first scene.
+    if (queued) { queued = false; player.start(now()); }
     stage.removeAttribute('aria-busy');
     fit(); dirty = true;
     consider();
@@ -317,7 +325,7 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
 
   return {
     // As the person's own pause: also a tour paused for the view stays paused when the demo comes back into view.
-    pause() { autoplayed = true; player.interrupt(); syncPlay(); },
+    pause() { autoplayed = true; queued = false; player.interrupt(); syncPlay(); },
     destroy() {
       if (destroyed) return;
       destroyed = true;

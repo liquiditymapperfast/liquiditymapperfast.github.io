@@ -764,6 +764,43 @@ test('the Depth strip\'s dates: three where there is room; on a narrow strip the
   }
 });
 
+test('cold: Play or Play again pressed while the numbers are built shows Pause, waits, and starts the tour at its first scene when they arrive', () => {
+  const page = new FakePage();
+  page.install();
+  try {
+    for (const button of ['Play', 'Play again'] as const) {
+      for (const then of ['arrive', 'Pause', 'destroy'] as const) {
+        forgetData();
+        const host = new FakeElement('div', page);
+        const states: DemoLevels[] = [];
+        const handle = mountDemo(host as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states.push(x)); return { destroy() {} }; } });
+        const label = `${button}, then ${then}`;
+        page.view(0.9);
+        byLabel(host, button).fire('click');
+        assert.equal(byClass(host, 'pd-play').all().find(e => e.tagName === 'button')!.getAttribute('aria-label'), 'Pause', `${label}: the button shows Pause at once`);
+        page.run(3000);
+        assert.equal(states.length, 0, `${label}: no scene goes by over the empty stage`);
+        assert.equal(byClass(host, 'pd-caption').textContent, 'Try the switches.', `${label}: still the invitation`);
+        if (then === 'Pause') byLabel(host, 'Pause').fire('click');
+        if (then === 'destroy') handle.destroy();
+        page.idle();
+        page.run(500);
+        if (then === 'arrive') {
+          assert.deepEqual(states.map(x => [+x.liq, +x.stops, +x.takes]), [[1, 0, 0]], `${label}: the tour starts at its first scene`);
+          assert.equal(byClass(host, 'pd-caption').textContent, 'Liquidation levels at each price.');
+          page.run(4000);
+          assert.deepEqual(states.map(x => [+x.liq, +x.stops, +x.takes]), [[1, 0, 0], [1, 1, 0]], `${label}: and goes on from there`);
+        } else {
+          assert.equal(states.length, 0, `${label}: cancelled, nothing plays when the numbers arrive`);
+          if (then === 'Pause') assert.ok(byLabel(host, 'Play'), `${label}: the button shows Play`);
+        }
+        handle.destroy();
+        assert.equal(page.idles.size + page.timers.size + page.frames.size, 0, `${label}: nothing left behind`);
+      }
+    }
+  } finally { page.uninstall(); demoData(); }
+});
+
 /* ==== no network, no app settings ======================================================================================================= */
 
 test('the module asks nothing of the network and touches none of the app\'s settings: its files and what they import', () => {
