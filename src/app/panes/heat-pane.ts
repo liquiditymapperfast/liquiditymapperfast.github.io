@@ -53,7 +53,7 @@ import { openMenu, type MenuItem } from '../menu.ts';
 import { blockMsOf, editScope, withEdits } from '../tpo/settings.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
 import { liqLevelsUrl } from '../liq-url.ts';
-import { curveOf, groupName, heldBack, kindName, levelsDescription, liveView, plusOn, viewKey, viewParts, type LiqView } from '../liq-view.ts';
+import { curveOf, groupName, heldBack, kindName, levelsDescription, liveAsk, liveView, plusOn, viewKey, viewParts, type LiqView } from '../liq-view.ts';
 import { columnNotes, liqNote, liqWhy, ordersAbsent, sideTitle } from '../liq-words.ts';
 import { mirrorSplits, readingTexts, stripeBoxLines } from '../liq-box.ts';
 import { toggleLevels } from '../levels-control.ts';
@@ -2183,7 +2183,8 @@ export class HeatPane {
   #paintLiquidationLevels(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     const src = this.hub.liqLevels, p = this.#palette, v = this.view, view = liveView(state.liqLevels);
     this.#liqLanes = null;
-    src.ensure(currentCoin(), () => this.invalidate(), view);
+    const ask = liveAsk(state.liqLevels);
+    src.ensure(currentCoin(), () => this.invalidate(), ask.view, ask.right);
     // They are on unless switched off, so where they cannot be (no address, another coin, a replay) the map says nothing: the button's panel
     // says why.
     if (src.state === 'off' || src.state === 'other-coin' || replaying()) return;

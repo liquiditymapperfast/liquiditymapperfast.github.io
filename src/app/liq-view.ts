@@ -1,18 +1,39 @@
 /**
  * What the levels show (Plus, 2026-11-17; three switches since 2026-11-19): one choice for the whole page, kept in `LiqLevelSettings`
- * (`liq`, `stops`, `takes`, at least one on, and `group`). The free view is liquidations of all traders; every other choice is Plus.
+ * (`liq`, `stops`, `takes`, at least one on, `group`, and `split`). The free view is liquidations of all traders; every other choice is Plus.
  * Without Plus the page draws the free view and keeps the choice, which comes back with Plus (`effectiveView`). The group is every kind's:
  * the profitable traders' liquidations, stops and take profits each come from files of their own, never everyone's under their name.
+ *
+ * A split (2026-11-19) draws the liquidation column as two sub-columns (`splitPair`): liquidations beside stops, or everyone beside the
+ * profitable traders. Everywhere that draws one series (the Depth pane, its history, the stripe beside everyone's, a column too narrow to
+ * split, a phone's strip) draws the left column's set (`effectiveView`): the page's one series.
  */
 import { t } from './i18n.ts';
 import { plus } from './plus/pass.ts';
-import type { LiqGroup, LiqLevelSettings } from './liq-url.ts';
+import { splitFor, type LiqGroup, type LiqLevelSettings, type LiqSplit } from './liq-url.ts';
 
 export interface LiqView { liq: boolean; stops: boolean; takes: boolean; group: LiqGroup }
-/** The parts of the setting a view is made of. */
-export type LiqChoice = Pick<LiqLevelSettings, 'liq' | 'stops' | 'takes' | 'group'>;
+/** The parts of the setting a view is made of (a choice from before the split reads as none). */
+export type LiqChoice = Pick<LiqLevelSettings, 'liq' | 'stops' | 'takes' | 'group'> & { split?: LiqSplit };
 /** What everyone sees without Plus. */
 export const FREE_VIEW: LiqView = Object.freeze({ liq: true, stops: false, takes: false, group: 'all' });
+
+/** The split a choice draws: none without Plus, else the saved one where its kinds allow it (`splitFor`). */
+export const effectiveSplit = (s: LiqChoice, plusOn: boolean): LiqSplit => plusOn ? splitFor(s.split ?? 'none', s) : 'none';
+
+/**
+ * The two sub-columns of a split: liquidations then stops, both of the chosen traders (take profits go with the left one); or everyone's
+ * then the profitable traders', both of the chosen kinds (take profits with the left one, everyone's). Null where nothing is split.
+ */
+export interface LiqPair { split: Exclude<LiqSplit, 'none'>; left: LiqView; right: LiqView }
+export function splitPair(s: LiqChoice, plusOn: boolean): LiqPair | null {
+  const split = effectiveSplit(s, plusOn);
+  if (split === 'kinds') return { split, left: { liq: true, stops: false, takes: s.takes, group: s.group }, right: { liq: false, stops: true, takes: false, group: s.group } };
+  if (split === 'groups') return { split, left: { liq: s.liq, stops: s.stops, takes: s.takes, group: 'all' }, right: { liq: s.liq, stops: s.stops, takes: false, group: 'profitable' } };
+  return null;
+}
+/** The same pair, the same key. */
+export const pairKey = (p: LiqPair | null): string => p ? `${p.split}|${viewKey(p.left)}|${viewKey(p.right)}` : '';
 
 /**
  * What the curve adds up (the same names as `LevelsKind` in liq-levels.ts): the liquidations, the stops, both (Liq + stops), or the take
@@ -25,17 +46,20 @@ export const takesBeside = (v: Pick<LiqView, 'liq' | 'stops' | 'takes'>): boolea
 /** Whether the view needs the stop and take-profit file: stops or take profits are on. */
 export const ordersShown = (v: Pick<LiqView, 'stops' | 'takes'>): boolean => v.stops || v.takes;
 
-/** Whether a choice is the free view (anything else is Plus). */
-export const isFreeChoice = (v: LiqChoice): boolean => v.liq && !v.stops && !v.takes && v.group === 'all';
+/** Whether a choice is the free view (anything else is Plus, a split included). */
+export const isFreeChoice = (v: LiqChoice): boolean => v.liq && !v.stops && !v.takes && v.group === 'all' && splitFor(v.split ?? 'none', v) === 'none';
 
-/** What is drawn: the choice with Plus, the free view without it. */
+/**
+ * What is drawn as one series: the choice with Plus, the free view without it; under a split, the left column's set (`splitPair`), which the
+ * Depth pane, the stripe beside everyone's and a column too narrow to split draw.
+ */
 export function effectiveView(s: LiqChoice, plusOn: boolean): LiqView {
   if (!plusOn) return FREE_VIEW;
-  return { liq: s.liq, stops: s.stops, takes: s.takes, group: s.group };
+  return splitPair(s, plusOn)?.left ?? { liq: s.liq, stops: s.stops, takes: s.takes, group: s.group };
 }
 
 /** A saved Plus choice that is not drawn (no Plus here): the controls say it is kept and comes back with Plus. */
-export const heldBack = (s: LiqChoice, plusOn: boolean): boolean => !plusOn && !isFreeChoice(effectiveView(s, true));
+export const heldBack = (s: LiqChoice, plusOn: boolean): boolean => !plusOn && !isFreeChoice(s);
 
 /** The same view, the same key: caches and snapshots of what is drawn are made again under another. */
 export const viewKey = (v: LiqView): string => `${v.liq ? 1 : 0}${v.stops ? 1 : 0}${v.takes ? 1 : 0}|${v.group}`;
@@ -87,5 +111,12 @@ export function plusOn(): boolean {
   return plusOnHeld;
 }
 
-/** What the page draws for these settings now. */
+/** What the page draws for these settings now, as one series (the left column's set under a split). */
 export const liveView = (s: LiqChoice): LiqView => effectiveView(s, plusOn());
+/** The split the page draws for these settings now, where the room allows it, or null. */
+export const liveSplit = (s: LiqChoice): LiqPair | null => splitPair(s, plusOn());
+/**
+ * What the levels' source is asked to keep fresh for these settings now: the one series (`liveView`) and a split's right column, or null.
+ * Every pane that asks (the map, the phone's Liq tab) asks through here, so they always ask for the same and never take turns changing it.
+ */
+export const liveAsk = (s: LiqChoice): { view: LiqView; right: LiqView | null } => ({ view: liveView(s), right: liveSplit(s)?.right ?? null });

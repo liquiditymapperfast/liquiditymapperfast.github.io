@@ -685,18 +685,42 @@ const WAIT_UNSAID_MS = MINUTE;
 export type LiqState = 'idle' | 'loading' | 'ready' | 'stale' | 'unavailable' | 'other-coin' | 'off' | 'missing';
 
 /**
+ * One set of levels as a sub-column draws it (`LiqLevelsSource` itself for the one series or a split's left column, `right` for a split's
+ * right one): its view, where it stands, the levels and what price has taken of them, and why nothing is drawn.
+ */
+export interface LiqSet {
+  readonly view: LiqView;
+  readonly state: LiqState;
+  readonly levels: LiqLevels | null;
+  taken(): { long: Taken; short: Taken } | null;
+  standing(): LiqStanding | null;
+  /** Changes whenever what is drawn from the set can change, for the pane's caches. */
+  key(): string;
+  ordersAbsent(): boolean;
+  missing(): 'groups' | 'orders' | 'profitable-orders' | null;
+  blame(): 'liq' | 'orders';
+  asOfs(): { liq: number | null; orders: number | null };
+  /** Whether its stop and take-profit orders are old enough to say so (see `LiqLevelsSource.ordersOld`). */
+  ordersOld(): boolean;
+}
+
+/**
  * Loads the files and the candles that take levels away, and keeps them fresh while the levels are on. The free file (liquidation levels of
  * every position) is asked for when the next snapshot can be there (`liq-schedule.ts`); a Plus file the view needs (the groups', the stops'
  * and take profits') is asked for, with the pass, when the free file brings a snapshot it does not have yet. `levels` is what the view draws:
  * the free file's levels, a group's, the stops, liquidations and stops added together, or the take profits on alone; `takes` the take profits
  * beside liquidations or stops, a layer of their own.
  */
-export class LiqLevelsSource {
+export class LiqLevelsSource implements LiqSet {
   state: LiqState = 'idle';
   /** Bumped whenever new levels come. */
   version = 0;
   readonly candles: KeyLevelHistory;
   #view: LiqView = FREE_VIEW;
+  /** A split's right column (`ensure`), or null: its files are asked for with the view's, whatever the room to draw it. */
+  #right: LiqView | null = null;
+  #rightState: LiqState = 'idle';
+  #rightBlame: 'liq' | 'orders' = 'liq';
   #url = '';
   #pending = false;
   #nextAt = 0;
@@ -716,7 +740,8 @@ export class LiqLevelsSource {
   #triggers: PlusPart<{ data: LiqTriggers; stops: Layer; takes: Layer }> = plusPart();
   /** The profitable traders' own stops and take profits (`triggers-groups.json`): the only orders drawn under their name. */
   #orderGroups: PlusPart<{ data: LiqTriggers; stops: Layer; takes: Layer }> = plusPart();
-  #both: SumLayer | null = null;
+  /** Liquidations and stops added together, one per group (a split of everyone beside the profitable traders draws both). */
+  #both = new Map<LiqView['group'], SumLayer>();
   #target: HistoryTarget | null = null;
   /** Which part of the view the state is about: the liquidations' or the orders' (`#settle`). */
   #blame: 'liq' | 'orders' = 'liq';
@@ -726,37 +751,69 @@ export class LiqLevelsSource {
     this.candles = new KeyLevelHistory(get, now, CANDLES_MS, 12 * HOUR);
   }
 
-  /** What is drawn (the effective view: the free view without Plus). */
+  /** What is drawn (the effective view: the free view without Plus; a split's left column). */
   get view(): LiqView { return this.#view; }
 
-  /** The liquidation levels of the view's traders (every position's, or a group's), or null while they are not held. */
-  #liqLayer(): Layer | null {
-    const v = this.#view;
+  /** The liquidation levels of a view's traders (every position's, or a group's), or null while they are not held. */
+  #liqLayer(v: LiqView = this.#view): Layer | null {
     if (v.group === 'all') return this.#free;
     const g = this.#groups.held;
     return g ? g.profitable : null;
   }
-  /** The stop and take-profit orders of the view's traders: everyone's, or the profitable traders' own (never everyone's under their name). */
-  #orders(): { data: LiqTriggers; stops: Layer; takes: Layer } | null { return this.#view.group === 'all' ? this.#triggers.held : this.#orderGroups.held; }
-  /** Whether the view asks for the profitable traders' orders and the server has none (404, or 503 for this snapshot): nothing is drawn for them. */
-  ordersAbsent(): boolean {
-    const v = this.#view, og = this.#orderGroups;
+  /** The stop and take-profit orders of a view's traders: everyone's, or the profitable traders' own (never everyone's under their name). */
+  #orders(v: LiqView = this.#view): { data: LiqTriggers; stops: Layer; takes: Layer } | null { return v.group === 'all' ? this.#triggers.held : this.#orderGroups.held; }
+  /** Whether a view asks for the profitable traders' orders and the server has none (404, or 503 for this snapshot): nothing is drawn for them. */
+  #ordersAbsent(v: LiqView): boolean {
+    const og = this.#orderGroups;
     return ordersShown(v) && v.group !== 'all' && !og.held && og.status === 'absent';
   }
-  /** What the view draws as its levels, its curve's (the take profits beside it apart). */
-  #main(): Layer | SumLayer | null {
-    const curve = curveOf(this.#view), orders = this.#orders();
+  /** Whether the view asks for the profitable traders' orders and the server has none (404, or 503 for this snapshot): nothing is drawn for them. */
+  ordersAbsent(): boolean { return this.#ordersAbsent(this.#view); }
+  /** What a view draws as its levels, its curve's (the take profits beside it apart). */
+  #mainOf(v: LiqView): Layer | SumLayer | null {
+    const curve = curveOf(v), orders = this.#orders(v);
     if (curve === 'stops') return orders?.stops ?? null;
     if (curve === 'takes') return orders?.takes ?? null;
-    const liq = this.#liqLayer();
+    const liq = this.#liqLayer(v);
     if (curve === 'liq' || !liq) return curve === 'liq' ? liq : null;
     const stops = orders?.stops;
     // The profitable traders' stops not on the server: their liquidations alone are drawn, and the missing part is said (`ordersAbsent`).
-    if (!stops) return this.ordersAbsent() ? liq : null;
+    if (!stops) return this.#ordersAbsent(v) ? liq : null;
     // Added up only on one grid (both files bin on the coin's $10 today): another would put the stops in the wrong rows.
     if (stops.levels.step !== liq.levels.step) return null;
-    if (this.#both?.a !== liq || this.#both.b !== stops) this.#both = new SumLayer(liq, stops);
-    return this.#both;
+    const held = this.#both.get(v.group);
+    if (held?.a === liq && held.b === stops) return held;
+    const sum = new SumLayer(liq, stops);
+    this.#both.set(v.group, sum);
+    return sum;
+  }
+  /** What the view draws as its levels. */
+  #main(): Layer | SumLayer | null { return this.#mainOf(this.#view); }
+
+  /**
+   * A split's right column as a set of its own (`LiqSet`), or null where nothing is split: its levels, state and reasons from the same files
+   * as the view's, asked for together (`#askPlus`).
+   */
+  get right(): LiqSet | null { return this.#right ? this.#setFor(this.#right, this.#rightState, this.#rightBlame) : null; }
+  /**
+   * Any view's set from the files held for the view and a split's right column (`LiqSet`): what a column too narrow to split draws in its
+   * place, liquidations and stops added up (2026-11-19). Only the parts already asked for have levels; where it stands is worked out now.
+   */
+  setOf(v: LiqView): LiqSet { const { state, blame } = this.#settleOf(v); return this.#setFor(v, state, blame); }
+  #setFor(v: LiqView, state: LiqState, blame: 'liq' | 'orders'): LiqSet {
+    const layer = (): Layer | SumLayer | null => this.#mainOf(v), family = v.group === 'all' ? 'orders' : 'orderGroups';
+    return {
+      view: v, state, levels: layer()?.levels ?? null,
+      taken: () => layer()?.derive(this.candles).taken ?? null,
+      standing: () => layer()?.derive(this.candles).standing ?? null,
+      // Named by its view and the family of its orders, as `key` is, so no two families share a drawing.
+      key: () => { const main = layer(); return main ? `${viewKey(v)}|${family}|${main.key(this.candles)}` : ''; },
+      ordersAbsent: () => this.#ordersAbsent(v),
+      missing: () => this.#missingOf(v, state),
+      blame: () => blame,
+      asOfs: () => this.#asOfsOf(v),
+      ordersOld: () => this.#ordersOldOf(v),
+    };
   }
 
   /** The levels the view draws, or null. */
@@ -770,37 +827,44 @@ export class LiqLevelsSource {
     return part.held ? 'ready' : this.#partState(part);
   }
   /** When the positions of the liquidations drawn stood, and the stop and take-profit orders (null: not part of the view or not held). */
-  asOfs(): { liq: number | null; orders: number | null } {
-    const v = this.#view, orders = ordersShown(v) ? this.#orders()?.data.asOf ?? null : null;
-    return { liq: v.liq ? this.#liqLayer()?.levels.asOf ?? null : null, orders };
+  asOfs(): { liq: number | null; orders: number | null } { return this.#asOfsOf(this.#view); }
+  #asOfsOf(v: LiqView): { liq: number | null; orders: number | null } {
+    const orders = ordersShown(v) ? this.#orders(v)?.data.asOf ?? null : null;
+    return { liq: v.liq ? this.#liqLayer(v)?.levels.asOf ?? null : null, orders };
   }
   /**
    * Whether the stop and take-profit orders drawn are old enough to say so: older than the levels go stale, or more than about two hours
    * older than the liquidations beside them (not every snapshot has an order file).
    */
-  ordersOld(): boolean {
-    const { liq, orders } = this.asOfs();
+  ordersOld(): boolean { return this.#ordersOldOf(this.#view); }
+  #ordersOldOf(v: LiqView): boolean {
+    const { liq, orders } = this.#asOfsOf(v);
     return orders !== null && (this.now() - orders > STALE_MS || (liq !== null && liq - orders > ORDERS_BEHIND_MS));
   }
   /** Why nothing of the view is drawn where the state is `missing`: no groups or orders there yet, or none of the profitable traders' orders on the server. */
-  missing(): 'groups' | 'orders' | 'profitable-orders' | null {
-    if (this.state !== 'missing') return null;
-    const v = this.#view;
+  missing(): 'groups' | 'orders' | 'profitable-orders' | null { return this.#missingOf(this.#view, this.state); }
+  #missingOf(v: LiqView, state: LiqState): 'groups' | 'orders' | 'profitable-orders' | null {
+    if (state !== 'missing') return null;
     if (v.liq && v.group !== 'all' && !this.#groups.held) return 'groups';
-    return this.ordersAbsent() ? 'profitable-orders' : 'orders';
+    return this.#ordersAbsent(v) ? 'profitable-orders' : 'orders';
   }
 
   /** Which part of the view the state is about (a view of both: the first part that is not ready). */
   blame(): 'liq' | 'orders' { return this.#blame; }
 
-  /** Keep the levels of `coin` fresh for `view` (the effective one: the free view without Plus); `onChange` runs when anything drawn changes. */
-  ensure(coin: Coin, onChange: () => void, view: LiqView = FREE_VIEW): void {
+  /**
+   * Keep the levels of `coin` fresh for `view` (the effective one: the free view without Plus; a split's left column) and a split's right
+   * column (`right`, null for none); `onChange` runs when anything drawn changes. What is asked depends on the choice and the membership
+   * alone, never on the room to draw it, so two panes that draw it differently never take turns changing it.
+   */
+  ensure(coin: Coin, onChange: () => void, view: LiqView = FREE_VIEW, right: LiqView | null = null): void {
     if (viewKey(view) !== viewKey(this.#view)) { this.#view = view; this.version++; }
+    if ((right ? viewKey(right) : '') !== (this.#right ? viewKey(this.#right) : '')) { this.#right = right; this.version++; }
     const url = this.url();
-    if (!url) { this.state = 'off'; return; }
-    if (coin.coin !== BTC.coin) { this.state = 'other-coin'; return; }
+    if (!url) { this.state = 'off'; this.#rightState = 'off'; return; }
+    if (coin.coin !== BTC.coin) { this.state = 'other-coin'; this.#rightState = 'other-coin'; return; }
     if (url !== this.#url) {
-      this.#url = url; this.#free = null; this.#both = null; this.#nextAt = 0; this.#created = 0; this.#lead = 0; this.#offset = null; this.#askedAt = -Infinity; this.#failed = false; this.version++;
+      this.#url = url; this.#free = null; this.#both.clear(); this.#nextAt = 0; this.#created = 0; this.#lead = 0; this.#offset = null; this.#askedAt = -Infinity; this.#failed = false; this.version++;
       this.#groups = plusPart(); this.#triggers = plusPart(); this.#orderGroups = plusPart();
     }
     const now = this.now();
@@ -838,8 +902,9 @@ export class LiqLevelsSource {
     }
     this.#askPlus(onChange);
     this.#settle();
-    // The candles from the earliest snapshot drawn (the stops' is often older than the liquidations').
-    const from = [this.#main(), takesBeside(this.#view) ? this.#orders()?.takes ?? null : null, curveOf(this.#view) === 'both' ? this.#orders()?.stops ?? null : null]
+    // The candles from the earliest snapshot drawn (the stops' is often older than the liquidations'), a split's right column's included.
+    const other = this.#right;
+    const from = [this.#main(), takesBeside(this.#view) ? this.#orders()?.takes ?? null : null, curveOf(this.#view) === 'both' ? this.#orders()?.stops ?? null : null, ...(other ? [this.#mainOf(other)] : [])]
       .reduce((m, layer) => layer ? Math.min(m, layer instanceof SumLayer ? Math.min(layer.a.levels.asOf, layer.b.levels.asOf) : layer.levels.asOf) : m, Infinity);
     if (Number.isFinite(from)) {
       const id = instrumentIdFor('hyperliquid', BTC), listing = BTC.markets.hyperliquid;
@@ -855,10 +920,11 @@ export class LiqLevelsSource {
    * liquidations, the orders' for stops and take profits. Nothing paid is asked for without a pass.
    */
   #askPlus(onChange: () => void): void {
-    const v = this.#view;
-    this.#askPart(this.#groups, v.liq && v.group !== 'all', 'groups', onChange);
-    this.#askPart(this.#triggers, ordersShown(v) && v.group === 'all', 'triggers', onChange);
-    this.#askPart(this.#orderGroups, ordersShown(v) && v.group !== 'all', 'triggersGroups', onChange);
+    // What the view needs and what a split's right column needs, each file once.
+    const views = this.#right ? [this.#view, this.#right] : [this.#view];
+    this.#askPart(this.#groups, views.some(v => v.liq && v.group !== 'all'), 'groups', onChange);
+    this.#askPart(this.#triggers, views.some(v => ordersShown(v) && v.group === 'all'), 'triggers', onChange);
+    this.#askPart(this.#orderGroups, views.some(v => ordersShown(v) && v.group !== 'all'), 'triggersGroups', onChange);
   }
 
   #askPart(part: PlusPart<unknown>, want: boolean, which: 'groups' | 'triggers' | 'triggersGroups', onChange: () => void): void {
@@ -948,7 +1014,13 @@ export class LiqLevelsSource {
    * said (`ordersOld`), not hidden.
    */
   #settle(): void {
-    const v = this.#view, free = this.#free;
+    ({ state: this.state, blame: this.#blame } = this.#settleOf(this.#view));
+    const right = this.#right;
+    if (right) ({ state: this.#rightState, blame: this.#rightBlame } = this.#settleOf(right)); else { this.#rightState = 'idle'; this.#rightBlame = 'liq'; }
+  }
+  /** Where a view stands, and which of its parts that is about (see `#settle`). */
+  #settleOf(v: LiqView): { state: LiqState; blame: 'liq' | 'orders' } {
+    const free = this.#free;
     const freeState: LiqState = !free ? (this.#failed ? 'unavailable' : 'loading') : 'ready';
     const liqState = (): LiqState => {
       if (v.group === 'all') return freeState;
@@ -957,22 +1029,22 @@ export class LiqLevelsSource {
       return 'ready';
     };
     const fresh = (s: LiqState): LiqState => {
-      const liq = this.#liqLayer();
+      const liq = this.#liqLayer(v);
       return s === 'ready' && liq && this.now() - liq.levels.asOf > STALE_MS ? 'stale' : s;
     };
     // The orders of the view's traders: everyone's file, or the profitable traders' own (none on the server: missing, `ordersAbsent`).
     const ordersPart = v.group === 'all' ? this.#triggers : this.#orderGroups;
     const stops = (): LiqState => ordersPart.held ? 'ready' : freeState !== 'ready' ? freeState : this.#partState(ordersPart);
-    // Both on two grids cannot be added up (`#main`): said as orders that could not be read.
-    const grids = (): boolean => { const liq = this.#liqLayer(), o = ordersPart.held; return !liq || !o || liq.levels.step === o.stops.levels.step; };
+    // Both on two grids cannot be added up (`#mainOf`): said as orders that could not be read.
+    const grids = (): boolean => { const liq = this.#liqLayer(v), o = ordersPart.held; return !liq || !o || liq.levels.step === o.stops.levels.step; };
     const curve = curveOf(v);
-    if (curve === 'liq') { this.state = fresh(liqState()); this.#blame = 'liq'; return; }
+    if (curve === 'liq') return { state: fresh(liqState()), blame: 'liq' };
     // Stops or take profits alone: the order file's state.
-    if (curve === 'stops' || curve === 'takes') { this.state = stops(); this.#blame = 'orders'; return; }
+    if (curve === 'stops' || curve === 'takes') return { state: stops(), blame: 'orders' };
     // Both: the first part not ready says why nothing is drawn.
     // The profitable traders' stops not on the server: their liquidations alone stand for the view (said, `ordersAbsent`).
-    const a = fresh(liqState()), b = this.ordersAbsent() ? 'ready' : stops();
-    this.state = a !== 'ready' ? a : b !== 'ready' ? b : grids() ? 'ready' : 'unavailable'; this.#blame = a !== 'ready' ? 'liq' : 'orders';
+    const a = fresh(liqState()), b = this.#ordersAbsent(v) ? 'ready' : stops();
+    return { state: a !== 'ready' ? a : b !== 'ready' ? b : grids() ? 'ready' : 'unavailable', blame: a !== 'ready' ? 'liq' : 'orders' };
   }
 
   /**

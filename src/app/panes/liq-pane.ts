@@ -11,7 +11,7 @@ import { niceStep } from '../view.ts';
 import { paintInfoBox } from '../infobox.ts';
 import { ratioText } from '../mirror.ts';
 import { binsIn, dollarPriceOf, liqProfile, standingBelow, TAKE_DASH, type LiqLevels, type LiqProfile, type LiqStanding } from '../liq-levels.ts';
-import { curveOf, groupTitle, heldBack, kindTitle, liveView, plusOn } from '../liq-view.ts';
+import { curveOf, groupTitle, heldBack, kindTitle, liveAsk, liveView, plusOn } from '../liq-view.ts';
 import { liqNote, liqWhy, sideTitle } from '../liq-words.ts';
 import { probeBoxLines } from '../liq-box.ts';
 import { toggleLevels } from '../levels-control.ts';
@@ -141,7 +141,7 @@ export class LiqPane {
    * for a change of the setting reads the new choice's levels, not those the last tick left (Sol, review 2026-11-19, round 3: the profitable
    * traders' caption stood over everyone's levels until the next tick).
    */
-  #ensure(): void { this.hub.liqLevels.ensure(currentCoin(), () => this.invalidate(), liveView(this.store.state.liqLevels)); }
+  #ensure(): void { const ask = liveAsk(this.store.state.liqLevels); this.hub.liqLevels.ensure(currentCoin(), () => this.invalidate(), ask.view, ask.right); }
 
   #tick(): void {
     const src = this.hub.liqLevels;

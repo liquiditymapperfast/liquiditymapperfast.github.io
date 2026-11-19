@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { LiqLevelsSource, binsIn, parseTriggerGroups, combineTaken, laneRows, liqCurves, liqProfile, liqRows, onTheWay, parseLiqGroups, parseLiqLevels, parseTriggers, partsBetween, partsOnTheWay, standingBelow, sumLevels, takenByCandles, liqStanding, type LaneRows, type LiqLevels, type LiqRow, type LiqStanding } from '../src/app/liq-levels.ts';
 import { DAY_MS, LIQ_HOLD_MS, LiqHistory, MAX_DAYS, bandOnEdge, dayText, familiesFor, readHistRows, readRollup, retryAfterSeconds, webFetch, type LiqAnswer } from '../src/app/liq-history.ts';
 import { readLiqLevels, plusUrls } from '../src/app/liq-url.ts';
-import { FREE_VIEW, curveOf, effectiveView, heldBack, isFreeChoice, levelsDescription, levelsSummary, takesBeside, viewKey, type LiqView } from '../src/app/liq-view.ts';
+import { FREE_VIEW, curveOf, effectiveSplit, effectiveView, heldBack, isFreeChoice, levelsDescription, levelsSummary, pairKey, splitPair, takesBeside, viewKey, type LiqView } from '../src/app/liq-view.ts';
 import { PRESET_BANDS } from '../src/app/depth-settings.ts';
 import { controlListeners, paidPart, popoverPlace, pressGroup, pressPart, shownChoice, trapStep } from '../src/app/levels-control.ts';
 import { holdPanelControl, releaseLiqLevelPanel } from '../src/app/liq-panel.ts';
@@ -130,13 +132,13 @@ test('liquidations and stops added together: bin by bin, each part counted from 
 });
 
 test('one choice for the page: the free view without Plus, the choice kept; old saves read as the free view', () => {
-  assert.deepEqual(readLiqLevels(undefined), { on: true, column: true, liq: true, stops: false, takes: false, group: 'all' });
-  assert.deepEqual(readLiqLevels({ on: false, column: true }), { on: false, column: true, liq: true, stops: false, takes: false, group: 'all' }, 'a save from before the choice');
-  assert.deepEqual(readLiqLevels({ liq: false, stops: true, takes: true, group: 'profitable' }), { on: true, column: true, liq: false, stops: true, takes: true, group: 'profitable' });
+  assert.deepEqual(readLiqLevels(undefined), { on: true, column: true, liq: true, stops: false, takes: false, group: 'all', split: 'none' });
+  assert.deepEqual(readLiqLevels({ on: false, column: true }), { on: false, column: true, liq: true, stops: false, takes: false, group: 'all', split: 'none' }, 'a save from before the choice');
+  assert.deepEqual(readLiqLevels({ liq: false, stops: true, takes: true, group: 'profitable', split: 'none' }), { on: true, column: true, liq: false, stops: true, takes: true, group: 'profitable', split: 'none' });
   // A group the page no longer offers, saved before (in the settings or a layout): everyone's, never the profitable traders'.
-  assert.deepEqual(readLiqLevels({ liq: true, stops: false, takes: true, group: 'proven' }), { on: true, column: true, liq: true, stops: false, takes: true, group: 'all' });
+  assert.deepEqual(readLiqLevels({ liq: true, stops: false, takes: true, group: 'proven' }), { on: true, column: true, liq: true, stops: false, takes: true, group: 'all', split: 'none' });
   assert.deepEqual(readLiqLevels({ liq: true, stops: true, group: 'Proven' }).group, 'all');
-  assert.deepEqual(readLiqLevels({ kind: 'all', takes: 'yes', group: 'rich' }), { on: true, column: true, liq: true, stops: false, takes: false, group: 'all' }, 'anything else reads as the free view');
+  assert.deepEqual(readLiqLevels({ kind: 'all', takes: 'yes', group: 'rich' }), { on: true, column: true, liq: true, stops: false, takes: false, group: 'all', split: 'none' }, 'anything else reads as the free view');
   const chosen = readLiqLevels({ liq: true, stops: true, takes: true, group: 'profitable' });
   assert.deepEqual(effectiveView(chosen, false), FREE_VIEW, 'no Plus: the free view is drawn');
   assert.deepEqual(effectiveView(chosen, true), { liq: true, stops: true, takes: true, group: 'profitable' });
@@ -357,18 +359,18 @@ test('the levels control: three switches with one always on, Traders only with l
 });
 
 test('a saved choice in an older form reads as the three switches; anything else, a save from before the choice too, as the free view; every way back goes through the reader', () => {
-  const on = { on: true, column: true }, freeView = { ...on, liq: true, stops: false, takes: false, group: 'all' };
-  assert.deepEqual(readLiqLevels({ kind: 'liq', takes: true, group: 'profitable' }), { ...on, liq: true, stops: false, takes: true, group: 'profitable' });
-  assert.deepEqual(readLiqLevels({ kind: 'stops', takes: false, group: 'all' }), { ...on, liq: false, stops: true, takes: false, group: 'all' });
-  assert.deepEqual(readLiqLevels({ kind: 'both', takes: true, group: 'all', on: false }), { on: false, column: true, liq: true, stops: true, takes: true, group: 'all' });
+  const on = { on: true, column: true }, freeView = { ...on, liq: true, stops: false, takes: false, group: 'all', split: 'none' };
+  assert.deepEqual(readLiqLevels({ kind: 'liq', takes: true, group: 'profitable', split: 'none' }), { ...on, liq: true, stops: false, takes: true, group: 'profitable', split: 'none' });
+  assert.deepEqual(readLiqLevels({ kind: 'stops', takes: false, group: 'all', split: 'none' }), { ...on, liq: false, stops: true, takes: false, group: 'all', split: 'none' });
+  assert.deepEqual(readLiqLevels({ kind: 'both', takes: true, group: 'all', on: false }), { on: false, column: true, liq: true, stops: true, takes: true, group: 'all', split: 'none' });
   assert.deepEqual(readLiqLevels({ kind: 'everything', takes: true, group: 'profitable' }), freeView, 'an unknown kind: the free view');
   assert.deepEqual(readLiqLevels({ liq: false, stops: false, takes: false, group: 'profitable' }), freeView, 'none on: the free view');
   assert.deepEqual(readLiqLevels({ liq: 'yes', stops: 1 }), freeView);
   assert.deepEqual(readLiqLevels('garbage'), freeView);
-  assert.deepEqual(readLiqLevels({ liq: false, stops: false, takes: true }), { ...on, liq: false, stops: false, takes: true, group: 'all' }, 'take profits alone are a choice');
+  assert.deepEqual(readLiqLevels({ liq: false, stops: false, takes: true }), { ...on, liq: false, stops: false, takes: true, group: 'all', split: 'none' }, 'take profits alone are a choice');
   // A saved page, a saved layout or a layouts file (readSettings), and a backup or the old address's hand-over (they write the save, then the page reads it).
-  assert.deepEqual(readSettings({ liqLevels: { kind: 'both', takes: true } }).liqLevels, { ...on, liq: true, stops: true, takes: true, group: 'all' });
-  assert.deepEqual(carriedSettings({ liqLevels: { kind: 'stops' } } as never).liqLevels, { ...on, liq: false, stops: true, takes: false, group: 'all' });
+  assert.deepEqual(readSettings({ liqLevels: { kind: 'both', takes: true } }).liqLevels, { ...on, liq: true, stops: true, takes: true, group: 'all', split: 'none' });
+  assert.deepEqual(carriedSettings({ liqLevels: { kind: 'stops' } } as never).liqLevels, { ...on, liq: false, stops: true, takes: false, group: 'all', split: 'none' });
   assert.deepEqual(readSettings({ liqLevels: { liq: false, stops: false, takes: false } }).liqLevels, freeView);
 });
 
@@ -514,13 +516,13 @@ test('the take-profit overlay is never cached across its two modes: alone they a
 test('every write of the levels\' setting keeps one kind on, and a present switch that is not a boolean is the free view, never a paid one', async () => {
   const store = new Store(initialState()), on = { on: true, column: true };
   store.set({ liqLevels: { ...store.state.liqLevels, liq: false, stops: false, takes: false } });
-  assert.deepEqual(store.state.liqLevels, { ...on, liq: true, stops: false, takes: false, group: 'all' }, 'all three off, written by code: the free view');
+  assert.deepEqual(store.state.liqLevels, { ...on, liq: true, stops: false, takes: false, group: 'all', split: 'none' }, 'all three off, written by code: the free view');
   store.set({ liqLevels: { ...store.state.liqLevels, liq: false, takes: true } });
   assert.equal(curveOf(store.state.liqLevels), 'takes'); assert.equal(store.state.liqLevels.takes, true, 'take profits alone stay a choice');
-  const free = { ...on, liq: true, stops: false, takes: false, group: 'all' };
+  const free = { ...on, liq: true, stops: false, takes: false, group: 'all', split: 'none' };
   assert.deepEqual(readLiqLevels({ liq: 'invalid', stops: true, takes: true, group: 'profitable' }), free, 'a malformed switch: the free view');
   assert.deepEqual(readLiqLevels({ liq: true, stops: 1 }), free);
-  assert.deepEqual(readLiqLevels({ liq: false, stops: true }), { ...on, liq: false, stops: true, takes: false, group: 'all' }, 'a missing switch is off');
+  assert.deepEqual(readLiqLevels({ liq: false, stops: true }), { ...on, liq: false, stops: true, takes: false, group: 'all', split: 'none' }, 'a missing switch is off');
   assert.deepEqual(carriedSettings({ liqLevels: { liq: 'yes', stops: true, takes: true, group: 'profitable' } } as never).liqLevels, free, 'nor through a layout');
 });
 
@@ -1080,13 +1082,13 @@ test('the history never draws a file of everyone\'s orders, or a partly malforme
 });
 
 test('a saved levels setting in the older form with a switch that is not a boolean is the free view, in settings and in layouts (Sol, round 2)', () => {
-  const on = { on: true, column: true }, free = { ...on, liq: true, stops: false, takes: false, group: 'all' };
+  const on = { on: true, column: true }, free = { ...on, liq: true, stops: false, takes: false, group: 'all', split: 'none' };
   assert.deepEqual(readLiqLevels({ kind: 'stops', takes: 'invalid', group: 'profitable' }), free, 'Sol\'s case: was the profitable traders\' stops');
   assert.deepEqual(readLiqLevels({ kind: 'liq', takes: 1, group: 'profitable' }), free);
   assert.deepEqual(readLiqLevels({ kind: 'both', takes: null }), free);
   assert.deepEqual(readLiqLevels({ kind: 'both', takes: true, liq: 'yes' }), free, 'a switch of the newer form beside the older one');
-  assert.deepEqual(readLiqLevels({ kind: 'stops', takes: false, group: 'profitable' }), { ...on, liq: false, stops: true, takes: false, group: 'profitable' }, 'booleans: read as before');
-  assert.deepEqual(readLiqLevels({ kind: 'stops', group: 'profitable' }), { ...on, liq: false, stops: true, takes: false, group: 'profitable' }, 'a missing switch is off');
+  assert.deepEqual(readLiqLevels({ kind: 'stops', takes: false, group: 'profitable' }), { ...on, liq: false, stops: true, takes: false, group: 'profitable', split: 'none' }, 'booleans: read as before');
+  assert.deepEqual(readLiqLevels({ kind: 'stops', group: 'profitable' }), { ...on, liq: false, stops: true, takes: false, group: 'profitable', split: 'none' }, 'a missing switch is off');
   assert.deepEqual(readSettings({ liqLevels: { kind: 'stops', takes: 'invalid', group: 'profitable' } }).liqLevels, free, 'nor in a saved page');
   assert.deepEqual(carriedSettings({ liqLevels: { kind: 'stops', takes: 'invalid', group: 'profitable' } } as never).liqLevels, free, 'nor through a layout');
   assert.deepEqual(carriedSettings({ liqLevels: { kind: 'both', takes: 0 } } as never).liqLevels, free);
@@ -1301,4 +1303,91 @@ test('the profitable traders\' live orders, days and rollup wait what an HTTP-da
       assert.equal(stub.asks(url), asked + 1, `${url}: asked again after ten`);
     }
   } finally { stub.restore(); }
+});
+
+test('a split is saved with the levels: absent reads as none, liquidations beside stops needs both, everyone beside the profitable traders needs one of them, on every write', () => {
+  const on = { on: true, column: true };
+  assert.equal(readLiqLevels({ liq: true, stops: true }).split, 'none', 'a save from before the split');
+  assert.equal(readLiqLevels({ liq: true, stops: true, split: 'sideways' }).split, 'none', 'anything else');
+  assert.deepEqual(readLiqLevels({ liq: true, stops: true, takes: true, group: 'profitable', split: 'kinds' }), { ...on, liq: true, stops: true, takes: true, group: 'profitable', split: 'kinds' });
+  assert.equal(readLiqLevels({ liq: true, stops: false, split: 'kinds' }).split, 'none', 'liquidations beside stops with one of them off: none');
+  assert.equal(readLiqLevels({ kind: 'both', split: 'kinds' }).split, 'kinds', 'an older form of both kinds keeps it');
+  assert.equal(readLiqLevels({ liq: false, stops: true, split: 'groups' }).split, 'groups');
+  assert.equal(readLiqLevels({ liq: false, stops: false, takes: true, split: 'groups' }).split, 'none', 'take profits alone are never split');
+  assert.equal(readLiqLevels({ liq: 'x', stops: true, split: 'kinds' }).split, 'none', 'a malformed choice is the free view');
+  // Every write goes through the reader: a kind switched off returns the split to none, whoever writes it.
+  const store = new Store(initialState());
+  store.set({ liqLevels: { ...store.state.liqLevels, liq: true, stops: true, split: 'kinds' } });
+  assert.equal(store.state.liqLevels.split, 'kinds');
+  store.set({ liqLevels: { ...store.state.liqLevels, stops: false } });
+  assert.equal(store.state.liqLevels.split, 'none', 'stops off: none');
+  assert.equal(carriedSettings({ liqLevels: { liq: true, stops: false, split: 'kinds' } } as never).liqLevels?.split, 'none', 'nor through a layout');
+});
+
+test('the pair a split draws, the one series everywhere else, and a split without Plus held back', () => {
+  const kinds = readLiqLevels({ liq: true, stops: true, takes: true, group: 'profitable', split: 'kinds' });
+  assert.deepEqual(splitPair(kinds, true), { split: 'kinds', left: { liq: true, stops: false, takes: true, group: 'profitable' }, right: { liq: false, stops: true, takes: false, group: 'profitable' } },
+    'liquidations then stops, of the chosen traders; take profits with the left one');
+  assert.deepEqual(effectiveView(kinds, true), { liq: true, stops: false, takes: true, group: 'profitable' }, 'one series: the left column\'s set');
+  const groups = readLiqLevels({ liq: true, stops: true, takes: true, group: 'profitable', split: 'groups' });
+  assert.deepEqual(splitPair(groups, true), { split: 'groups', left: { liq: true, stops: true, takes: true, group: 'all' }, right: { liq: true, stops: true, takes: false, group: 'profitable' } },
+    'everyone then the profitable traders, of the chosen kinds; the saved group is not drawn');
+  assert.deepEqual(effectiveView(groups, true), { liq: true, stops: true, takes: true, group: 'all' }, 'one series: everyone\'s, never a hidden group');
+  assert.equal(splitPair(groups, false), null, 'no Plus: nothing split');
+  assert.deepEqual(effectiveView(groups, false), FREE_VIEW);
+  assert.equal(effectiveSplit(groups, false), 'none');
+  const liqOnly = readLiqLevels({ liq: true, split: 'groups' });
+  assert.ok(effectiveView(liqOnly, true).group === 'all' && isFreeChoice(effectiveView(liqOnly, true)), 'the left set of a split can look free');
+  assert.ok(!isFreeChoice(liqOnly) && heldBack(liqOnly, false), 'but the split is Plus: held back without it, kept, shown locked');
+  assert.notEqual(pairKey(splitPair(kinds, true)), pairKey(splitPair(groups, true)));
+  assert.equal(pairKey(null), '');
+});
+
+test('a split asks for both columns\' files together, each once, and the right column of the profitable traders never borrows everyone\'s orders', async () => {
+  const pass = { value: 'v1.pass.sig' as string | null };
+  const MINE_STOPS = [[9, 40, 0, 0, 0, 1, 0, 40, 0]];
+  // Everyone beside the profitable traders, liquidations and stops: the free file, the groups' and both orders' files, each once.
+  const s = service({ [U.groups]: { status: 200, body: groups([[7, 0, 50, 0, 0, 1, 0, 50, 0]], null) }, [U.triggers]: { status: 200, body: triggers(STOPS, TAKES) }, [U.triggersGroups]: { status: 200, body: triggerGroups(MINE_STOPS, TAKES) } }, pass);
+  const pair = splitPair(readLiqLevels({ liq: true, stops: true, split: 'groups' }), true)!;
+  s.src.ensure(BTC, () => {}, pair.left, pair.right); await tick(); s.src.ensure(BTC, () => {}, pair.left, pair.right); await tick();
+  const urls = s.asked.map(a => a.url);
+  for (const u of [U.groups, U.triggers, U.triggersGroups]) assert.equal(urls.filter(x => x === u).length, 1, u);
+  assert.equal(s.src.state, 'ready'); assert.equal(s.src.levels!.kind, 'both'); assert.deepEqual([...s.src.levels!.k], [8, 12], 'left: everyone\'s liquidations and stops');
+  const right = s.src.right!;
+  assert.equal(right.state, 'ready'); assert.equal(right.levels!.kind, 'both'); assert.deepEqual([...right.levels!.k], [7, 9], 'right: the profitable traders\' own');
+  assert.ok(right.standing() && right.taken() && right.key() !== '' && right.key() !== s.src.key());
+  // Liquidations beside stops of the profitable traders, their orders not on the server: the left column stands, the right says why.
+  const absent = service({ [U.groups]: { status: 200, body: groups([[7, 0, 50, 0, 0, 1, 0, 50, 0]], null) }, [U.triggers]: { status: 200, body: triggers(STOPS, TAKES) } }, pass);
+  const kinds = splitPair(readLiqLevels({ liq: true, stops: true, group: 'profitable', split: 'kinds' }), true)!;
+  absent.src.ensure(BTC, () => {}, kinds.left, kinds.right); await tick(); absent.src.ensure(BTC, () => {}, kinds.left, kinds.right); await tick();
+  assert.equal(absent.src.state, 'ready'); assert.deepEqual([...absent.src.levels!.k], [7], 'left: their liquidations');
+  assert.equal(absent.src.right!.state, 'missing'); assert.equal(absent.src.right!.missing(), 'profitable-orders'); assert.equal(absent.src.right!.levels, null);
+  assert.equal(liqWhy(absent.src.right!, null), ordersAbsent(), 'right: not available yet');
+  assert.ok(!absent.asked.some(a => a.url === U.triggers), 'everyone\'s orders never asked for in their place');
+  // No split again: no right column, nothing more asked.
+  const before = absent.asked.length;
+  absent.src.ensure(BTC, () => {}, kinds.left, null); await tick();
+  assert.equal(absent.src.right, null); assert.equal(absent.asked.length, before);
+});
+
+test('every pane asks for a split the same way: the map and the Liq tab asking in turn change nothing, a new right column does', async () => {
+  const pass = { value: 'v1.pass.sig' as string | null };
+  const s = service({ [U.groups]: { status: 200, body: groups([[7, 0, 50, 0, 0, 1, 0, 50, 0]], null) }, [U.triggers]: { status: 200, body: triggers(STOPS, TAKES) } }, pass);
+  const pair = splitPair(readLiqLevels({ liq: true, stops: true, split: 'kinds' }), true)!;
+  // The map, then the Liq tab, then the map: one ask, the same view and right column each time (the files arrive meanwhile).
+  for (let i = 0; i < 4; i++) { s.src.ensure(BTC, () => {}, pair.left, pair.right); await tick(); }
+  assert.equal(s.src.state, 'ready'); assert.equal(s.src.right?.state, 'ready');
+  const settled = s.src.version;
+  for (let i = 0; i < 4; i++) s.src.ensure(BTC, () => {}, pair.left, pair.right);
+  assert.equal(s.src.version, settled, 'asking again for the same changes nothing');
+  s.src.ensure(BTC, () => {}, pair.left, null);
+  assert.equal(s.src.version, settled + 1, 'no right column any more: one change');
+  // Both panes ask through one helper, never with a view of their own.
+  const read = (f: string): string => fs.readFileSync(path.join(process.cwd(), f), 'utf8');
+  for (const f of ['src/app/panes/heat-pane.ts', 'src/app/panes/liq-pane.ts']) {
+    const src = read(f);
+    assert.match(src, /const ask = liveAsk\((?:state|this\.store\.state)\.liqLevels\);/, f);
+    assert.match(src, /\.ensure\(currentCoin\(\), \(\) => this\.invalidate\(\), ask\.view, ask\.right\)/, f);
+    assert.equal((src.match(/\.ensure\(currentCoin\(\)/g) ?? []).length, 1, `${f}: one ask`);
+  }
 });
