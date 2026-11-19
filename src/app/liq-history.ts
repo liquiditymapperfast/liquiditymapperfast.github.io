@@ -53,10 +53,11 @@ export const webFetch: LiqFetch = async (url, pass) => {
   return { status: answer.status, body, ...(wait !== undefined ? { retryAfter: wait } : {}) };
 };
 /**
- * A `Retry-After` header as seconds from `now` (RFC 9110): delta-seconds, digits alone, or an HTTP date (IMF-fixdate, or the obsolete RFC 850
- * and asctime forms, all GMT), a date already past being 0. Anything else (`0x10`, `1e3`, `10.5`, words, none) is undefined, so the caller's
- * own wait applies; the callers keep a wait said within their bounds. One reader for the live files, the days and the rollups (Sol, review
- * 2026-11-19, round 3: an HTTP date was read as none and fell back to five minutes, `0x10` as sixteen seconds).
+ * A `Retry-After` header as seconds from `now` (RFC 9110): delta-seconds, digits alone, or an HTTP date (IMF-fixdate, or the obsolete asctime
+ * form, GMT), a date already past being 0. Anything else (`0x10`, `1e3`, `10.5`, words, none) is undefined, so the caller's own wait applies;
+ * so is the obsolete RFC 850 form, whose two-digit year names no century (HTTP takes the one within 50 years of now, `Date.parse` a fixed
+ * pivot). The callers keep a wait said within their bounds. One reader for the live files, the days and the rollups (Sol, review 2026-11-19,
+ * round 3: an HTTP date was read as none and fell back to five minutes, `0x10` as sixteen seconds; round 4: `06-Nov-50` as 1950).
  */
 export function retryAfterSeconds(header: string | null | undefined, now: number): number | undefined {
   const text = header?.trim();
@@ -66,8 +67,8 @@ export function retryAfterSeconds(header: string | null | undefined, now: number
   return Number.isFinite(at) ? Math.max(0, (at - now) / 1_000) : undefined;
 }
 const WEEKDAY = '(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)', MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', TIME = '\\d{2}:\\d{2}:\\d{2}';
-/** IMF-fixdate (`Sun, 06 Nov 1994 08:49:37 GMT`) or the obsolete RFC 850 form (`Sunday, 06-Nov-94 08:49:37 GMT`). */
-const HTTP_DATE = new RegExp(`^(?:${WEEKDAY}, \\d{2} ${MONTH} \\d{4} ${TIME}|(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day, \\d{2}-${MONTH}-\\d{2} ${TIME}) GMT$`);
+/** IMF-fixdate (`Sun, 06 Nov 1994 08:49:37 GMT`). */
+const HTTP_DATE = new RegExp(`^${WEEKDAY}, \\d{2} ${MONTH} \\d{4} ${TIME} GMT$`);
 /** The obsolete asctime form (`Sun Nov  6 08:49:37 1994`), which carries no zone and is GMT. */
 const ASCTIME = new RegExp(`^${WEEKDAY} ${MONTH} [ \\d]\\d ${TIME} \\d{4}$`);
 /** Whether an answer is the gate's refusal of a Plus file: a 403 whose body is `{"error":"plus_required"}`. */
@@ -510,8 +511,7 @@ export class LiqHistory {
   /**
    * Whether the view asks for the profitable traders' orders and the server has none for some of [t0, t1]: a 404 or a 503 for one of their days,
    * or for their rollup in a wide view. The Depth pane and its Range summary say so and draw the rest of the view (Liq + stops: their
-   * liquidations alone), never everyone's orders in their place. `series` asks it from as far back as a snapshot drawn can come (a day's last
-   * snapshot stands into the next).
+   * liquidations alone), never everyone's orders in their place. `series` also says it where a snapshot it draws comes from such a day.
    */
   ordersAbsent(view: LiqView, t0: number, t1: number): boolean {
     if (view.group === 'all' || !ordersShown(view)) return false;
@@ -702,19 +702,24 @@ export class LiqHistory {
       const family = key.slice(0, key.indexOf('|')) as LiqFamily, day = Number(key.slice(key.indexOf('|') + 1));
       if (families.includes(family) && day + DAY_MS > t0 - DAY_MS && day <= t1) days.add(day);
     }
-    const rows: LiqRow[] = [], takes: LiqRow[] = [];
+    const rows: LiqRow[] = [], takes: LiqRow[] = [], missing = new Set<LiqRow>();
     for (const day of days) {
       // Their orders not on the server for this day: Liq + stops is their liquidations alone there (`#viewRows`), keyed apart.
       const absent = families.includes('orderGroups') && this.#days.get(`orderGroups|${day}`)?.absent === true, mark = absent ? '|absent' : '';
       const by: Partial<Record<LiqFamily, HistRow[]>> = {}, deps: unknown[] = [];
       for (const f of families) { const e = this.#days.get(`${f}|${day}`); by[f] = e?.rows ?? []; deps.push(e?.rows); }
-      rows.push(...this.#memo(`${day}|${vk}${mark}`, deps, () => this.#viewRows(view, by, index.edges, null, absent).rows));
-      if (beside) takes.push(...this.#memo(`${day}|takes|${of}${mark}`, [by[of]], () => this.#viewRows(view, by, index.edges, null, absent).takes));
+      const dayRows = this.#memo(`${day}|${vk}${mark}`, deps, () => this.#viewRows(view, by, index.edges, null, absent).rows);
+      const dayTakes = beside ? this.#memo(`${day}|takes|${of}${mark}`, [by[of]], () => this.#viewRows(view, by, index.edges, null, absent).takes) : [];
+      rows.push(...dayRows); takes.push(...dayTakes);
+      if (absent) for (const row of [...dayRows, ...dayTakes]) missing.add(row);
     }
     rows.sort((a, b) => a.fetchedAt - b.fetchedAt); takes.sort((a, b) => a.fetchedAt - b.fetchedAt);
-    // Every day a drawn snapshot can come from: a snapshot stands up to `LIQ_HOLD_MS`, so the day before the stretch counts while its last one
-    // is still in force there (Sol, review 2026-11-19, round 3: a missing day's 23:50 snapshot drew after midnight without the warning).
-    return { rows: inForce(rows, t0, t1), takes: beside ? inForce(takes, t0, t1) : null, edges: index.edges, holdMs: LIQ_HOLD_MS, wide: false, ordersAbsent: this.ordersAbsent(view, t0 - LIQ_HOLD_MS, t1) };
+    // Their orders are said missing where the stretch lies on a day without them, or where a snapshot it draws comes from one: the day before's
+    // last snapshot stands into the stretch until the next replaces it, at most `LIQ_HOLD_MS` (Sol, review 2026-11-19, round 3: a missing day's
+    // 23:50 snapshot drew after midnight unsaid; round 4: one replaced at 00:01 was still said at 00:05).
+    const shown = inForce(rows, t0, t1), shownTakes = beside ? inForce(takes, t0, t1) : null;
+    const standing = (list: readonly LiqRow[]): boolean => list.some((row, i) => missing.has(row) && row.fetchedAt <= t1 && Math.min(list[i + 1]?.fetchedAt ?? Infinity, row.fetchedAt + LIQ_HOLD_MS) > t0);
+    return { rows: shown, takes: shownTakes, edges: index.edges, holdMs: LIQ_HOLD_MS, wide: false, ordersAbsent: this.ordersAbsent(view, t0, t1) || standing(shown) || standing(shownTakes ?? []) };
   }
 
   /** The rows held that are in force over [t0, t1] for `view`: every row fetched in it, and the last one before it. Ordered by fetch time. */

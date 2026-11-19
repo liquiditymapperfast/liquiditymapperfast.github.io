@@ -1210,7 +1210,7 @@ test('a day whose profitable orders are missing still says so after midnight, wh
   assert.deepEqual(s.rows.map(r => r.fetchedAt), [late], 'yesterday\'s liquidations alone, in force after midnight');
   assert.ok(s.ordersAbsent, 'and the missing orders said there');
   const alone = h.series(t0, t1, stops);
-  assert.deepEqual(alone.rows, []); assert.ok(alone.ordersAbsent, 'their stops alone: nothing drawn, the missing day said');
+  assert.deepEqual(alone.rows, []); assert.ok(!alone.ordersAbsent, 'their stops alone: nothing of the missing day stands in the stretch, and the day it lies on has its file');
   // Past the hold of yesterday's last snapshot, only today counts.
   assert.ok(!h.series(day + 3 * 3_600_000, day + 4 * 3_600_000, both).ordersAbsent, 'a stretch no snapshot of yesterday reaches');
 });
@@ -1263,7 +1263,7 @@ test('a Retry-After header is read as delta-seconds or an HTTP date, and anythin
     near(await read(' 300 '), 300, 'delta-seconds with spaces around');
     assert.equal(await read('0'), 0, 'now: the caller\'s shortest wait applies');
     assert.equal(await read(new Date(Date.now() - 60_000).toUTCString()), 0, 'a date already past: now');
-    near(await read(new Date(Date.now() + 600_000).toUTCString().replace(/^(\w{3}), (\d{2}) (\w{3}) (\d{4}) (.+) GMT$/, (_m, d, n, mo, y, t) => `${({ Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' } as Record<string, string>)[d]}, ${n}-${mo}-${String(y).slice(2)} ${t} GMT`)), 600, 'the obsolete RFC 850 form');
+    assert.equal(await read(new Date(Date.now() + 600_000).toUTCString().replace(/^(\w{3}), (\d{2}) (\w{3}) (\d{4}) (.+) GMT$/, (_m, d, n, mo, y, t) => `${({ Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' } as Record<string, string>)[d]}, ${n}-${mo}-${String(y).slice(2)} ${t} GMT`)), undefined, 'the obsolete RFC 850 form: its two-digit year names no century, so none');
     for (const bad of ['0x10', '1e3', '10.5', '-5', '1 2', 'soon', '', 'Wed, 21 Oct 2015 07:28:00']) assert.equal(await read(bad), undefined, `${JSON.stringify(bad)} is not a Retry-After`);
     assert.equal(await read(undefined), undefined, 'none said');
     assert.equal(retryAfterSeconds('Wed Oct 21 07:28:00 2015', Date.UTC(2015, 9, 21, 7, 18)), 600, 'asctime, read as GMT');
@@ -1326,4 +1326,43 @@ test('the phone\'s Liq tab draws the view in force when a frame\'s ask for a Plu
     assert.equal(page.text('liq-usd long'), '$100', 'and everyone\'s levels under it in that same frame, never the profitable traders\'');
     pane.setShown(false);
   } finally { plus().forget(); page.restore(); }
+});
+
+test('a missing day\'s snapshot replaced before the stretch begins is not said: the complete one drawn is the next day\'s (Sol, round 4)', async () => {
+  const day = Date.UTC(2026, 10, 15), yesterday = day - DAY_MS, late = day - 10 * MIN, first = day + MIN, now = day + 30 * MIN, t0 = day + 5 * MIN, t1 = day + 20 * MIN;
+  const kinds = ['stops', 'takes'];
+  // Yesterday's orders are not on the server (404); today's first snapshot, at 00:01, has their liquidations, stops and take profits.
+  const { h } = historyOf({
+    'https://x/v1/btc/liquidation-history.json': { edges: EDGES, first: yesterday - DAY_MS, last: now - 60_000 },
+    [U.groupsDay(dayText(yesterday))]: { groups: ['profitable'], rows: [plusRow(late, part({ 10: [100, 100] }), null)] },
+    [U.groupsDay(dayText(day))]: { groups: ['profitable'], rows: [plusRow(first, part({ 10: [50, 50] }), null)] },
+    [U.triggersGroupsDay(dayText(day))]: { groups: ['profitable'], kinds, rows: [plusRow(first, part({ 20: [7, 7] }), part({ 30: [3, 3] }))] },
+  }, day);
+  const all = view({ liq: true, stops: true, takes: true, group: 'profitable' });
+  for (let i = 0; i < 3; i++) { h.ensure(t0, t1, now, () => {}, all); await tick(); await tick(); }
+  const s = h.series(t0, t1, all);
+  assert.deepEqual(s.rows.map(r => r.fetchedAt), [first], 'today\'s complete snapshot alone is drawn');
+  assert.deepEqual(s.takes!.map(r => r.fetchedAt), [first], 'and its take profits');
+  assert.ok(!s.ordersAbsent, 'nothing of the missing day stands in 00:05-00:20: not said');
+  // From midnight to 00:01 yesterday's last snapshot still stands (its liquidations alone): said there.
+  assert.ok(h.series(day, day + 30_000, all).ordersAbsent, 'the half minute yesterday\'s snapshot is drawn');
+});
+
+test('an RFC 850 date, whose two-digit year names no century, is no Retry-After: the caller\'s own wait, never the 30-second floor of a year read as 1950 (Sol, round 4)', async () => {
+  const now = Date.UTC(2026, 10, 19, 12);
+  for (const year of ['50', '49', '26', '76', '00']) assert.equal(retryAfterSeconds(`Sunday, 06-Nov-${year} 08:49:37 GMT`, now), undefined, `-${year}`);
+  assert.equal(retryAfterSeconds('Sun, 06 Nov 2050 08:49:37 GMT', now), (Date.UTC(2050, 10, 6, 8, 49, 37) - now) / 1_000, 'the same date with its four-digit year is read');
+  // A 503 saying it so: the profitable traders' live orders wait the fallback's five minutes, not 30 seconds.
+  const stub = stubFetch(url => /triggers-groups/.test(url) ? { status: 503, retryAfter: 'Sunday, 06-Nov-50 08:49:37 GMT' } : { status: 404 });
+  try {
+    let at = AS_OF + 45 * MIN;
+    const src = new LiqLevelsSource(async url => url.includes('hyperliquid') ? [] : free(FAM.all.liq), () => at, () => LEVELS_URL, undefined, { pass: () => 'v1.pass.sig', refused: () => {} });
+    const mine = view({ liq: false, stops: true, group: 'profitable' });
+    for (let i = 0; i < 3; i++) { src.ensure(BTC, () => {}, mine); await tick(); await tick(); }
+    assert.equal(stub.asks(U.triggersGroups), 1); assert.ok(src.ordersAbsent());
+    at += 31_000; src.ensure(BTC, () => {}, mine); await tick();
+    assert.equal(stub.asks(U.triggersGroups), 1, 'not asked again after 30 seconds');
+    at += 5 * MIN; src.ensure(BTC, () => {}, mine); await tick();
+    assert.equal(stub.asks(U.triggersGroups), 2, 'asked again after the fallback');
+  } finally { stub.restore(); }
 });
