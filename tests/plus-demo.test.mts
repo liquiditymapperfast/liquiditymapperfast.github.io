@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -198,6 +198,16 @@ test('a late frame counts as 100 ms; a pause holds the tour; a scene chosen by h
 
 /* ==== mounted, on a page made of plain objects ============================================================================================ */
 
+/**
+ * Errors thrown after a hand-out (whenData throws a waiter's error again in a microtask) that no test read with `page.microtasks()`: the
+ * fake page keeps them when it goes, and the check after each test fails that test with them. An error a test expects, it reads itself.
+ */
+const leftOver: unknown[] = [];
+afterEach(() => {
+  const errors = leftOver.splice(0);
+  if (errors.length) throw new assert.AssertionError({ message: `errors thrown after a hand-out that the test did not read: ${errors.map(e => (e instanceof Error ? e.message : String(e))).join('; ')}`, actual: errors.length, expected: 0, operator: 'strictEqual' });
+});
+
 type Listener = (event: FakeEvent) => void;
 interface FakeEvent { type: string; key?: string; clientX?: number; pointerId?: number; preventDefault(): void }
 
@@ -313,9 +323,15 @@ class FakePage {
     };
     for (const [k, v] of Object.entries(values)) { this.#saved.set(k, Object.getOwnPropertyDescriptor(globalThis, k)); Object.defineProperty(globalThis, k, { value: v, configurable: true, writable: true }); }
   }
+  /** Take the page away: what is still queued for after the task runs first (while the page is there), and what it throws is kept for the
+   * check after the test (`leftOver`), so an error nobody read fails the test that left it; the globals are put back whatever happens. */
   uninstall(): void {
-    for (const [k, d] of this.#saved) { if (d) Object.defineProperty(globalThis, k, d); else delete (globalThis as Record<string, unknown>)[k]; }
-    this.#saved.clear();
+    let thrown: unknown[] = [];
+    try { thrown = this.microtasks(); } finally {
+      for (const [k, d] of this.#saved) { if (d) Object.defineProperty(globalThis, k, d); else delete (globalThis as Record<string, unknown>)[k]; }
+      this.#saved.clear();
+      leftOver.push(...thrown);
+    }
   }
   /** Run frames of 16 ms for `ms`, as the browser would while some are asked for. */
   run(ms: number): void {
@@ -900,6 +916,24 @@ test('cold: a waiter that throws when the numbers arrive does not keep them from
     page.idle();
     assert.deepEqual(called, ['first', 'second']);
     assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['first waiter failed'], 'thrown again after the hand-out');
+    // Several that throw: every error comes out, each on its own, in the order of the waiters; the one between them is still called.
+    forgetData();
+    const order: string[] = [];
+    whenData(() => { order.push('A'); throw new Error('A failed'); });
+    whenData(() => { order.push('B'); });
+    whenData(() => { order.push('C'); throw new Error('C failed'); });
+    page.idle();
+    assert.deepEqual(order, ['A', 'B', 'C']);
+    assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['A failed', 'C failed'], 'both, in order');
+    // A waiter that joins during the hand-out (asked for by a waiter's own call) is given the numbers at once, once, with nothing left to build.
+    forgetData();
+    const joined: DemoData[] = [];
+    let first: DemoData | null = null;
+    whenData(d => { first = d; whenData(e => joined.push(e)); });
+    page.idle();
+    assert.ok(first);
+    assert.deepEqual(joined, [first], 'called once, at once, with the same numbers');
+    assert.equal(page.idles.size, 0);
     // Two cold demos: Play queued on the first, whose control's store listener throws in the first scene; the second still gets the numbers.
     forgetData();
     const hostA = new FakeElement('div', page), hostB = new FakeElement('div', page);
@@ -984,6 +1018,31 @@ test('cold: Play queued, the demo at 40 % in view, and a store listener that thr
     page.run(4000);
     assert.equal(states.length, 2, 'and the tour goes on to its next scene');
   });
+});
+
+test('an error thrown after a hand-out that no test read fails the test that left it; one read on purpose does not', () => {
+  // Left unread: the page runs it when it goes and keeps the error for the check after the test (taken here, so this test can pass).
+  const page = new FakePage();
+  page.install();
+  queueMicrotask(() => { throw new Error('left unread'); });
+  page.uninstall();
+  assert.deepEqual(leftOver.splice(0).map(e => (e as Error).message), ['left unread']);
+  assert.equal(typeof (globalThis as Record<string, unknown>).window, 'undefined', 'the page is gone all the same');
+  // Read on purpose: nothing is left for the check.
+  page.install();
+  queueMicrotask(() => { throw new Error('read'); });
+  assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['read']);
+  page.uninstall();
+  assert.deepEqual(leftOver, []);
+  // The case it is for: a waiter that changes what a test looks at and then throws. The test's own checks pass, and the error does not vanish.
+  let ready = false;
+  coldPage(p => {
+    forgetData();
+    whenData(() => { ready = true; throw new Error('thrown after the change'); });
+    p.idle();
+    assert.equal(ready, true);
+  });
+  assert.deepEqual(leftOver.splice(0).map(e => (e as Error).message), ['thrown after the change'], 'kept: the check after the test would fail it');
 });
 
 /* ==== no network, no app settings ======================================================================================================= */
