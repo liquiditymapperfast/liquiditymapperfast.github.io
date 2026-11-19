@@ -460,24 +460,38 @@ const byLabel = (root: FakeElement, label: string): FakeElement => { const found
 const windowLeft = (root: FakeElement): number => parseFloat(byClass(root, 'pd-win').style.left!);
 
 test('mounted: while the tour is paused its history scroll holds still (Pause, pause(), out of view) and goes on with it; the person taking over ends it', () => {
-  // The History scene scrolls the window back from 25.9 s to 30.5 s of the tour; 28.5 s is in the middle of it.
+  // The History scene scrolls the window back from 25.9 s to 30.5 s of the tour; 28.5 s is in the middle of it. The reference plays the same
+  // tour without a pause: after a pause, the window must be where the reference is after the same playing time, not further on.
+  const reference = mounted();
+  const along: number[] = [];
+  try {
+    reference.page.view(0.6);
+    reference.page.run(28_500);
+    along.push(windowLeft(reference.host));
+    reference.page.run(16); along.push(windowLeft(reference.host));
+    reference.page.run(384); along.push(windowLeft(reference.host));
+  } finally { reference.handle.destroy(); reference.page.uninstall(); }
+  const [atPause, oneFrameOn, later] = along as [number, number, number];
+  assert.ok(atPause > 20 && atPause < 60, `in the middle of the scroll (${atPause})`);
+  assert.ok(later < oneFrameOn && oneFrameOn < atPause && later > 13.333 + 5, `the reference is still on its way 400 ms on (${along.join(', ')})`);
   for (const how of ['Pause', 'pause()', 'out of view'] as const) {
     const m = mounted();
     try {
       m.page.view(0.6);
       m.page.run(28_500);
-      const mid = windowLeft(m.host);
-      assert.ok(mid > 20 && mid < 60, `${how}: in the middle of the scroll (${mid})`);
+      assert.equal(windowLeft(m.host), atPause, `${how}: the same tour as the reference so far`);
       if (how === 'Pause') byLabel(m.host, 'Pause').fire('click');
       else if (how === 'pause()') m.handle.pause();
       else m.page.view(0.1);
-      const held = windowLeft(m.host);
       m.page.run(3000);
-      assert.equal(windowLeft(m.host), held, `${how}: the window holds still`);
+      assert.equal(windowLeft(m.host), atPause, `${how}: the window holds still`);
       assert.equal(m.page.frames.size, 0, `${how}: and no frame is asked for while paused`);
       if (how === 'out of view') m.page.view(0.6); else byLabel(m.host, 'Play').fire('click');
-      m.page.run(400);
-      assert.ok(windowLeft(m.host) < held - 0.5, `${how}: it goes on from where it stopped`);
+      assert.equal(windowLeft(m.host), atPause, `${how}: going on moves nothing by itself`);
+      m.page.run(16);
+      assert.equal(windowLeft(m.host), oneFrameOn, `${how}: one frame on, where the reference is one frame on (no jump)`);
+      m.page.run(384);
+      assert.equal(windowLeft(m.host), later, `${how}: 400 ms on, where the reference is 400 ms on: still on its way, not at its end`);
       m.page.run(4000);
       assert.equal(windowLeft(m.host), 13.333, `${how}: and ends where the scene sends it`);
     } finally { m.handle.destroy(); m.page.uninstall(); }
