@@ -307,12 +307,16 @@ export interface HistSeries {
   ordersAbsent: boolean;
 }
 
+/** What `series` will say of a view's buckets without its rows (`shape`), and which rollup the view needs could not be read (`failed`, else null). */
+export interface HistShape { edges: readonly number[] | null; holdMs: number; wide: boolean; failed: LiqFamily | null }
+
 /**
  * A day held, of a family. `absent`: the profitable traders' orders' file answered 404 (not on the server yet) or 503 (not there yet), so
  * nothing of it is drawn and that is said (`ordersAbsent`) until a file comes.
  */
 interface DayEntry { rows: HistRow[]; at: number; busy: boolean; failed: number; wait: number; newest: number; created: number; lead: number; due: number; missing?: boolean; absent?: boolean }
-interface RollupEntry { edges: readonly number[]; hours: number; rows: HistRow[]; at: number; busy: boolean; failed: number; wait: number; absent?: boolean }
+/** A rollup held. `unreadable`: no read has given a file of it that could be used yet (refused whole, or failed); it is asked again meanwhile. */
+interface RollupEntry { edges: readonly number[]; hours: number; rows: HistRow[]; at: number; busy: boolean; failed: number; wait: number; absent?: boolean; unreadable?: boolean }
 
 /** The rows in force over [t0, t1] of rows ordered by fetch time: every row fetched in it, and the last one before it. */
 function inForce<T extends { fetchedAt: number }>(all: readonly T[], t0: number, t1: number): T[] {
@@ -488,7 +492,8 @@ export class LiqHistory {
   /**
    * Whether the view asks for the profitable traders' orders and the server has none for some of [t0, t1]: a 404 or a 503 for one of their days,
    * or for their rollup in a wide view. The Depth pane and its Range summary say so and draw the rest of the view (Liq + stops: their
-   * liquidations alone), never everyone's orders in their place.
+   * liquidations alone), never everyone's orders in their place. `series` asks it from as far back as a snapshot drawn can come (a day's last
+   * snapshot stands into the next).
    */
   ordersAbsent(view: LiqView, t0: number, t1: number): boolean {
     if (view.group === 'all' || !ordersShown(view)) return false;
@@ -574,8 +579,10 @@ export class LiqHistory {
       if (probe) this.#probed(true, now);
       if (steps !== this.#steps) return;
       const read = readRollup(raw, family);
-      if (!read) { entry.failed = now; return; }
-      entry.edges = read.edges; entry.hours = read.hours; entry.rows = read.rows; entry.at = now; entry.absent = false; this.version++;
+      // Refused whole (malformed, or not the family asked for): a failed read, asked again in a minute, and said where nothing else can be drawn
+      // (`shape`), not left as loading (Sol, review 2026-11-19, round 3).
+      if (!read) { entry.failed = now; if (entry.at === -Infinity && !entry.unreadable) { entry.unreadable = true; this.version++; changed(); } return; }
+      entry.edges = read.edges; entry.hours = read.hours; entry.rows = read.rows; entry.at = now; entry.absent = false; entry.unreadable = false; this.version++;
       changed();
     }, (error: unknown) => {
       // Their orders' rollup not on the server: held as none (`series` draws the rest of the view and says it), asked again as a day is.
@@ -591,6 +598,7 @@ export class LiqHistory {
       const wait = (error as { retryAfter?: unknown } | null)?.retryAfter;
       if (typeof wait === 'number' && wait > 0) entry.wait = now + Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000));
       if (missing) entry.wait = Math.max(entry.wait, now + REFUSAL_HOLDS_MS);
+      if (entry.at === -Infinity && !entry.unreadable) { entry.unreadable = true; this.version++; changed(); }
       if (error instanceof Error && error.message === LIQ_REFUSED) { this.access.refused(pass); this.version++; changed(); }
     }).finally(() => { entry.busy = false; });
   }
@@ -638,13 +646,15 @@ export class LiqHistory {
   }
 
   /** The buckets the rows for `view` are in (null while not read), how long a row stands, and whether they come from the rollups: what `series` will say, without its rows. */
-  shape(view: LiqView = FREE_VIEW): Omit<HistSeries, 'rows' | 'takes' | 'ordersAbsent'> {
-    if (!this.#wide) return { edges: this.#index?.edges ?? null, holdMs: LIQ_HOLD_MS, wide: false };
+  shape(view: LiqView = FREE_VIEW): HistShape {
+    if (!this.#wide) return { edges: this.#index?.edges ?? null, holdMs: LIQ_HOLD_MS, wide: false, failed: null };
     // The profitable traders' orders' rollup not on the server is left out (`series`): the rest of the view is drawn, or it says they are missing.
-    const absent = this.#rollups.get('orderGroups')?.absent === true;
-    const held = familiesFor(view).filter(f => !(absent && f === 'orderGroups')).map(f => this.#rollups.get(f)), first = held[0];
+    const absent = this.#rollups.get('orderGroups')?.absent === true, families = familiesFor(view).filter(f => !(absent && f === 'orderGroups'));
+    const held = families.map(f => this.#rollups.get(f)), first = held[0];
     const ready = !!first && held.every(e => e && e.at > -Infinity && e.edges.length === first.edges.length);
-    return { edges: ready ? first.edges : null, holdMs: first ? first.hours * 3_600_000 + LIQ_HOLD_MS : LIQ_HOLD_MS, wide: true };
+    // A rollup the view needs that no read has given a usable file of yet: which one, so it is said as not read rather than as loading.
+    const failed = ready ? null : families.find((_f, i) => held[i]?.at === -Infinity && held[i]?.unreadable === true) ?? null;
+    return { edges: ready ? first.edges : null, holdMs: first ? first.hours * 3_600_000 + LIQ_HOLD_MS : LIQ_HOLD_MS, wide: true, failed };
   }
 
   /** The rows in force over [t0, t1] for `view`, with the take profits, the buckets, and how long a row stands (see `HistSeries`). */
@@ -684,7 +694,9 @@ export class LiqHistory {
       if (beside) takes.push(...this.#memo(`${day}|takes|${of}${mark}`, [by[of]], () => this.#viewRows(view, by, index.edges, null, absent).takes));
     }
     rows.sort((a, b) => a.fetchedAt - b.fetchedAt); takes.sort((a, b) => a.fetchedAt - b.fetchedAt);
-    return { rows: inForce(rows, t0, t1), takes: beside ? inForce(takes, t0, t1) : null, edges: index.edges, holdMs: LIQ_HOLD_MS, wide: false, ordersAbsent: this.ordersAbsent(view, t0, t1) };
+    // Every day a drawn snapshot can come from: a snapshot stands up to `LIQ_HOLD_MS`, so the day before the stretch counts while its last one
+    // is still in force there (Sol, review 2026-11-19, round 3: a missing day's 23:50 snapshot drew after midnight without the warning).
+    return { rows: inForce(rows, t0, t1), takes: beside ? inForce(takes, t0, t1) : null, edges: index.edges, holdMs: LIQ_HOLD_MS, wide: false, ordersAbsent: this.ordersAbsent(view, t0 - LIQ_HOLD_MS, t1) };
   }
 
   /** The rows held that are in force over [t0, t1] for `view`: every row fetched in it, and the last one before it. Ordered by fetch time. */

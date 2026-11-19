@@ -9,7 +9,7 @@ import { controlListeners, paidPart, popoverPlace, pressGroup, pressPart, shownC
 import { holdPanelControl, releaseLiqLevelPanel } from '../src/app/liq-panel.ts';
 import { Store, initialState, readSettings } from '../src/app/store.ts';
 import { carriedSettings } from '../src/app/layouts/layouts.ts';
-import { columnNotes, liqNote, liqWhy, ordersAbsent, splitAmounts, splitText, takesLeftOut } from '../src/app/liq-words.ts';
+import { columnNotes, liqNote, liqWhy, ordersAbsent, readFailed, splitAmounts, splitText, takesLeftOut } from '../src/app/liq-words.ts';
 import { dollars, mirrorSplits, probeBoxLines, readingTexts, stripeBoxLines } from '../src/app/liq-box.ts';
 import { usd } from '../src/app/format.ts';
 import { DepthRangeSummary, depthHeldKey, type DepthPaneHeld } from '../src/app/range/depth-lines.ts';
@@ -1183,4 +1183,58 @@ test('the phone\'s Liq tab draws a new choice from its first frame, never the la
     assert.equal(page.text('liq-sub'), 'BTC · Hyperliquid'); assert.equal(page.text('liq-usd long'), '$100', 'everyone\'s again from the first frame');
     pane.setShown(false);
   } finally { plus().forget(); page.restore(); }
+});
+
+/** A history reader over `files` (by path on the levels host), each ask counted; anything not there answers 404. */
+function historyOf(files: Record<string, unknown>, day: number) {
+  const host = (u: string): string => u.replace(/^https?:\/\/[^/]+/, 'https://levels.hiverust.dev'), asks = new Map<string, number>(), held: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(files)) held[host(k)] = v;
+  const h = new LiqHistory(url => { asks.set(url, (asks.get(url) ?? 0) + 1); return url in held ? Promise.resolve(held[url]) : Promise.reject(new Error('404')); },
+    { freeFrom: () => day - 7 * DAY_MS, pass: () => 'v1.member.sig', refused: () => {} });
+  return { h, put: (u: string, body: unknown): void => { held[host(u)] = body; }, asks: (u: string): number => asks.get(host(u)) ?? 0 };
+}
+
+test('a day whose profitable orders are missing still says so after midnight, while its last snapshot is in force (Sol, round 3)', async () => {
+  const day = Date.UTC(2026, 10, 15), yesterday = day - DAY_MS, late = day - 10 * MIN, now = day + 30 * MIN, t0 = day + 5 * MIN, t1 = day + 20 * MIN;
+  const kinds = ['stops', 'takes'];
+  // Yesterday's orders are not on the server (404); today's are a valid file with no row yet; yesterday's 23:50 liquidations are in force at 00:05.
+  const { h } = historyOf({
+    'https://x/v1/btc/liquidation-history.json': { edges: EDGES, first: yesterday - DAY_MS, last: now - 60_000 },
+    [U.groupsDay(dayText(yesterday))]: { groups: ['profitable'], rows: [plusRow(late, part({ 10: [100, 100] }), null)] },
+    [U.groupsDay(dayText(day))]: { groups: ['profitable'], rows: [] },
+    [U.triggersGroupsDay(dayText(day))]: { groups: ['profitable'], kinds, rows: [] },
+  }, day);
+  const both = view({ liq: true, stops: true, group: 'profitable' }), stops = view({ liq: false, stops: true, group: 'profitable' });
+  for (const v of [both, stops]) for (let i = 0; i < 3; i++) { h.ensure(t0, t1, now, () => {}, v); await tick(); await tick(); }
+  const s = h.series(t0, t1, both);
+  assert.deepEqual(s.rows.map(r => r.fetchedAt), [late], 'yesterday\'s liquidations alone, in force after midnight');
+  assert.ok(s.ordersAbsent, 'and the missing orders said there');
+  const alone = h.series(t0, t1, stops);
+  assert.deepEqual(alone.rows, []); assert.ok(alone.ordersAbsent, 'their stops alone: nothing drawn, the missing day said');
+  // Past the hold of yesterday's last snapshot, only today counts.
+  assert.ok(!h.series(day + 3 * 3_600_000, day + 4 * 3_600_000, both).ordersAbsent, 'a stretch no snapshot of yesterday reaches');
+});
+
+test('a wide view whose rollup could not be read says so instead of loading, keeps asking, and draws once a valid file comes (Sol, round 3)', async () => {
+  const f = familyHistory(), both = view({ liq: true, stops: true, group: 'profitable' }), roll = U.rollup.triggersGroups;
+  const asks = new Map<string, number>(), count = (u: string): number => asks.get(u.replace(/^https?:\/\/[^/]+/, 'https://levels.hiverust.dev')) ?? 0;
+  // Everyone's rollup where theirs is asked for (no group named): refused whole, every time it is read.
+  f.put(roll, { hours: 4, edges: ROLLUP_EDGES, kinds: ['stops', 'takes'], rows: [plusRow(f.t, part({ 9: [1_000, 1_000] }, 13), part({}, 13))] });
+  const h = new LiqHistory(url => { asks.set(url, (asks.get(url) ?? 0) + 1); return url in f.files ? Promise.resolve(f.files[url]) : Promise.reject(new Error('404')); },
+    { freeFrom: () => f.day - 7 * DAY_MS, pass: () => 'v1.member.sig', refused: () => {} });
+  const ask = async (now: number): Promise<void> => { for (let i = 0; i < 3; i++) { h.ensure(f.wideFrom, f.now, now, () => {}, both); await tick(); await tick(); } };
+  await ask(f.now);
+  assert.equal(h.shape(both).edges, null, 'nothing to draw from');
+  assert.equal(h.shape(both).failed, 'orderGroups', 'their orders\' rollup could not be read: said, not loading');
+  assert.equal(readFailed(h.shape(both).failed!, both), 'Stop levels could not be read.');
+  assert.equal(readFailed('orderGroups', view({ liq: true, takes: true, group: 'profitable' })), 'Take-profit levels could not be read.');
+  assert.equal(readFailed('groups', both), 'Liquidation levels could not be read.');
+  const first = count(roll);
+  await ask(f.now + 61_000);
+  assert.equal(count(roll), first + 1, 'asked again a minute on'); assert.equal(h.shape(both).failed, 'orderGroups');
+  // Their own rollup comes: drawn, nothing failed.
+  f.put(roll, { hours: 4, edges: ROLLUP_EDGES, groups: ['profitable'], kinds: ['stops', 'takes'], rows: [plusRow(f.t, part({ 9: [100, 100] }, 13), part({}, 13))] });
+  await ask(f.now + 122_000);
+  assert.equal(h.shape(both).failed, null); assert.ok(h.shape(both).edges);
+  assert.equal(h.series(f.wideFrom, f.now, both).rows.at(-1)!.long[9], 200, 'their liquidations and stops added');
 });

@@ -26,7 +26,7 @@ import { LiqHistory, bandIndex, bandOnEdge, type LiqRow } from '../liq-history.t
 import { TAKE_DASH } from '../liq-levels.ts';
 import { curveOf, groupTitle, kindName, levelsDescription, liveView, viewKey, type LiqView } from '../liq-view.ts';
 import { toggleLevels } from '../levels-control.ts';
-import { ordersAbsent } from '../liq-words.ts';
+import { ordersAbsent, readFailed } from '../liq-words.ts';
 import { wrapText } from '../text-fit.ts';
 import { FREE_DAYS, freeFrom, plusOnSale } from '../plus/config.ts';
 import { plus } from '../plus/pass.ts';
@@ -626,8 +626,9 @@ export class DepthPane extends TimePane {
       if (index.first === null) return t('No liquidation levels recorded yet.');
     }
     const edges = shape.edges;
-    // A wide view of their orders alone whose rollup is not on the server has no buckets to read: said, not loading (Sol, review 2026-11-19, round 2).
-    if (!edges) return this.#history.ordersAbsent(view, v.t0, v.t1) ? ordersAbsent() : t('The liquidation levels\' history is loading…');
+    // A wide view with no buckets to read: a rollup it needs that could not be read is said so (round 3), their orders alone not on the server
+    // too (round 2); only a read still to come is loading (Sol, review 2026-11-19).
+    if (!edges) return shape.failed ? readFailed(shape.failed, view) : this.#history.ordersAbsent(view, v.t0, v.t1) ? ordersAbsent() : t('The liquidation levels\' history is loading…');
     // The history's buckets end at its last edge (±25 %): a wider band would leave out what lies past it, so it is not drawn. The rollups'
     // thirteen buckets end on the presets' bands: a band between two of their edges would read a narrower one, so it is not drawn either.
     const reach = edges[edges.length - 1]! / 100, bucket = (r: number): number => shape.wide ? bandOnEdge(edges, r) : bandIndex(edges, r);
