@@ -73,6 +73,7 @@ import { BarsRangeSummary } from './range/bars-lines.ts';
 import { deltaIds } from './delta/flows.ts';
 import { startDevice, onLayoutMode, isCoarse, isPhone, layoutMode, compactBar } from './device.ts';
 import './styles.css';
+import './levels-control.css';
 import './mobile.css';
 import './chrome.css';
 import { t } from './i18n.ts';

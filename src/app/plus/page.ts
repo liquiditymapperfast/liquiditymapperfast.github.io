@@ -1,20 +1,25 @@
 /// <reference types="vite/client" />
 /**
- * The Plus page (`plus/`): what Plus is, its price, the checkout, and the key that carries a membership to another device. It is the one
- * page of the site with a form and with another site's script: Paddle's checkout (Paddle is the seller of record), fetched only when a
- * visitor presses a price. After the checkout the page hands the transaction to the site's own server (`config.ts` `plusApi`), which
+ * The Plus page (`plus/`): what Plus is (the presentation's hero, the demo and the three feature sections, shared with the app's sheet:
+ * present.ts), its price, the checkout, and the key that carries a membership to another device. It is the one page of the site with a form
+ * and with another site's script: Paddle's checkout (Paddle is the seller of record), fetched only when a visitor presses a price. After the checkout the page hands the transaction to the site's own server (`config.ts` `plusApi`), which
  * answers with the key and a pass; both go into the storage the app shares (`pass.ts`), so an open tab of the app is unlocked at once.
  */
 import './page.css';
+import './present.css';
+import '../levels-control.css';
 import { el } from '../dom.ts';
 import { language, t } from '../i18n.ts';
 import { historyUrls, readIndex } from '../liq-history.ts';
 import { LIQ_LEVELS_URL } from '../liq-url.ts';
 import { applyTheme } from '../theme.ts';
-import { FREE_DAYS, LEGAL, PADDLE, PLUS_CONTACT, PLUS_KEYS, plusApi, plusOnSale, type PlusPrice } from './config.ts';
+import { LEGAL, PADDLE, PLUS_CONTACT, PLUS_KEYS, plusApi, plusOnSale, type PlusPrice } from './config.ts';
 import { PLUS_NAME } from './name.ts';
 import { plus, readGrant, webPost, type Grant } from './pass.ts';
 import { ARRIVAL_SECONDS, Arrival, countsDown, placeOf, stopOnActivity, type ArrivalVia } from './arrival.ts';
+import { mountDemo, mountVisuals } from './demo/index.ts';
+import { demoControl } from './demo-levels.ts';
+import { features, hero, trust } from './present.ts';
 
 /** The part of Paddle's script this page uses (Paddle.js v2). */
 interface PaddleEvent { name?: string; data?: { transaction_id?: string } }
@@ -52,6 +57,29 @@ function wearTheme(): boolean {
   return applyTheme(name).dark;
 }
 const dark = wearTheme();
+
+/**
+ * The top of the page, drawn once: the brand, the hero (its pill, and a button to the checkout or the key box), the demo with the page's own
+ * levels control on the demo's store, and the three feature sections with their pictures. The rest of the page (`rest`) is drawn afresh
+ * on every change; the demo runs on through it.
+ */
+const onPill = el('span', { class: 'px-pill on', hidden: true }, el('span', { class: 'px-check', ariaHidden: 'true' }), el('span', { textContent: t('Plus is on in this browser') }));
+const cta = el('button', { type: 'button', class: 'px-cta' });
+const feats = features(day);
+const stage = el('section', { class: 'px-stage', ariaLabel: t('Interactive demo') });
+const rest = el('div', { class: 'plus-rest' }), foot = el('div', { class: 'plus-foot' });
+root.replaceChildren(el('main', { class: 'plus-page' },
+  el('header', { class: 'plus-head' }, el('b', { textContent: PLUS_NAME }), el('a', { class: 'home', href: '../', textContent: 'LiquidityMapperFast' })),
+  hero('plus-title', onPill, cta), stage, ...feats.root, rest, foot));
+mountDemo(stage, { control: demoControl });
+mountVisuals(feats.hosts);
+// To the checkout while Plus is on sale, else to the key box; the keyboard follows once the page has scrolled there.
+cta.addEventListener('click', () => {
+  const target = document.getElementById(plusOnSale() && document.getElementById('plus-monthly') ? 'plus-monthly' : 'plus-key');
+  if (!target) return;
+  target.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+  window.setTimeout(() => target.focus({ preventScroll: true }), 400);
+});
 
 /** What the page shows beside what the membership says: a message under the price or a form, and whether something is under way. */
 const state: { busy: '' | 'checkout' | 'pass' | 'key' | 'restore'; said: { where: 'buy' | 'key' | 'restore'; text: string; good?: boolean } | null; shown: boolean; first: number | null; fresh: boolean;
@@ -336,41 +364,26 @@ function deviceSection(): HTMLElement {
 function render(): void { activity.redraw(drawPage); }
 
 function drawPage(): void {
-  const first = state.first, stands = member.state;
+  const stands = member.state;
+  onPill.hidden = stands !== 'on'; cta.hidden = stands === 'on';
+  cta.textContent = plusOnSale() ? t('Get Plus') : t('Activate a key');
   // The page is drawn afresh: what had the focus (a field being typed in, a button just pressed) gets it back, the caret where it was.
-  const active = document.activeElement instanceof HTMLElement && root.contains(document.activeElement) ? document.activeElement : null;
+  const active = document.activeElement instanceof HTMLElement && rest.contains(document.activeElement) ? document.activeElement : null;
   const focus = active?.id ? { id: active.id, at: active instanceof HTMLInputElement ? [active.selectionStart, active.selectionEnd] as const : null } : null;
-  root.replaceChildren(el('main', { class: 'plus-page' },
-    el('header', {},
-      el('a', { class: 'home', href: '../', textContent: 'LiquidityMapperFast' }),
-      el('h1', { textContent: PLUS_NAME }),
-      el('p', { class: 'lead', textContent: t('Plus pays for the servers behind LiquidityMapperFast and opens what they store. The page itself stays free and open source.') })),
-    el('figure', {},
-      el('img', { src: './history.webp', width: 1760, height: 932, alt: t('The Depth pane showing three weeks of liquidation levels: shorts above, longs below, in bands by distance from the price.'), loading: 'lazy' }),
-      el('figcaption', { textContent: t('Hyperliquid\'s BTC liquidation levels through time, in the Depth pane: how much would be liquidated within each distance of the price, snapshot after snapshot.') })),
-    el('section', { class: 'cols' },
-      el('div', {}, el('h2', { textContent: t('What Plus adds') }),
-        el('ul', {},
-          el('li', { textContent: first ? t('The whole history of the liquidation levels, back to {date}. Without Plus the pane draws the last {n} days.', { date: day(first), n: FREE_DAYS })
-            : t('The whole history of the liquidation levels, as far back as it is recorded. Without Plus the pane draws the last {n} days.', { n: FREE_DAYS }) }),
-          el('li', { textContent: t('A new snapshot about every half hour, kept for good: the history grows by a day every day.') }),
-          el('li', { textContent: t('The liquidation levels of the profitable traders, live and through time: the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit.') }),
-          el('li', { textContent: t('The stop and take-profit levels: where open orders would close positions, live and through time, on their own or together with the liquidations.') }))),
-      el('div', {}, el('h2', { textContent: t('What stays free') }),
-        el('p', { textContent: t('Everything the page does today: the map, the order book, the flow, every pane and tool, the live liquidation levels of all traders and the last {n} days of their history.', { n: FREE_DAYS }) }),
-        el('p', { textContent: t('There is no account. After the checkout this browser holds a key, and the key is all it takes on another device.') }))),
+  rest.replaceChildren(
     ...(stands !== 'none' ? [memberSection()] : []),
     // Nothing is sold to a browser whose membership is in force or still being checked: only where there is none, or the server ended it
     // (a key replaced by newer ones belongs to a subscription that may well be paid: the receipt brings Plus back, not a second purchase).
     ...(stands === 'none' || (stands === 'ended' && member.why !== 'replaced') ? [buySection()] : []),
     ...(stands !== 'on' ? [deviceSection()] : []),
-    el('footer', {},
+  );
+  // What stays free and the page's foot never change: drawn once, under the rest.
+  if (!foot.childElementCount) foot.append(trust(), el('footer', {},
       el('p', {}, link('../', t('Open the map')), ' · ', link(`../${LEGAL.terms}`, t('Terms')), ' · ', link(`../${LEGAL.privacy}`, t('Privacy')), ' · ', link(`../${LEGAL.refunds}`, t('Refunds'))),
-      el('p', { class: 'fine' }, t('Questions about the page: {email}. Questions about a payment go to Paddle, which sold it: paddle.net.', { email: PLUS_CONTACT }))),
-  ));
+      el('p', { class: 'fine' }, t('Questions about the page: {email}. Questions about a payment go to Paddle, which sold it: paddle.net.', { email: PLUS_CONTACT }))));
   if (focus) {
     const again = document.getElementById(focus.id);
-    if (again && root.contains(again)) {
+    if (again && rest.contains(again)) {
       again.focus({ preventScroll: true });
       if (focus.at && again instanceof HTMLInputElement) { try { again.setSelectionRange(focus.at[0], focus.at[1]); } catch { /* an email field has no caret to set */ } }
     }
@@ -384,5 +397,5 @@ render();
 const urls = historyUrls(LIQ_LEVELS_URL);
 if (urls) void fetch(urls.index).then(answer => answer.ok ? answer.json() : null).then((raw: unknown) => {
   const first = readIndex(raw)?.first ?? null;
-  if (first !== null && first !== state.first) { state.first = first; render(); }
+  if (first !== null && first !== state.first) { state.first = first; feats.setFirst(first); }
 }).catch(() => { /* the line without a date stands */ });

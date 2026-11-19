@@ -1,52 +1,46 @@
-/* The Plus page (plus/): one column of text, a picture, the prices and two short forms, in the app's theme (theme.ts sets the colours). */
-:root { color-scheme: light dark; }
+/* The Plus page (plus/): the presentation (present.css: the hero, the demo, the three feature sections, what stays free), then the prices and two
+   short forms, in the app's theme (theme.ts sets the colours). Its own rules hold for its lower part (.plus-rest) and its foot, never the demo.
+   The page has none of the app's styles: the corner radius and the drawn check mark the shared parts use are set here. */
+:root { color-scheme: light dark; --radius: 6px; --mark-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12.5l5 5L20 6.5'/%3E%3C/svg%3E"); }
 html[data-theme="dark"] { color-scheme: dark; }
 body { margin: 0; background: var(--bg, #fff); color: var(--text, #1b1d1e); font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
 .plus-page { max-width: 880px; margin: 0 auto; padding: 28px 20px 48px; }
-.plus-page a { color: var(--ui, #1f6feb); }
-.plus-page header .home { font-size: 13px; text-decoration: none; color: var(--muted, #5b6470); }
-.plus-page header .home:hover { color: var(--text, #1b1d1e); }
-.plus-page h1 { margin: 6px 0 4px; font-size: 34px; line-height: 1.15; letter-spacing: -0.01em; }
-.plus-page h2 { margin: 0 0 8px; font-size: 17px; }
-.plus-page .lead { margin: 0; max-width: 62ch; font-size: 17px; }
-.plus-page figure { margin: 22px 0 6px; }
-.plus-page figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line, #d7dbe0); border-radius: 6px; background: var(--panel, #f6f7f9); }
-.plus-page figcaption { margin-top: 6px; color: var(--muted, #5b6470); font-size: 13px; }
-.plus-page .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin: 26px 0 8px; }
-.plus-page ul { margin: 0; padding-left: 18px; }
-.plus-page li + li { margin-top: 6px; }
-.plus-page p { margin: 0 0 10px; }
-.plus-page section.buy, .plus-page section.member, .plus-page section.device { margin-top: 22px; padding: 18px 20px; border: 1px solid var(--line, #d7dbe0); border-radius: 8px; background: var(--panel, #f6f7f9); }
-.plus-page .prices { display: flex; flex-wrap: wrap; gap: 12px; margin: 4px 0 12px; }
-.plus-page button { font: inherit; cursor: pointer; border: 1px solid var(--line, #d7dbe0); border-radius: 6px; background: var(--bg, #fff); color: var(--text, #1b1d1e); padding: 6px 12px; }
-.plus-page button:hover:not(:disabled) { border-color: var(--text, #1b1d1e); }
-.plus-page button:disabled { opacity: .55; cursor: default; }
-.plus-page button.price-main, .plus-page button.price-plain { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 190px; padding: 12px 16px; text-align: left; }
-.plus-page :is(button.price-main, button.price-plain) b { font-size: 18px; }
-.plus-page :is(button.price-main, button.price-plain) span { color: var(--muted, #5b6470); font-size: 13px; }
-.plus-page button.price-main { background: var(--ui, #1f6feb); border-color: var(--ui, #1f6feb); color: var(--on-ui, #fff); }
-.plus-page button.price-main span { color: inherit; opacity: .85; }
-.plus-page button.price-main:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--ui, #1f6feb); }
-.plus-page button.quiet { border-color: transparent; background: none; color: var(--muted, #5b6470); padding: 6px 0; }
-.plus-page button.quiet:hover { color: var(--text, #1b1d1e); border-color: transparent; }
-.plus-page .fine { color: var(--muted, #5b6470); font-size: 13px; }
-.plus-page :is(.said-bad, .said-good) { margin: 0 0 10px; padding: 8px 10px; border-left: 3px solid var(--ask, #c2255c); background: color-mix(in srgb, var(--ask, #c2255c) 8%, transparent); font-size: 14px; }
-.plus-page .said-good { border-left-color: var(--bid, #2b8a3e); background: color-mix(in srgb, var(--bid, #2b8a3e) 10%, transparent); }
-.plus-page .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
-.plus-page input { flex: 1 1 200px; min-width: 0; font: inherit; padding: 6px 10px; border: 1px solid var(--line, #d7dbe0); border-radius: 6px; background: var(--bg, #fff); color: var(--text, #1b1d1e); }
-.plus-page input:focus-visible, .plus-page button:focus-visible, .plus-page a:focus-visible { outline: 2px solid var(--ui, #1f6feb); outline-offset: 2px; }
-.plus-page .keyrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
-.plus-page .keyrow .label { color: var(--muted, #5b6470); font-size: 13px; }
-.plus-page code.key { flex: 1 1 240px; min-width: 0; padding: 6px 10px; border: 1px solid var(--line, #d7dbe0); border-radius: 6px; background: var(--bg, #fff); font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
-.plus-page .copied { color: var(--muted, #5b6470); font-size: 13px; }
-.plus-page .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 0; }
-.plus-page a.go { display: inline-block; padding: 8px 16px; border-radius: 6px; background: var(--ui, #1f6feb); color: var(--on-ui, #fff); text-decoration: none; font-weight: 600; }
+.plus-rest a, .plus-page footer a { color: var(--ui, #1f6feb); }
+.plus-head { display: flex; align-items: baseline; gap: 8px; font-size: 14px; }
+.plus-head b { font-weight: 700; }
+.plus-head .home { font-size: 13px; text-decoration: none; color: var(--muted, #5b6470); }
+.plus-head .home:hover { color: var(--text, #1b1d1e); }
+.plus-rest h2 { margin: 0 0 8px; font-size: 17px; }
+.plus-rest p { margin: 0 0 10px; }
+.plus-rest section.buy, .plus-rest section.member, .plus-rest section.device { margin-top: 22px; padding: 18px 20px; border: 1px solid var(--line, #d7dbe0); border-radius: 8px; background: var(--panel, #f6f7f9); }
+.plus-rest .prices { display: flex; flex-wrap: wrap; gap: 12px; margin: 4px 0 12px; }
+.plus-rest button { font: inherit; cursor: pointer; border: 1px solid var(--line, #d7dbe0); border-radius: 6px; background: var(--bg, #fff); color: var(--text, #1b1d1e); padding: 6px 12px; }
+.plus-rest button:hover:not(:disabled) { border-color: var(--text, #1b1d1e); }
+.plus-rest button:disabled { opacity: .55; cursor: default; }
+.plus-rest button.price-main, .plus-rest button.price-plain { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 190px; padding: 12px 16px; text-align: left; }
+.plus-rest :is(button.price-main, button.price-plain) b { font-size: 18px; }
+.plus-rest :is(button.price-main, button.price-plain) span { color: var(--muted, #5b6470); font-size: 13px; }
+.plus-rest button.price-main { background: var(--ui, #1f6feb); border-color: var(--ui, #1f6feb); color: var(--on-ui, #fff); }
+.plus-rest button.price-main span { color: inherit; opacity: .85; }
+.plus-rest button.price-main:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--ui, #1f6feb); }
+.plus-rest button.quiet { border-color: transparent; background: none; color: var(--muted, #5b6470); padding: 6px 0; }
+.plus-rest button.quiet:hover { color: var(--text, #1b1d1e); border-color: transparent; }
+.plus-rest .fine { color: var(--muted, #5b6470); font-size: 13px; }
+.plus-rest :is(.said-bad, .said-good) { margin: 0 0 10px; padding: 8px 10px; border-left: 3px solid var(--ask, #c2255c); background: color-mix(in srgb, var(--ask, #c2255c) 8%, transparent); font-size: 14px; }
+.plus-rest .said-good { border-left-color: var(--bid, #2b8a3e); background: color-mix(in srgb, var(--bid, #2b8a3e) 10%, transparent); }
+.plus-rest .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.plus-rest input { flex: 1 1 200px; min-width: 0; font: inherit; padding: 6px 10px; border: 1px solid var(--line, #d7dbe0); border-radius: 6px; background: var(--bg, #fff); color: var(--text, #1b1d1e); }
+.plus-page :is(input, button, a):focus-visible { outline: 2px solid var(--ui, #1f6feb); outline-offset: 2px; }
+.plus-rest .keyrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
+.plus-rest .keyrow .label { color: var(--muted, #5b6470); font-size: 13px; }
+.plus-rest code.key { flex: 1 1 240px; min-width: 0; padding: 6px 10px; border: 1px solid var(--line, #d7dbe0); border-radius: 6px; background: var(--bg, #fff); font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+.plus-rest .copied { color: var(--muted, #5b6470); font-size: 13px; }
+.plus-rest .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 0; }
+.plus-rest a.go { display: inline-block; padding: 8px 16px; border-radius: 6px; background: var(--ui, #1f6feb); color: var(--on-ui, #fff); text-decoration: none; font-weight: 600; }
 .plus-page footer { margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--line, #d7dbe0); font-size: 14px; }
 @media (max-width: 640px) {
   .plus-page { padding: 18px 16px 36px; }
-  .plus-page h1 { font-size: 28px; }
-  .plus-page .cols { grid-template-columns: 1fr; gap: 18px; }
-  .plus-page button.price-main, .plus-page button.price-plain { flex: 1 1 100%; }
+  .plus-rest button.price-main, .plus-rest button.price-plain { flex: 1 1 100%; }
 }
 /* The confirmation right after Plus came on here (arrival.ts): at the top of the window, over the page, on a phone too; a bar runs down with
    the countdown (still where motion is reduced: the seconds say it). */
