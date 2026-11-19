@@ -1642,3 +1642,27 @@ test('a largest level\'s label that would lie under the lines saying a half\'s o
     assert.deepEqual(under, [], `nothing under the caption or the lines: ${JSON.stringify(under)}`);
   } finally { t.done(); }
 });
+
+test('a finger on the phone\'s halves: each box kept on the ladder, the left half\'s from its left and the right half\'s to its right, one beside the other', async () => {
+  // Liquidations beside stops, both standing; a finger 120 px above the middle, where both halves read (each box wider than its half).
+  const drawn = drawnOf();
+  const t = await tabWith({ [U.triggers]: { status: 200, body: triggers(NEAR.all.stops, NEAR.all.takes) } }, { liq: true, stops: true, takes: false, group: 'all', split: 'kinds' },
+    () => free(NEAR.all.liq), drawn);
+  try {
+    const canvas = (t.page.parent as unknown as { findTag(tag: string): { listeners: Map<string, ((e: unknown) => void)[]> } | null }).findTag('canvas')!;
+    drawn.texts.length = 0;
+    canvas.listeners.get('pointerdown')![0]!({ clientY: 200, pointerId: 1 });
+    t.page.frames();
+    const xR = 390 - 60;
+    // Each box: its title, then its rows to the last one's value (labels from the box's left, values to its inner right edge).
+    const starts = drawn.texts.flatMap((e, i) => e.t === 'Distance' ? [i] : []);
+    assert.equal(starts.length, 2, 'a box for each half');
+    const boxes = starts.map(i => {
+      const end = drawn.texts.findIndex((e, j) => j > i && e.t === 'Same distance, other side'), rows = drawn.texts.slice(i - 1, end + 2);
+      return { title: rows[0]!, rows, top: Math.min(...rows.map(e => e.y)), bottom: Math.max(...rows.map(e => e.y)) };
+    });
+    for (const [n, b] of boxes.entries()) for (const e of b.rows) assert.ok(e.x >= 0 && e.x <= xR, `box ${n}: "${e.t}" at ${e.x}, off the ladder`);
+    assert.ok(boxes[1]!.top > boxes[0]!.bottom || boxes[1]!.bottom < boxes[0]!.top, `one beside the other, not over it: ${JSON.stringify(boxes.map(b => [b.top, b.bottom]))}`);
+    assert.ok(boxes[1]!.title.x > boxes[0]!.title.x, 'the right half\'s further right');
+  } finally { t.done(); }
+});

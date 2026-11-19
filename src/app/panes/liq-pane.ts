@@ -8,7 +8,7 @@ import { replaying } from '../replay/clock.ts';
 import { clock, price as fmtPrice, usd } from '../format.ts';
 import { currentCoin } from '../coin.ts';
 import { niceStep } from '../view.ts';
-import { paintInfoBox } from '../infobox.ts';
+import { paintInfoBox, type InfoRect } from '../infobox.ts';
 import { ratioText } from '../mirror.ts';
 import { binsIn, dollarPriceOf, liqProfile, standingBelow, TAKE_DASH, type LiqLevels, type LiqProfile, type LiqSet, type LiqStanding } from '../liq-levels.ts';
 import { curveOf, groupName, groupTitle, heldBack, kindName, kindTitle, liveAsk, liveSplit, liveView, narrowView, plusOn, viewKey, type LiqPair, type LiqView } from '../liq-view.ts';
@@ -339,10 +339,11 @@ export class LiqPane {
     ctx.restore();
     this.#paintPrice(ctx, p, price, mid, xR, W);
     if (this.#probe !== null) {
-      // The line and the price's tag once, by the first half that reads (the right one where the left has nothing), the boxes in each.
+      // The line and the price's tag once, by the first half that reads (the right one where the left has nothing), a box for each half, the
+      // right half's beside the left half's.
       const leftReads = !!(leftHas.s && leftHas.levels && prof);
-      if (leftHas.s && leftHas.levels && prof) this.#paintProbe(ctx, p, leftHas.s, leftHas.levels, prof, step, price, yOf, xR, W, H, a, this.hub.liqLevels, true);
-      if (rightHas.s && rightHas.levels && rprof) this.#paintProbe(ctx, p, rightHas.s, rightHas.levels, rprof, step, price, yOf, xR, W, H, b, right, !leftReads);
+      const first = leftReads && leftHas.s && leftHas.levels && prof ? this.#paintProbe(ctx, p, leftHas.s, leftHas.levels, prof, step, price, yOf, xR, W, H, a, this.hub.liqLevels, true) : null;
+      if (rightHas.s && rightHas.levels && rprof) this.#paintProbe(ctx, p, rightHas.s, rightHas.levels, rprof, step, price, yOf, xR, W, H, b, right, !leftReads, first);
     }
   }
 
@@ -554,11 +555,11 @@ export class LiqPane {
     this.#pulse.style.transform = `translate(${xR - 2}px, ${mid}px)`;
   }
 
-  /** What a finger reads at its price: the way there, the level itself, and the same distance the other way. */
+  /** What a finger reads at its price: the way there, the level itself, and the same distance the other way. Returns where its box went. */
   #paintProbe(ctx: CanvasRenderingContext2D, p: Palette, s: LiqStanding, levels: LiqLevels, prof: LiqProfile, step: number, price: number, yOf: (pr: number) => number, xR: number, W: number, H: number,
-    half: { x0: number; x1: number } | null = null, set: Pick<LiqSet, 'partStandings'> = this.hub.liqLevels, decorate = true): void {
+    half: { x0: number; x1: number } | null = null, set: Pick<LiqSet, 'partStandings'> = this.hub.liqLevels, decorate = true, after: InfoRect | null = null): InfoRect | null {
     const at = this.#probe!, y = yOf(at);
-    if (y < 0 || y > H) return;
+    if (y < 0 || y > H) return null;
     const side = at >= price ? 'short' : 'long', color = this.#color(p, side), d = Math.abs(at - price);
     const way = side === 'short' ? standingBelow(s, 'short', at) - standingBelow(s, 'short', price) : standingBelow(s, 'long', price) - standingBelow(s, 'long', at);
     const other = side === 'short' ? standingBelow(s, 'long', price) - standingBelow(s, 'long', price - d) : standingBelow(s, 'short', price + d) - standingBelow(s, 'short', price);
@@ -577,9 +578,12 @@ export class LiqPane {
     // What it says is `probeBoxLines`'s; Liq + stops gives each total with its two parts under it.
     const parts = levels.kind === 'both' ? set.partStandings() : null;
     const lines = probeBoxLines({ kind: levels.kind, side, at, price, way, other, level, lo: a, hi: a + step, positions, top, parts });
-    // The box on the side away from the finger's line, so the line and its bars stay in sight.
-    const box = half ?? { x0: 0, x1: xR };
-    paintInfoBox(ctx, lines, box.x0 + 8, y, { x0: box.x0, y0: 0, x1: box.x1, y1: H }, p, { gap: 0, placement: y < H / 2 ? 'down' : 'up', edge: color });
+    // The box on the side away from the finger's line, so the line and its bars stay in sight, and kept on the ladder. A half of a split is
+    // narrower than its box: the left half's starts at its left, the right half's ends at its right, and the second goes beside the first on
+    // its far side (`after`), so both readings stay in sight (2026-11-19).
+    const down = y < H / 2, right = half !== null && half.x1 >= xR;
+    const x = half ? (right ? half.x1 - 8 : half.x0 + 8) : 8, from = after ? (down ? after.y + after.h + 4 - 14 : after.y - 4 + 14) : y;
+    return paintInfoBox(ctx, lines, x, from, { x0: 0, y0: 0, x1: xR, y1: H }, p, { gap: 0, placement: down ? 'down' : 'up', edge: color });
   }
 
   #pill(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
