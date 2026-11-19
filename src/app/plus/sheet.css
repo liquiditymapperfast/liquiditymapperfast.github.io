@@ -6,6 +6,8 @@
 .px-sheet { position: absolute; left: 50%; top: 50%; display: flex; flex-direction: column; box-sizing: border-box; width: min(880px, calc(100% - 32px)); height: min(90vh, calc(100% - 24px)); height: min(90dvh, calc(100% - 24px));
   overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); box-shadow: 6px 6px 0 var(--shadow, rgb(0 0 0 / .3));
   font-size: 16px; line-height: 1.5; opacity: 0; transform: translate(-50%, calc(-50% + 10px)); transition: opacity .2s, transform .2s; }
+/* A native dialog shown open (the page's sign of a dialog on top): what the browser gives a dialog by itself is taken back. */
+.px-sheet { right: auto; bottom: auto; max-width: none; max-height: none; margin: 0; padding: 0; }
 .px-sheet:focus { outline: none; }
 .px-layer.in .px-scrim { opacity: 1; }
 .px-layer.in .px-sheet { opacity: 1; transform: translate(-50%, -50%); }
@@ -28,6 +30,7 @@
 .px-access p { margin: 0; }
 .px-access .px-offer > * + * { margin-top: 8px; }
 .px-muted { color: var(--muted); }
+.px-standing:empty { display: none; }
 .px-price { color: var(--muted); font-size: 16px; }
 .px-status { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 15px; }
 .px-status .px-check { margin-top: 4px; }
