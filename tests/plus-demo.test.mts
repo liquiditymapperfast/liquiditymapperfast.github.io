@@ -356,7 +356,11 @@ class FakePage {
   /** Run the work queued for after the current task; what it threw, in order. */
   microtasks(): unknown[] {
     const thrown: unknown[] = [];
-    for (const f of this.queued.splice(0)) { try { f(); } catch (error) { thrown.push(error); } }
+    // Until nothing is queued: a task may queue more (one that finishes a build with demoData() queues its waiters' errors), and those count.
+    for (let batches = 0; this.queued.length; batches++) {
+      if (batches > 10_000) throw new Error('tasks after the task keep queueing more');
+      for (const f of this.queued.splice(0)) { try { f(); } catch (error) { thrown.push(error); } }
+    }
     return thrown;
   }
   /** The demo shows this share of itself (and the window this tall). */
@@ -1043,6 +1047,44 @@ test('an error thrown after a hand-out that no test read fails the test that lef
     assert.equal(ready, true);
   });
   assert.deepEqual(leftOver.splice(0).map(e => (e as Error).message), ['thrown after the change'], 'kept: the check after the test would fail it');
+});
+
+test('the page runs, when it goes, what its queued tasks queue in turn: an error two tasks deep is not lost', () => {
+  const page = new FakePage();
+  page.install();
+  // A build under way with a waiter that throws, and a queued task that finishes the build (demoData), which queues the waiter's error.
+  forgetData();
+  whenData(() => { throw new Error('the waiter failed two tasks deep'); });
+  queueMicrotask(() => { demoData(); });
+  page.uninstall();
+  assert.deepEqual(leftOver.splice(0).map(e => (e as Error).message), ['the waiter failed two tasks deep'], 'kept for the check after the test');
+  // Read on purpose, the same: microtasks() runs the tasks queued by tasks too.
+  page.install();
+  queueMicrotask(() => { queueMicrotask(() => { throw new Error('queued by a queued task'); }); });
+  assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['queued by a queued task']);
+  page.uninstall();
+  assert.deepEqual(leftOver, []);
+});
+
+test('cold: a demo that its own listener destroys (and throws) in the queued first scene does nothing more, and the error is reported', () => {
+  coldPage((page, track) => {
+    forgetData();
+    const host = new FakeElement('div', page);
+    const states: DemoLevels[] = [];
+    let handle: { destroy(): void } | null = null;
+    handle = track(mountDemo(host as unknown as HTMLElement, { control: (_h, st) => {
+      st.subscribe(x => { states.push(x); handle?.destroy(); throw new Error('destroyed by its own listener'); });
+      return { destroy() {} };
+    } }));
+    page.view(0.9);
+    byLabel(host, 'Play').fire('click');
+    page.idle();
+    assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['destroyed by its own listener']);
+    assert.equal(host.children.length, 0, 'the demo is gone');
+    page.run(5000);
+    assert.equal(states.length, 1, 'and nothing of it ran after');
+    assert.equal(page.frames.size + page.idles.size + page.timers.size + page.resizes.size + page.views.size + page.listenerCount(), 0, 'nothing left behind');
+  });
 });
 
 /* ==== no network, no app settings ======================================================================================================= */
