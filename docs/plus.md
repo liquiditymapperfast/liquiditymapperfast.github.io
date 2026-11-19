@@ -110,8 +110,10 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
   meanwhile wins; a form given up aborts its request and drops the answer. Try again reads what is kept first and gives up when the key
   changed elsewhere. A key is entered once on each browser and address (the membership is kept per origin). The Plus page takes a
   checkout's pass and a membership found by the receipt the same way (`passFor`, `restoreBy`: the generation when the payment went through
-  or the receipt was sent): one that comes after another tab stored a key, or after the key here was removed, changes nothing, and a paid
-  checkout then stays waiting with its Try again. The page's Reveal, and the showing after a checkout or a restore, hold for that key only.
+  or the receipt was sent): one that comes after another tab stored a key, or after the key here was removed, changes nothing. A paid
+  checkout then stays waiting in this browser (`lmf.plus.paid`, a day at most), beside the membership when Plus is on, with its Try again,
+  until its own setting-up, a key that opens Plus on the page or a restore settles it. The page's Reveal, and the showing after a checkout
+  or a restore, hold for that key only.
 
 ## How the page behaves
 

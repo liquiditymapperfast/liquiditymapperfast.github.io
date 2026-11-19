@@ -229,7 +229,7 @@ async function restore(email: string, invoice: string): Promise<void> {
   const out = await restoreBy(email, invoice, { ask: post, member });
   state.busy = '';
   if (out.kind === 'ok') {
-    state.unkept = !out.kept; state.shown = out.grant.key;
+    setPaid(null); state.unkept = !out.kept; state.shown = out.grant.key;
     state.said = { where: 'restore', text: t('Found. Plus is on in this browser.'), good: true };
   } else state.said = out.kind === 'no' ? { where: 'restore', text: out.text } : null;
   render();
@@ -238,6 +238,14 @@ async function restore(email: string, invoice: string): Promise<void> {
 
 const said = (where: 'buy' | 'restore'): HTMLElement[] => state.said?.where === where ? [el('p', { class: state.said.good ? 'said-good' : 'said-bad', role: 'status', textContent: state.said.text })] : [];
 const link = (href: string, text: string): HTMLAnchorElement => el('a', { href, textContent: text });
+
+/**
+ * A payment made in this browser whose Plus is not set up here (the setting-up failed, or the membership changed while it ran: another tab's
+ * key, the key here removed), with Try again, which asks for its key afresh and takes it for the membership as it is then.
+ */
+const pendingNote = (pending: { id: string }): HTMLElement[] => [...said('buy'),
+  el('p', { textContent: t('A payment made in this browser is still being set up. The prices come back once it is, so it is not paid twice.') }),
+  el('p', { class: 'actions' }, el('button', { type: 'button', id: 'plus-paid-again', disabled: state.busy !== '', textContent: t('Try again'), onclick: () => { void completed(pending.id); } }))];
 
 /** The price buttons, or why there are none yet. */
 function buySection(): HTMLElement {
@@ -248,9 +256,7 @@ function buySection(): HTMLElement {
   }
   const pending = paidPending();
   if (pending) {
-    box.append(el('h2', { textContent: t('Get Plus') }), ...said('buy'),
-      el('p', { textContent: t('A payment made in this browser is still being set up. The prices come back once it is, so it is not paid twice.') }),
-      el('p', { class: 'actions' }, el('button', { type: 'button', id: 'plus-paid-again', disabled: state.busy !== '', textContent: t('Try again'), onclick: () => { void completed(pending.id); } })));
+    box.append(el('h2', { textContent: t('Get Plus') }), ...pendingNote(pending));
     return box;
   }
   const price = (label: string, detail: string, p: PlusPrice, main: boolean, id: string): HTMLButtonElement => {
@@ -265,8 +271,8 @@ function buySection(): HTMLElement {
   return box;
 }
 
-/** What this browser holds: whether Plus is on, until when, and the key. */
-function memberSection(): HTMLElement {
+/** What this browser holds: whether Plus is on, until when, and the key; and a payment still waiting here when no prices are drawn (`buying`). */
+function memberSection(buying: boolean): HTMLElement {
   const box = el('section', { class: 'member' }), until = member.until, key = member.key ?? '', stands = member.state, renews = member.renews;
   // Shown in clear only for the key Reveal was pressed for (or a checkout or restore issued): another key in its place is masked again.
   const shown = keyShownFor(state.shown, member.key);
@@ -301,6 +307,9 @@ function memberSection(): HTMLElement {
     el('p', { class: 'actions' }, ...(stands === 'ended' || renews === false ? [] : PADDLE.portal ? [link(PADDLE.portal, t('End the subscription or change the card'))] : [el('span', { class: 'fine', textContent: t('To end the subscription or change the card, use the link in your receipt from Paddle.') })]), remove),
   );
   if (state.fresh) box.append(...said('buy'), el('p', { class: 'actions' }, el('a', { class: 'go', href: '../', textContent: t('Open the map') })));
+  // A payment made here whose Plus is not set up (the membership changed while it was): said beside the membership, with its Try again.
+  const pending = buying ? null : paidPending();
+  if (pending && !state.fresh) box.append(...pendingNote(pending));
   return box;
 }
 
@@ -311,7 +320,8 @@ function memberSection(): HTMLElement {
  */
 let keyBox: KeyEntry = newKeyBox(), keyBoxOut = false;
 function newKeyBox(): KeyEntry {
-  return keyEntry({ onSuccess: outcome => { state.unkept = !outcome.kept; render(); arrived('key'); } });
+  // A key that opened Plus here settles a payment still waiting here, as the receipt's form does: the visitor chose the membership to keep.
+  return keyEntry({ onSuccess: outcome => { setPaid(null); state.unkept = !outcome.kept; render(); arrived('key'); } });
 }
 
 /** Bringing Plus to this device: the key, or the receipt's email and invoice number. */
@@ -340,15 +350,16 @@ function drawPage(): void {
   cta.textContent = plusOnSale() ? t('Get Plus') : t('Activate a key');
   // Reveal and the showing after a checkout or a restore hold for their own key only: another key in its place starts masked.
   if (state.shown !== null && state.shown !== member.key) state.shown = null;
+  // Nothing is sold to a browser whose membership is in force or still being checked: only where there is none, or the server ended it
+  // (a key replaced by newer ones belongs to a subscription that may well be paid: the receipt brings Plus back, not a second purchase).
+  const buying = stands === 'none' || (stands === 'ended' && member.why !== 'replaced');
   // The page is drawn afresh: what had the focus (a field being typed in, a button just pressed) gets it back, the caret where it was.
   const active = document.activeElement instanceof HTMLElement && rest.contains(document.activeElement) ? document.activeElement : null;
   const at = active instanceof HTMLInputElement ? [active.selectionStart, active.selectionEnd] as const : null;
   const focus = active?.id ? { id: active.id, at } : null;
   rest.replaceChildren(
-    ...(stands !== 'none' ? [memberSection()] : []),
-    // Nothing is sold to a browser whose membership is in force or still being checked: only where there is none, or the server ended it
-    // (a key replaced by newer ones belongs to a subscription that may well be paid: the receipt brings Plus back, not a second purchase).
-    ...(stands === 'none' || (stands === 'ended' && member.why !== 'replaced') ? [buySection()] : []),
+    ...(stands !== 'none' ? [memberSection(buying)] : []),
+    ...(buying ? [buySection()] : []),
     ...(stands !== 'on' ? [deviceSection()] : []),
   );
   // The key box left the page (Plus is on): the next time it comes back, it comes back as a fresh form.
@@ -367,7 +378,9 @@ function drawPage(): void {
 
 member.subscribe(render);
 render();
-{ const pending = paidPending(); if (pending && member.state !== 'on') void completed(pending.id); else if (pending) setPaid(null); }
+// A payment made here and not set up yet is set up again where Plus is not on; where it is (another key came in while it was being set up),
+// it waits beside the membership for its Try again (`pendingNote`), and is given up after a day.
+{ const pending = paidPending(); if (pending && member.state !== 'on') void completed(pending.id); }
 // How far back the history goes, for the first line of what Plus adds (the public index says).
 const urls = historyUrls(LIQ_LEVELS_URL);
 if (urls) void fetch(urls.index).then(answer => answer.ok ? answer.json() : null).then((raw: unknown) => {

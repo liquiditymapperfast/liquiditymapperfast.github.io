@@ -96,6 +96,19 @@ test('Sol 1 (P1): the page takes a key, a checkout\'s pass and a receipt\'s memb
   assert.ok(!/\/pass\/renew/.test(page), 'the page sends no key of its own');
 });
 
+test('Sol 1 (P1): a paid checkout dropped because another key came in is not lost: it waits beside the membership with Try again, across a reload', () => {
+  const page = read('src/app/plus/page.ts');
+  // Dropped: nothing said, the payment kept (only the payment's own setting-up, a key that opened Plus here or a restore settles it).
+  assert.match(page, /state\.said = out\.kind === 'stale' \? null :/);
+  assert.equal((page.match(/setPaid\(null\)/g) ?? []).length, 3, 'the checkout\'s ok, the key box\'s success and the restore\'s ok');
+  assert.match(page, /keyEntry\(\{ onSuccess: outcome => \{ setPaid\(null\);/);
+  assert.match(page, /if \(out\.kind === 'ok'\) \{\n    setPaid\(null\); state\.unkept = !out\.kept; state\.shown = out\.grant\.key;\n    state\.said = \{ where: 'restore'/);
+  // Shown with the membership when no prices are drawn; a reload with Plus on keeps it (it is given up after a day by itself).
+  assert.match(page, /const pending = buying \? null : paidPending\(\);\n  if \(pending && !state\.fresh\) box\.append\(\.\.\.pendingNote\(pending\)\);/);
+  assert.match(page, /\{ const pending = paidPending\(\); if \(pending && member\.state !== 'on'\) void completed\(pending\.id\); \}/);
+  assert.ok(!/else if \(pending\) setPaid\(null\)/.test(page), 'no reload drops a payment that was never set up here');
+});
+
 test('Sol 2 (P2): the page\'s key field is the app\'s masked one: a password field with Reveal / Hide, no text field of its own', () => {
   const page = read('src/app/plus/page.ts');
   assert.ok(!/id: 'plus-key'/.test(page) && !/type: 'text', id: 'plus-key'/.test(page), 'the page\'s own text field is gone');
