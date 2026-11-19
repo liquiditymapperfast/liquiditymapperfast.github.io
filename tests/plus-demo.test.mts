@@ -269,6 +269,8 @@ class FakePage {
   /** The media queries asked for, each one object (as a browser keeps it), and who listens to its changes. */
   media = new Map<string, { matches: boolean; media: string; listeners: Set<() => void> }>();
   network: string[] = [];
+  /** Work the page was asked to do right after the current task (queueMicrotask), run by `microtasks()`. */
+  queued: (() => void)[] = [];
   #saved = new Map<string, PropertyDescriptor | undefined>();
 
   install(): void {
@@ -305,6 +307,7 @@ class FakePage {
       requestAnimationFrame: (f: (t: number) => void) => { const id = page.nextFrame++; page.frames.set(id, f); return id; },
       cancelAnimationFrame: (id: number) => { page.frames.delete(id); },
       performance: { now: () => page.clock },
+      queueMicrotask: (f: () => void) => { page.queued.push(f); },
       fetch: count('fetch'), XMLHttpRequest: count('XMLHttpRequest'), WebSocket: count('WebSocket'), EventSource: count('EventSource'), Image: count('Image'),
       navigator: { sendBeacon: count('sendBeacon'), languages: ['en'], language: 'en' },
     };
@@ -333,6 +336,12 @@ class FakePage {
       n++;
     }
     return n;
+  }
+  /** Run the work queued for after the current task; what it threw, in order. */
+  microtasks(): unknown[] {
+    const thrown: unknown[] = [];
+    for (const f of this.queued.splice(0)) { try { f(); } catch (error) { thrown.push(error); } }
+    return thrown;
   }
   /** The demo shows this share of itself (and the window this tall). */
   view(ratio: number): void { for (const cb of [...this.views.values()]) cb([{ isIntersecting: ratio > 0, intersectionRatio: ratio, intersectionRect: { height: 500 * ratio }, rootBounds: { height: 800 } }]); }
@@ -878,6 +887,34 @@ test('cold: when the numbers arrive, a waiter that an earlier one stopped is not
     page.idle();
     assert.equal(drawnAfter, 0);
     assert.equal(svg.children.length, 0, 'the pictures taken away before their turn draw nothing');
+  });
+});
+
+test('cold: a waiter that throws when the numbers arrive does not keep them from the others, and its error is still thrown after', () => {
+  coldPage((page, track) => {
+    // whenData itself: the first throws, the second is still called, and the error comes out afterwards as it was.
+    forgetData();
+    const called: string[] = [];
+    whenData(() => { called.push('first'); throw new Error('first waiter failed'); });
+    whenData(() => { called.push('second'); });
+    page.idle();
+    assert.deepEqual(called, ['first', 'second']);
+    assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['first waiter failed'], 'thrown again after the hand-out');
+    // Two cold demos: Play queued on the first, whose control's store listener throws in the first scene; the second still gets the numbers.
+    forgetData();
+    const hostA = new FakeElement('div', page), hostB = new FakeElement('div', page);
+    track(mountDemo(hostA as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(() => { throw new Error('the listener failed'); }); return { destroy() {} }; } }));
+    track(mountDemo(hostB as unknown as HTMLElement));
+    page.view(0.9);
+    byLabel(hostA, 'Play').fire('click');
+    page.idle();
+    page.run(50);
+    for (const [name, host] of [['the second', hostB], ['the first', hostA]] as const) {
+      assert.equal(byClass(host, 'pd-stage').getAttribute('aria-busy'), null, `${name} demo is ready`);
+      assert.ok(byClass(host, 'pd-ch').all().length > 60, `${name} demo's chart is drawn`);
+    }
+    assert.equal(page.idles.size, 0, 'and no build is left waiting');
+    assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['the listener failed'], 'the error is not swallowed');
   });
 });
 

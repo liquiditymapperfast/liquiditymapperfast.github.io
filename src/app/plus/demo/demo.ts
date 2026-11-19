@@ -317,10 +317,11 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   const stopWaiting = whenData(d => {
     if (destroyed) return;
     data = d;
-    // A Play or Play again pressed while loading starts the tour now, at its first scene.
-    if (queued) { queued = false; player.start(now()); }
     stage.removeAttribute('aria-busy');
     fit(); dirty = true;
+    // A Play or Play again pressed while loading starts the tour now, at its first scene: after the demo's own readiness above, so a store
+    // listener that throws in that first scene still leaves this chart drawn.
+    if (queued) { queued = false; player.start(now()); }
     consider();
   });
 
