@@ -7,8 +7,15 @@ import type { LiqLevelSettings } from './liq-url.ts';
 import { replaying } from './replay/clock.ts';
 import { liveView } from './liq-view.ts';
 import { liqNote, liqWhy } from './liq-words.ts';
-import { createLevelsControl } from './levels-control.ts';
+import { createLevelsControl, type LevelsControl } from './levels-control.ts';
 import { togglePlus } from './plus/panel.ts';
+
+/** The control the open Liq levels panel holds: dropped (its listeners ended) when the panel draws afresh or closes. */
+let held: Pick<LevelsControl, 'destroy'> | null = null;
+/** Hold `control` as the panel's, dropping the one before it. */
+export function holdPanelControl<T extends Pick<LevelsControl, 'destroy'>>(control: T): T { held?.destroy(); held = control; return control; }
+/** The panel closed: its control is dropped. */
+export function releaseLiqLevelPanel(): void { held?.destroy(); held = null; }
 
 /**
  * The Liquidation levels panel: its first row switches them on and off, the second their own column beside the profile column; then the levels
@@ -20,7 +27,7 @@ export function buildLiqLevelPanel(store: Store, tools: HTMLElement, body: HTMLE
   const set = (change: Partial<LiqLevelSettings>, again = false): void => { store.set({ liqLevels: { ...store.state.liqLevels, ...change } }); if (again) rebuild(); };
   tools.append(helpButton('liqLevels'));
   // A Plus choice without Plus opens the Plus panel (by this panel's button, since one panel is open at a time) and changes nothing.
-  const control = createLevelsControl(store, { locked: from => { togglePlus(openedPanel()?.anchor ?? from); } });
+  const control = holdPanelControl(createLevelsControl(store, { locked: from => { togglePlus(openedPanel()?.anchor ?? from); } }));
   control.root.classList.add('lv-in-panel');
   body.append(
     switchRow(t('Show liquidation levels'), HELP.liqLevels.tip, s.on, on => set({ on }, true)),

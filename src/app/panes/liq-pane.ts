@@ -12,7 +12,7 @@ import { paintInfoBox } from '../infobox.ts';
 import { ratioText } from '../mirror.ts';
 import { binsIn, dollarPriceOf, liqProfile, standingBelow, TAKE_DASH, type LiqLevels, type LiqProfile, type LiqStanding } from '../liq-levels.ts';
 import { curveOf, groupTitle, heldBack, kindTitle, liveView, plusOn } from '../liq-view.ts';
-import { liqNote, liqWhy } from '../liq-words.ts';
+import { liqNote, liqWhy, sideTitle } from '../liq-words.ts';
 import { probeBoxLines } from '../liq-box.ts';
 import { toggleLevels } from '../levels-control.ts';
 import { pixelRatio, sharpens } from '../pixel-ratio.ts';
@@ -48,6 +48,9 @@ const pctText = (fraction: number): string => `${Number((fraction * 100).toFixed
 export class LiqPane {
   readonly root = el('div', { class: 'pane liq' });
   #longUsd = el('b', { class: 'liq-usd long' });
+  /** What the two totals are: longs and shorts, or with take profits alone, the take profits of shorts (buys below) and of longs (sells above). */
+  #longLabel = el('small', { textContent: t('Longs') });
+  #shortLabel = el('small', { textContent: t('Shorts') });
   #shortUsd = el('b', { class: 'liq-usd short' });
   #balanceLong = el('i', { class: 'long' });
   #balanceShort = el('i', { class: 'short' });
@@ -91,8 +94,8 @@ export class LiqPane {
     const head = el('div', { class: 'pane-head liq-head' }, this.#title, this.#sub, helpButton('liqLevels'));
     this.#syncHead();
     this.#summary = el('div', { class: 'liq-sum' },
-      el('div', { class: 'liq-side long' }, el('small', { textContent: t('Longs') }), this.#longUsd),
-      el('div', { class: 'liq-side short' }, el('small', { textContent: t('Shorts') }), this.#shortUsd),
+      el('div', { class: 'liq-side long' }, this.#longLabel, this.#longUsd),
+      el('div', { class: 'liq-side short' }, this.#shortLabel, this.#shortUsd),
       el('div', { class: 'liq-balance', ariaHidden: 'true' }, this.#balanceLong, this.#balanceShort),
       el('div', { class: 'liq-meta' }, this.#within, this.#ratio));
     this.#body.append(this.#canvas, this.#pulse);
@@ -219,8 +222,13 @@ export class LiqPane {
     const total = longs + shorts, share = total > 0 ? longs / total : 0.5;
     this.#balanceLong.style.flexGrow = String(share); this.#balanceShort.style.flexGrow = String(1 - share);
     this.#within.textContent = t('Within ±{pct} of {price}', { pct: pctText(this.#range), price: fmtPrice(price) });
+    // Take profits alone: their own names, the order sides' colours (the buys below in the rising colour), bids against asks.
+    const alone = levels.kind === 'takes', below = alone ? sideTitle('takes', 'long') : t('Longs'), above = alone ? sideTitle('takes', 'short') : t('Shorts');
+    if (this.#longLabel.textContent !== below) this.#longLabel.textContent = below;
+    if (this.#shortLabel.textContent !== above) this.#shortLabel.textContent = above;
+    this.#summary.classList.toggle('takes', alone);
     const big = Math.max(longs, shorts), small = Math.min(longs, shorts);
-    this.#ratio.textContent = big > 0 ? `${longs >= shorts ? t('Longs') : t('Shorts')} ${ratioText(small > 0 ? big / small : Infinity)}` : '';
+    this.#ratio.textContent = big > 0 ? `${longs >= shorts ? alone ? t('bids') : t('Longs') : alone ? t('asks') : t('Shorts')} ${ratioText(small > 0 ? big / small : Infinity)}` : '';
     this.#ratio.className = `liq-ratio ${longs >= shorts ? 'long' : 'short'}`;
     const src = this.hub.liqLevels, late = src.candlesLate() ? ` · ${t('Hyperliquid\'s candles could not be read, so a level price has passed may still show.')}` : '';
     this.#foot.textContent = `${liqNote(src, liveView(this.store.state.liqLevels), levels.asOf)}${late}`;

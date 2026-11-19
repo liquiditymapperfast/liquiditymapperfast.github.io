@@ -182,14 +182,24 @@ export function createLevelsControl(store: Store, o: LevelsOptions): LevelsContr
     if (sum.textContent !== text) sum.textContent = text;
     kept.hidden = !heldBack(saved, member);
   };
-  // Told of every change while it is on the page; a control taken off the page (a panel drawn afresh) stops listening at the next one.
-  let seen = false;
-  const alive = (): boolean => { if (root.isConnected) seen = true; return root.isConnected || !seen; };
-  const offStore = store.subscribe((_state, changed) => { if (!alive()) { destroy(); return; } if (changed.has('liqLevels')) sync(); });
-  const offPlus = plus().subscribe(() => { if (!alive()) { destroy(); return; } sync(); });
-  const destroy = (): void => { offStore(); offPlus(); window.clearTimeout(flashTimer); };
+  // Told of every change until it is dropped: whoever drops it calls `destroy` (Sol, review 2026-11-19: a guess from being on the page left
+  // a panel's controls listening for good).
+  const off = controlListeners(store as unknown as Parameters<typeof controlListeners>[0], plus(), sync, sync);
+  const destroy = (): void => { off(); window.clearTimeout(flashTimer); };
   sync();
   return { root, headId, sync, destroy };
+}
+
+/**
+ * The control's two subscriptions (the store, the membership) as one: `destroy` ends both, once. Whoever drops a control calls it (the popover
+ * and the sheet as they close, the Liq levels panel as it draws afresh or closes: `holdPanelControl`).
+ */
+export function controlListeners(store: { subscribe(fn: (state: unknown, changed: Set<string>) => void): () => void }, membership: { subscribe(fn: () => void): () => void },
+  onLevels: () => void, onPlus: () => void): () => void {
+  const offStore = store.subscribe((_state, changed) => { if (changed.has('liqLevels')) onLevels(); });
+  const offPlus = membership.subscribe(onPlus);
+  let done = false;
+  return () => { if (done) return; done = true; offStore(); offPlus(); };
 }
 
 /** The control open as a popover or a sheet, and what it was opened by. */

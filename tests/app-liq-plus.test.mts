@@ -5,8 +5,9 @@ import { DAY_MS, LIQ_HOLD_MS, LiqHistory, MAX_DAYS, bandOnEdge, dayText, familie
 import { readLiqLevels, plusUrls } from '../src/app/liq-url.ts';
 import { FREE_VIEW, curveOf, effectiveView, heldBack, isFreeChoice, levelsDescription, levelsSummary, takesBeside, viewKey, type LiqView } from '../src/app/liq-view.ts';
 import { PRESET_BANDS } from '../src/app/depth-settings.ts';
-import { paidPart, popoverPlace, pressGroup, pressPart, shownChoice, trapStep } from '../src/app/levels-control.ts';
-import { readSettings } from '../src/app/store.ts';
+import { controlListeners, paidPart, popoverPlace, pressGroup, pressPart, shownChoice, trapStep } from '../src/app/levels-control.ts';
+import { holdPanelControl, releaseLiqLevelPanel } from '../src/app/liq-panel.ts';
+import { Store, initialState, readSettings } from '../src/app/store.ts';
 import { carriedSettings } from '../src/app/layouts/layouts.ts';
 import { columnNotes, liqNote, liqWhy, ordersAbsent, splitAmounts, splitText, takesLeftOut } from '../src/app/liq-words.ts';
 import { dollars, mirrorSplits, probeBoxLines, readingTexts, stripeBoxLines } from '../src/app/liq-box.ts';
@@ -462,7 +463,7 @@ test('the history reads take profits alone from the orders, and the profitable t
   const s = h.series(day, now, alone);
   assert.deepEqual(s.rows.map(r => r.fetchedAt), [t1, t3], 'take profits alone have their own rows');
   assert.equal(s.rows[0]!.short[20], 50); assert.equal(s.rows[0]!.long[30], 60);
-  assert.deepEqual(s.takes, [], 'and none beside them');
+  assert.equal(s.takes, null, 'and no overlay beside them');
   // The profitable traders' stops: their own days; none on the server: not available, and nothing of everyone's.
   const mine = view({ liq: false, stops: true, group: 'profitable' });
   assert.deepEqual(familiesFor(mine), ['orderGroups']);
@@ -476,6 +477,71 @@ test('the history reads take profits alone from the orders, and the profitable t
   for (let i = 0; i < 3; i++) { fresh.ensure(day, now, now, () => {}, mine); await tick(); await tick(); }
   assert.deepEqual(fresh.rows(day, now, mine).map(r => [r.fetchedAt, r.long[20], r.short[20]]), [[t3, 2, 3]]);
   assert.ok(!fresh.ordersAbsent(mine, day, now));
+});
+
+test('the take-profit overlay is never cached across its two modes: alone they are the rows, beside the curve an overlay, in days and in the 4-hour history', async () => {
+  const day = Date.UTC(2026, 10, 15), now = day + 12 * 3_600_000, index = 'https://levels.hiverust.dev/v1/btc/liquidation-history.json';
+  const t1 = day + 3_600_000, t3 = day + 5 * 3_600_000;
+  const files: Record<string, unknown> = {
+    [index]: { edges: EDGES, first: day - 3 * DAY_MS, last: now - 600_000 },
+    [`https://levels.hiverust.dev/v1/btc/liquidation-history/${dayText(day)}.json`]: { rows: [freeRow(t1, { 10: [100, 200] }), freeRow(t3, { 10: [500, 600] })] },
+    [U.triggersDay(dayText(day))]: { rows: [plusRow(t1, part({ 20: [7, 8] }), part({ 20: [50, 0], 30: [0, 60] })), plusRow(t3, part({ 20: [9, 9] }), part({ 30: [0, 5] }))] },
+    [U.rollup.free]: { v: 1, coin: 'BTC', hours: 4, edges: ROLLUP_EDGES, rows: [freeRow(t1, {})].map(r => [...r.slice(0, 6), zeros(13).map((_, i) => i === 9 ? 1_000 : 0), zeros(13)]) },
+    [U.rollup.triggers]: { v: 1, coin: 'BTC', hours: 4, edges: ROLLUP_EDGES, kinds: ['stops', 'takes'], rows: [plusRow(t1 + 30 * MIN, part({ 9: [11, 0] }, 13), part({ 9: [0, 22] }, 13))] },
+  };
+  const host = (u: string): string => u.replace(/^https?:\/\/[^/]+/, 'https://levels.hiverust.dev');
+  for (const [k, value] of Object.entries(files)) files[host(k)] = value;
+  const h = new LiqHistory(url => url in files ? Promise.resolve(files[url]) : Promise.reject(new Error('404')), { freeFrom: () => day - 7 * DAY_MS, pass: () => 'v1.member.sig', refused: () => {} });
+  const alone = view({ liq: false, takes: true }), beside = view({ liq: true, takes: true });
+  for (const [from, label] of [[day, 'days'], [now - (MAX_DAYS + 10) * DAY_MS, '4-hour history']] as const) {
+    const ask = async (v: LiqView): Promise<void> => { for (let i = 0; i < 3; i++) { h.ensure(from, now, now, () => {}, v); await tick(); await tick(); } };
+    // Alone, then beside the liquidations: the overlay is there, once.
+    await ask(alone);
+    const a = h.series(from, now, alone);
+    assert.ok(a.rows.length > 0, `${label}: take profits alone have rows`); assert.deepEqual(a.takes, null, `${label}: and no overlay`);
+    await ask(beside);
+    const b = h.series(from, now, beside);
+    assert.ok(b.takes && b.takes.length > 0, `${label}: beside the liquidations the overlay is there after take profits alone`);
+    // And back: alone again has no overlay, and beside again the same overlay, not doubled.
+    assert.deepEqual(h.series(from, now, alone).takes, null);
+    assert.equal(h.series(from, now, beside).takes!.length, b.takes!.length, `${label}: never doubled`);
+  }
+});
+
+test('every write of the levels\' setting keeps one kind on, and a present switch that is not a boolean is the free view, never a paid one', async () => {
+  const store = new Store(initialState()), on = { on: true, column: true };
+  store.set({ liqLevels: { ...store.state.liqLevels, liq: false, stops: false, takes: false } });
+  assert.deepEqual(store.state.liqLevels, { ...on, liq: true, stops: false, takes: false, group: 'all' }, 'all three off, written by code: the free view');
+  store.set({ liqLevels: { ...store.state.liqLevels, liq: false, takes: true } });
+  assert.equal(curveOf(store.state.liqLevels), 'takes'); assert.equal(store.state.liqLevels.takes, true, 'take profits alone stay a choice');
+  const free = { ...on, liq: true, stops: false, takes: false, group: 'all' };
+  assert.deepEqual(readLiqLevels({ liq: 'invalid', stops: true, takes: true, group: 'profitable' }), free, 'a malformed switch: the free view');
+  assert.deepEqual(readLiqLevels({ liq: true, stops: 1 }), free);
+  assert.deepEqual(readLiqLevels({ liq: false, stops: true }), { ...on, liq: false, stops: true, takes: false, group: 'all' }, 'a missing switch is off');
+  assert.deepEqual(carriedSettings({ liqLevels: { liq: 'yes', stops: true, takes: true, group: 'profitable' } } as never).liqLevels, free, 'nor through a layout');
+});
+
+test('take profits alone are read as take profits: the finger\'s box in the order sides\' colours', () => {
+  const box = (side: 'long' | 'short') => probeBoxLines({ kind: 'takes', side, at: side === 'long' ? 90 : 110, price: 100, way: 1_000, other: 500, level: 200, lo: 80, hi: 90, positions: 1, top: 0, parts: null });
+  assert.deepEqual([box('long')[0]!.text, box('long')[0]!.color], ['Take profits of shorts', 'buy'], 'below the price: the buys that close shorts');
+  assert.deepEqual([box('short')[0]!.text, box('short')[0]!.color], ['Take profits of longs', 'sell']);
+  assert.equal(box('long').at(-1)!.color, 'sell', 'the other side is the sells');
+  const liq = probeBoxLines({ kind: 'liq', side: 'long', at: 90, price: 100, way: 1_000, other: 500, level: 200, lo: 80, hi: 90, positions: 1, top: 0, parts: null });
+  assert.equal(liq[0]!.color, 'sell', 'long liquidations stay sells');
+});
+
+test('a control dropped ends both its listeners, and the panel drops the control it held each time it draws afresh or closes', () => {
+  const live = { store: 0, plus: 0 };
+  const store = { subscribe: () => { live.store++; return () => { live.store--; }; } }, membership = { subscribe: () => { live.plus++; return () => { live.plus--; }; } };
+  const offs = Array.from({ length: 10 }, () => controlListeners(store, membership, () => {}, () => {}));
+  assert.deepEqual(live, { store: 10, plus: 10 });
+  for (const off of offs) { off(); off(); }
+  assert.deepEqual(live, { store: 0, plus: 0 }, 'every listener gone, a second destroy harmless');
+  // The panel: ten drawings, then closed; only the newest is held at any time, and none after.
+  for (let i = 0; i < 10; i++) holdPanelControl({ destroy: controlListeners(store, membership, () => {}, () => {}) });
+  assert.deepEqual(live, { store: 1, plus: 1 }, 'each drawing drops the control before it');
+  releaseLiqLevelPanel();
+  assert.deepEqual(live, { store: 0, plus: 0 }, 'closed: no listener survives');
 });
 
 test('the bottom sheet keeps the focus inside it: Tab from the last control goes to the first, Shift+Tab from the first to the last', () => {

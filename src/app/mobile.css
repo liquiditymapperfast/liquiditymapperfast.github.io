@@ -598,3 +598,8 @@ html[data-layout^="phone"] .pane.lt .lt-halves .seg button.on { background: var(
   html[data-layout^="phone"] main .pane { animation: none !important; }
   html[data-bar="compact"] .panel, html[data-bar="compact"] .menu { animation: none; }
 }
+/* Take profits alone (liq-pane.ts): the totals are the order sides', the buys below in the rising colour, the sells above in the falling one. */
+.liq-sum.takes .liq-usd.long, .liq-sum.takes .liq-ratio.long { color: var(--candle-up); }
+.liq-sum.takes .liq-usd.short, .liq-sum.takes .liq-ratio.short { color: var(--candle-down); }
+.liq-sum.takes .liq-balance .long { background: linear-gradient(90deg, var(--candle-up), color-mix(in srgb, var(--candle-up) 45%, transparent)); }
+.liq-sum.takes .liq-balance .short { background: linear-gradient(90deg, color-mix(in srgb, var(--candle-down) 45%, transparent), var(--candle-down)); }

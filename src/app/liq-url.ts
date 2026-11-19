@@ -33,6 +33,9 @@ export function readLiqLevels(saved: unknown): LiqLevelSettings {
   const group: LiqGroup = (LIQ_GROUPS as readonly unknown[]).includes(s.group) ? s.group as LiqGroup : 'all';
   const free: LiqLevelSettings = { ...shown, liq: true, stops: false, takes: false, group: 'all' };
   if ('liq' in s || 'stops' in s) {
+    // A kind that is present but not a boolean makes the whole choice malformed (Sol, review 2026-11-19: { liq: "invalid", stops: true } read
+    // as stops); a missing one is off.
+    if (LIQ_PARTS.some(part => part in s && typeof s[part] !== 'boolean')) return free;
     const liq = s.liq === true, stops = s.stops === true, takes = s.takes === true;
     return liq || stops || takes ? { ...shown, liq, stops, takes, group } : free;
   }

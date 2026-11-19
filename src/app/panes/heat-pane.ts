@@ -4047,7 +4047,7 @@ export class HeatPane {
     // Under the button, which names what the curve adds up, as part of its caption: the group where the button had no room for it, then that
     // the take profits are not in the curve while they show; at most two lines each.
     const notes = s && !strip ? columnNotes(liveView(state.liqLevels), !this.#liqKindGroupOff, takesShown, src.ordersAbsent()) : [];
-    const left = notes.flatMap(note => wrapText(wide, note, liqRoom(W), 2));
+    const left = notes.flatMap(note => wrapText(wide, note, liqRoom(W), 3));
     const head = LIQ_HEAD_H + 12 * left.length;
     this.#placeLiqHistory(s && !strip && !(state.show.depth && state.depthSource === 'liq') ? x0 : null, head);
     // The strip has no room for words: until the levels are there it is empty (the Liq tab says why).
@@ -4158,7 +4158,8 @@ export class HeatPane {
    */
   #paintSeam(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     const hv = this.#profileHover, src = this.hub.liqLevels, frame = state.levels, s = src.levels && src.state === 'ready' ? src.standing() : null;
-    if (!hv || hv.column !== 'seam' || !frame || !s || !liqColumnShown(state) || !state.show.profile) return;
+    // The seam weighs the book against what would be forced out; take profits alone are resting orders like the book's own, so there is none.
+    if (!hv || hv.column !== 'seam' || !frame || !s || !liqColumnShown(state) || !state.show.profile || src.levels?.kind === 'takes') return;
     const p = this.#palette, v = this.view, step = niceStep(v.p1 - v.p0, ph / 3), price = this.#liqPrice(state);
     if (!(price > 0)) return;
     const g = groupLevels(this.kernels, frame, this.#enabledIds(), step, v.p0, v.p1), prof = liqProfile(s, step, v.p0, v.p1, price);

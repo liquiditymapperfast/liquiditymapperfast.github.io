@@ -36,7 +36,7 @@ import { ABSORPTION_LIMITS, type AbsorptionSettings } from './absorption.ts';
 import { BUBBLE_LIMITS, BUBBLE_MINIMUMS, type BubbleSettings } from './prints.ts';
 import { LIQUIDATION_LIMITS, LIQUIDATION_MINIMUMS, coverageLines, type LiquidationSettings } from './liquidations.ts';
 import { buildKeyLevelPanel } from './keylevels/panel.ts';
-import { buildLiqLevelPanel } from './liq-panel.ts';
+import { buildLiqLevelPanel, releaseLiqLevelPanel } from './liq-panel.ts';
 import type { LiqLevelsSource } from './liq-levels.ts';
 import { liqLevelsUrl } from './liq-url.ts';
 import type { AnchorSnapshot } from './traded/anchor.ts';
@@ -508,7 +508,7 @@ export class Toolbar {
     this.#liquidations.onclick = () => this.store.set(togglePatch(this.store.state, 'liquidations'));
     this.#settingsKeys.liqLevels.onclick = () => {
       const build = (tools: HTMLElement, body: HTMLElement): void => buildLiqLevelPanel(this.store, tools, body, () => this.#liqLevelPanel?.render(build), this.liqSource);
-      this.#liqLevelPanel = this.#track(togglePanel(this.#settingsKeys.liqLevels, { title: t('Liquidation levels'), width: 400, align: 'left', onClose: () => { this.#liqLevelPanel = null; } }, build), build);
+      this.#liqLevelPanel = this.#track(togglePanel(this.#settingsKeys.liqLevels, { title: t('Liquidation levels'), width: 400, align: 'left', onClose: () => { this.#liqLevelPanel = null; releaseLiqLevelPanel(); } }, build), build);
     };
     this.#liqLevels.onclick = () => this.store.set(togglePatch(this.store.state, 'liqLevels'));
     this.#alertSplits = { highlights: splitButton(this.#highlights, this.#alertKeys.highlights), sound: splitButton(this.#soundButton, this.#alertKeys.sound), waves: splitButton(this.#glass, this.#alertKeys.waves) };

@@ -73,9 +73,10 @@ export function mirrorSplits(parts: LiqParts, price: number, d: number, below: n
  * the row [lo, hi)), for Liq + stops each with its parts under it, how many and the largest, and the same distance the other way (`other`).
  */
 export function probeBoxLines(f: { kind: LevelsKind; side: 'long' | 'short'; at: number; price: number; way: number; other: number; level: number; lo: number; hi: number; positions: number; top: number; parts: LiqParts | null }): InfoLine[] {
-  const way = Math.max(0, f.way), waySplit = f.parts ? partsOnTheWay(f.parts, f.price, f.at) : null;
+  const way = Math.max(0, f.way), waySplit = f.parts ? partsOnTheWay(f.parts, f.price, f.at) : null, sells = f.kind === 'takes' ? f.side === 'short' : f.side === 'long';
   const lines: InfoLine[] = [
-    { text: sideTitle(f.kind, f.side), color: f.side === 'long' ? 'sell' : 'buy', bold: true },
+    // In the colour it is drawn in: what sells in the falling colour (take profits of longs, above), what buys in the rising one.
+    { text: sideTitle(f.kind, f.side), color: sells ? 'sell' : 'buy', bold: true },
     { label: t('Distance'), text: distanceText(f.at, f.price) },
     { label: t('If price gets here'), text: dollars(way), bold: true },
     ...(waySplit ? [{ text: splitText(waySplit, way), color: 'muted', wrap: true } satisfies InfoLine] : []),
@@ -84,6 +85,6 @@ export function probeBoxLines(f: { kind: LevelsKind; side: 'long' | 'short'; at:
   ];
   if (f.positions > 0) lines.push({ label: countLabel(f.kind), text: String(f.positions) });
   if (f.top > 0 && f.level > 0) lines.push({ label: topLabel(f.kind), text: dollars(f.top) });
-  lines.push({ label: t('Same distance, other side'), text: dollars(Math.max(0, f.other)), color: f.side === 'long' ? 'buy' : 'sell' });
+  lines.push({ label: t('Same distance, other side'), text: dollars(Math.max(0, f.other)), color: sells ? 'buy' : 'sell' });
   return lines;
 }

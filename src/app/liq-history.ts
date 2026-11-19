@@ -562,21 +562,23 @@ export class LiqHistory {
 
   /** The rows in force over [t0, t1] for `view`, with the take profits, the buckets, and how long a row stands (see `HistSeries`). */
   series(t0: number, t1: number, view: LiqView = FREE_VIEW): HistSeries {
-    const families = familiesFor(view), vk = viewKey(view);
+    // Take profits beside the curve are an overlay of their own; on alone they are the rows (Sol, review 2026-11-19: the overlay was cached
+    // under one key for both, so a change between them kept an empty or a doubled overlay). Keyed by the order family it reads.
+    const families = familiesFor(view), vk = viewKey(view), beside = takesBeside(view), of: LiqFamily = view.group !== 'all' ? 'orderGroups' : 'orders';
     if (this.#wide) {
       const held = families.map(f => this.#rollups.get(f));
       const first = held[0];
-      if (!first || held.some(e => !e || e.at === -Infinity) || held.some(e => e!.edges.length !== first.edges.length)) return { rows: [], takes: view.takes ? [] : null, edges: first && first.at > -Infinity ? first.edges : null, holdMs: first ? first.hours * 3_600_000 + LIQ_HOLD_MS : LIQ_HOLD_MS, wide: true };
+      if (!first || held.some(e => !e || e.at === -Infinity) || held.some(e => e!.edges.length !== first.edges.length)) return { rows: [], takes: beside ? [] : null, edges: first && first.at > -Infinity ? first.edges : null, holdMs: first ? first.hours * 3_600_000 + LIQ_HOLD_MS : LIQ_HOLD_MS, wide: true };
       const by: Partial<Record<LiqFamily, HistRow[]>> = {};
       families.forEach((f, i) => { by[f] = held[i]!.rows; });
       const block = first.hours * 3_600_000;
       const deps = held.map(e => e!.rows);
       const rows = this.#memo(`4h|${vk}`, deps, () => this.#viewRows(view, by, first.edges, block).rows);
-      const takes = view.takes ? this.#memo(`4h|takes`, [by.orders], () => this.#viewRows(view, by, first.edges, block).takes) : null;
+      const takes = beside ? this.#memo(`4h|takes|${of}`, [by[of]], () => this.#viewRows(view, by, first.edges, block).takes) : null;
       return { rows: inForce(rows, t0, t1), takes: takes ? inForce(takes, t0, t1) : null, edges: first.edges, holdMs: block + LIQ_HOLD_MS, wide: true };
     }
     const index = this.#index;
-    if (!index) return { rows: [], takes: view.takes ? [] : null, edges: null, holdMs: LIQ_HOLD_MS, wide: false };
+    if (!index) return { rows: [], takes: beside ? [] : null, edges: null, holdMs: LIQ_HOLD_MS, wide: false };
     const days = new Set<number>();
     for (const key of this.#days.keys()) {
       const family = key.slice(0, key.indexOf('|')) as LiqFamily, day = Number(key.slice(key.indexOf('|') + 1));
@@ -587,10 +589,10 @@ export class LiqHistory {
       const by: Partial<Record<LiqFamily, HistRow[]>> = {}, deps: unknown[] = [];
       for (const f of families) { const e = this.#days.get(`${f}|${day}`); by[f] = e?.rows ?? []; deps.push(e?.rows); }
       rows.push(...this.#memo(`${day}|${vk}`, deps, () => this.#viewRows(view, by, index.edges, null).rows));
-      if (view.takes) takes.push(...this.#memo(`${day}|takes`, [by.orders], () => this.#viewRows(view, by, index.edges, null).takes));
+      if (beside) takes.push(...this.#memo(`${day}|takes|${of}`, [by[of]], () => this.#viewRows(view, by, index.edges, null).takes));
     }
     rows.sort((a, b) => a.fetchedAt - b.fetchedAt); takes.sort((a, b) => a.fetchedAt - b.fetchedAt);
-    return { rows: inForce(rows, t0, t1), takes: view.takes ? inForce(takes, t0, t1) : null, edges: index.edges, holdMs: LIQ_HOLD_MS, wide: false };
+    return { rows: inForce(rows, t0, t1), takes: beside ? inForce(takes, t0, t1) : null, edges: index.edges, holdMs: LIQ_HOLD_MS, wide: false };
   }
 
   /** The rows held that are in force over [t0, t1] for `view`: every row fetched in it, and the last one before it. Ordered by fetch time. */

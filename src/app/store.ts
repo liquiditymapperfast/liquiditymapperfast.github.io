@@ -528,6 +528,9 @@ export class Store {
   get saving(): boolean { return this.#saving; }
   subscribe(listener: Listener): () => void { this.#listeners.add(listener); return () => this.#listeners.delete(listener); }
   set(patch: Partial<AppState>): void {
+    // The levels' setting is checked where it is written, not only where it is read back (Sol, review 2026-11-19): a patch with all three
+    // kinds off, or a malformed one, becomes the free view, as a save of it would.
+    if (patch.liqLevels) patch = { ...patch, liqLevels: readLiqLevels(patch.liqLevels) };
     for (const key of Object.keys(patch) as (keyof AppState)[]) { (this.state as unknown as Record<string, unknown>)[key] = patch[key]; this.#pending.add(key); }
     if (this.#scheduled) return;
     this.#scheduled = true;
