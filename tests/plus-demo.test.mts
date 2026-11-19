@@ -918,6 +918,42 @@ test('cold: a waiter that throws when the numbers arrive does not keep them from
   });
 });
 
+/** Everything the chart shows, as text: each element's shape and how strongly it is drawn. Two equal pictures are the same drawing. */
+const chartPicture = (host: FakeElement): string => byClass(host, 'pd-ch').all()
+  .map(e => `${e.tagName}|${e.getAttribute('d') ?? ''}|${e.style.opacity ?? ''}|${e.style.display ?? ''}|${e.textContent.length < 40 ? e.textContent : ''}`).join('\n');
+
+test('cold: Play pressed while loading, then the tab hidden or the demo under 45 % in view: the queued tour starts held, its chart still and no frame asked for', () => {
+  coldPage((page, track) => {
+    for (const away of ['under 45 % in view', 'tab hidden'] as const) {
+      forgetData();
+      const host = new FakeElement('div', page);
+      const states: DemoLevels[] = [];
+      const handle = track(mountDemo(host as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states.push(x)); return { destroy() {} }; } }));
+      page.view(0.9);
+      byLabel(host, 'Play').fire('click');
+      if (away === 'tab hidden') page.setHidden(true); else page.view(0.4);
+      page.idle();
+      page.run(16);
+      assert.deepEqual(states.map(x => [+x.liq, +x.stops, +x.takes]), [[1, 0, 0]], `${away}: the tour started at its first scene`);
+      const held = chartPicture(host);
+      assert.ok(held.split('\n').length > 60, `${away}: the chart is drawn`);
+      page.run(48);
+      assert.equal(page.frames.size, 0, `${away}: no frame is asked for while it is held (its first move, 220 ms long, would still be asking)`);
+      page.run(1000);
+      assert.equal(page.frames.size, 0, `${away}: nor later`);
+      assert.equal(chartPicture(host), held, `${away}: the chart holds still (its first move waits too)`);
+      assert.equal(states.length, 1, `${away}: no further scene`);
+      // Back in view: the tour goes on, its first move with it.
+      if (away === 'tab hidden') page.setHidden(false); else page.view(0.9);
+      page.run(300);
+      assert.notEqual(chartPicture(host), held, `${away}: back in view, the chart moves on`);
+      page.run(4000);
+      assert.equal(states.length, 2, `${away}: and the tour goes on to its next scene`);
+      handle.destroy();
+    }
+  });
+});
+
 /* ==== no network, no app settings ======================================================================================================= */
 
 test('the module asks nothing of the network and touches none of the app\'s settings: its files and what they import', () => {
