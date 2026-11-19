@@ -453,7 +453,9 @@ test('the stripe\'s lanes: the take profits by the live edge, the levels beside 
   assert.deepEqual(narrow, { takes: { x0: 1000, x1: 1010 }, levels: { x0: 1012, x1: 1020 } }, 'under 30 px: half each');
   for (let w = 0; w < 80; w += 3) {
     const l = stripeLanes(500, 500 + w, true);
-    assert.ok(l.takes!.x1 <= l.levels.x0 && l.levels.x0 <= l.levels.x1 && l.levels.x1 === 500 + w, `width ${w}`);
+    // Under 7 px the two lanes cannot each be painted (LANE_MIN_W): the take profits' lane goes and the levels take the stripe (the map
+    // draws the stripe only from 9 px).
+    assert.ok((w < 7 ? l.takes === null : !!l.takes && l.takes.x1 <= l.levels.x0) && l.levels.x0 <= l.levels.x1 && l.levels.x1 === 500 + w, `width ${w}`);
   }
 });
 
