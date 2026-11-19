@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { BANDS, HH, NOW_PRICE, ROWS, SEED, SNAPS, bandIndex, createData, demoData, mulberry32 } from '../src/app/plus/demo/data.ts';
-import { DEMO_START, createDemoStore, kindsOn, lastOn, type DemoLevels } from '../src/app/plus/demo/store.ts';
+import { DEMO_START, createDemoStore, kindsOn, lastOn, type DemoLevels, type DemoStore } from '../src/app/plus/demo/store.ts';
 import { bucketsOf, depthColumns, depthTable, levelsAt, weightsOf, windowEnd } from '../src/app/plus/demo/model.ts';
+import { Player, SCENES, idleCaption, type SceneStep } from '../src/app/plus/demo/scenes.ts';
+import { mountDemo } from '../src/app/plus/demo/demo.ts';
+import { mountVisuals } from '../src/app/plus/demo/visuals.ts';
 
 /* ==== the made-up numbers ============================================================================================================= */
 
@@ -114,4 +119,409 @@ test('the profitable traders are drawn as precisely as everyone, price by price,
   assert.equal(depth.cols.length, 85, 'a column for each snapshot of the week (the first one partly in it)');
   assert.ok(depth.cols.every(c => c.up.length === BANDS.length && c.dn.length === BANDS.length));
   assert.equal(ROWS * SNAPS, d.liqL.length);
+});
+
+/* ==== the scenes ========================================================================================================================== */
+
+test('the scenes and their captions are the approved prototype\'s', () => {
+  assert.deepEqual(SCENES.map(s => s.label()), ['Liquidations', 'Stops', 'Take profits', 'Each alone', 'Traders', 'History']);
+  assert.deepEqual(SCENES.flatMap(s => s.steps.flatMap(st => st.caption ? [st.caption()] : [])), [
+    'Liquidation levels at each price.', 'Add stop losses to the curve.', 'Take profits get their own lane.', 'Choose each kind on its own.',
+    'Take profits alone get a dashed curve.', 'Profitable traders, at each price.', 'Scroll back through the whole history.']);
+  assert.equal(idleCaption(), 'Try the switches.');
+  assert.deepEqual(SCENES.map(s => s.dur), [4000, 4000, 4000, 6000, 7000, 7000]);
+});
+
+/** A player on a store, frame by frame. */
+function played() {
+  const store = createDemoStore(), applied: { step: SceneStep; animate: boolean; at: number }[] = [];
+  let clock = 0, idle = 0;
+  const player = new Player({ apply(step, animate) { applied.push({ step, animate, at: clock }); if (step.set) store.set(step.set); }, idle() { idle++; } });
+  const run = (ms: number, frame = 16): void => { for (let t = 0; t < ms; t += frame) { clock += frame; player.tick(clock); } };
+  return { store, applied, player, run, now: () => clock, idles: () => idle };
+}
+
+test('the scenes apply their steps in order, at their times, and the tour stops by itself at its end', () => {
+  const p = played();
+  const states: DemoLevels[] = [];
+  p.store.subscribe(s => states.push(s));
+  p.player.start(p.now());
+  assert.equal(p.applied.length, 1, 'the first step at once');
+  p.run(p.player.total + 500);
+  assert.deepEqual(p.applied.map(a => a.step), p.player.steps, 'every step, in order');
+  const expected = p.player.steps.map(s => s.at);
+  p.applied.forEach((a, i) => { assert.ok(a.at >= expected[i]! && a.at < expected[i]! + 17, `step ${i} at ${a.at}, due at ${expected[i]}`); assert.equal(a.animate, true); });
+  assert.deepEqual(states.map(s => [+s.liq, +s.stops, +s.takes, s.traders]), [
+    [1, 0, 0, 'everyone'], [1, 1, 0, 'everyone'], [1, 1, 1, 'everyone'], [0, 1, 0, 'everyone'], [0, 0, 1, 'everyone'], [1, 1, 1, 'everyone'], [1, 1, 1, 'profitable'], [1, 1, 1, 'everyone']]);
+  assert.equal(p.player.running, false);
+  assert.equal(p.player.pausedBy, 'end');
+  assert.equal(p.idles(), 1, 'the caption goes back to its invitation once');
+  assert.equal(p.player.current(), SCENES.length - 1);
+  assert.deepEqual(SCENES.map((_, i) => p.player.progress(i)), [1, 1, 1, 1, 1, 1]);
+});
+
+test('a late frame counts as 100 ms; a pause holds the tour; a scene chosen by hand shows its end at once, paused', () => {
+  const p = played();
+  p.player.start(0);
+  p.player.tick(5000);
+  assert.equal(p.player.position, 100, 'a tab that slept does not skip scenes');
+  p.player.pause('view');
+  p.run(20_000);
+  assert.equal(p.player.position, 100);
+  assert.equal(p.player.pausedBy, 'view');
+  p.player.resume(p.now());
+  p.run(4000);
+  assert.equal(p.player.current(), 1);
+  p.player.interrupt();
+  assert.equal(p.player.running, false);
+  assert.equal(p.player.pausedBy, 'user');
+  p.applied.length = 0;
+  p.player.jump(4);
+  assert.equal(p.applied.length, 1, 'one step that does it all');
+  assert.equal(p.applied[0]!.animate, false);
+  assert.deepEqual(p.store.get(), { liq: true, stops: true, takes: true, traders: 'profitable' });
+  assert.equal(p.applied[0]!.step.caption!(), 'Profitable traders, at each price.');
+  assert.equal(p.applied[0]!.step.scrub, 1);
+  p.player.jump(5);
+  assert.equal(p.applied[1]!.step.scrubTo, 0.2, 'the history scene glides back');
+  assert.equal(p.applied[1]!.step.scrub, undefined);
+  assert.equal(p.player.pausedBy, 'user');
+  p.run(10_000);
+  assert.equal(p.applied.length, 2, 'and stays where it was put');
+  p.player.resume(p.now());
+  p.run(2000);
+  assert.equal(p.player.running, false, 'resumed one frame before its end: it ends');
+  p.player.resume(p.now());
+  assert.equal(p.player.running, true, 'after its end, Play starts it again');
+  assert.equal(p.player.position, 0);
+});
+
+/* ==== mounted, on a page made of plain objects ============================================================================================ */
+
+type Listener = (event: FakeEvent) => void;
+interface FakeEvent { type: string; key?: string; clientX?: number; pointerId?: number; preventDefault(): void }
+
+class FakeNode {
+  parent: FakeElement | null = null;
+  constructor(public text = '') {}
+  get textContent(): string { return this.text; }
+  set textContent(v: string) { this.text = v; }
+  remove(): void { if (this.parent) { this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; } }
+}
+
+class FakeElement extends FakeNode {
+  children: FakeNode[] = [];
+  attrs = new Map<string, string>();
+  style: Record<string, string> = {};
+  dataset: Record<string, string> = {};
+  listeners = new Map<string, Set<Listener>>();
+  hidden = false; tabIndex = -1; type = '';
+  constructor(readonly tagName: string, readonly env: FakePage) { super(); }
+  get id(): string { return this.attrs.get('id') ?? ''; }
+  set id(v: string) { this.attrs.set('id', v); }
+  get className(): string { return this.attrs.get('class') ?? ''; }
+  set className(v: string) { this.attrs.set('class', v); }
+  get classList() {
+    const names = (): string[] => this.className.split(/\s+/).filter(Boolean);
+    const write = (list: string[]): void => { this.className = list.join(' '); };
+    return {
+      add: (...c: string[]) => write([...new Set([...names(), ...c])]),
+      remove: (...c: string[]) => write(names().filter(x => !c.includes(x))),
+      toggle: (c: string, force?: boolean) => { const on = force ?? !names().includes(c); write(on ? [...new Set([...names(), c])] : names().filter(x => x !== c)); return on; },
+      contains: (c: string) => names().includes(c),
+    };
+  }
+  setAttribute(k: string, v: string): void { this.attrs.set(k, String(v)); }
+  getAttribute(k: string): string | null { return this.attrs.get(k) ?? null; }
+  removeAttribute(k: string): void { this.attrs.delete(k); }
+  get textContent(): string { return this.children.map(c => c.textContent).join(''); }
+  set textContent(v: string) { for (const c of this.children) c.parent = null; this.children = v ? [this.adopt(new FakeNode(v))] : []; }
+  get firstChild(): FakeNode | null { return this.children[0] ?? null; }
+  get clientWidth(): number { return this.env.width; }
+  get offsetWidth(): number { return 0; }
+  adopt(n: FakeNode | string): FakeNode { const node = typeof n === 'string' ? new FakeNode(n) : n; node.remove(); node.parent = this; return node; }
+  append(...nodes: (FakeNode | string)[]): void { for (const n of nodes) this.children.push(this.adopt(n)); }
+  appendChild<T extends FakeNode>(n: T): T { this.append(n); return n; }
+  prepend(...nodes: (FakeNode | string)[]): void { this.children.unshift(...nodes.map(n => this.adopt(n))); }
+  replaceChildren(...nodes: (FakeNode | string)[]): void { for (const c of this.children) c.parent = null; this.children = []; this.append(...nodes); }
+  addEventListener(type: string, l: Listener): void { const set = this.listeners.get(type) ?? new Set(); set.add(l); this.listeners.set(type, set); }
+  removeEventListener(type: string, l: Listener): void { this.listeners.get(type)?.delete(l); }
+  fire(type: string, extra: Partial<FakeEvent> = {}): void { for (const l of [...this.listeners.get(type) ?? []]) l({ type, preventDefault() {}, ...extra }); }
+  getBoundingClientRect() { return { left: 0, top: 0, right: this.env.width, bottom: 30, width: this.env.width, height: 30 }; }
+  setPointerCapture(): void {}
+  focus(): void {}
+  /** Every element under this one. */
+  all(): FakeElement[] { return this.children.flatMap(c => c instanceof FakeElement ? [c, ...c.all()] : []); }
+}
+
+/** The page, as the demo uses it: elements, frames, timers, observers, the media query, the tab's visibility; and what it counted. */
+class FakePage {
+  width = 700; reduced = false; hidden = false; clock = 1_000;
+  frames = new Map<number, (t: number) => void>(); nextFrame = 1;
+  timers = new Map<number, () => void>(); nextTimer = 1;
+  resizes = new Set<object>(); views = new Map<object, (entries: unknown[]) => void>();
+  docListeners = new Map<string, Set<Listener>>();
+  network: string[] = [];
+  #saved = new Map<string, PropertyDescriptor | undefined>();
+
+  install(): void {
+    const page = this;
+    const document = {
+      get hidden() { return page.hidden; },
+      createElement: (tag: string) => new FakeElement(tag, page),
+      createElementNS: (_ns: string, tag: string) => new FakeElement(tag, page),
+      addEventListener: (type: string, l: Listener) => { const set = page.docListeners.get(type) ?? new Set(); set.add(l); page.docListeners.set(type, set); },
+      removeEventListener: (type: string, l: Listener) => { page.docListeners.get(type)?.delete(l); },
+    };
+    const window = {
+      get innerHeight() { return 800; },
+      matchMedia: (q: string) => ({ matches: q.includes('reduced-motion') && page.reduced, media: q }),
+      setTimeout: (f: () => void) => { const id = page.nextTimer++; page.timers.set(id, f); return id; },
+      clearTimeout: (id: number) => { page.timers.delete(id); },
+    };
+    class ResizeObserver { constructor(readonly cb: () => void) {} observe() { page.resizes.add(this); } disconnect() { page.resizes.delete(this); } }
+    class IntersectionObserver { constructor(readonly cb: (entries: unknown[]) => void) {} observe() { page.views.set(this, this.cb); } disconnect() { page.views.delete(this); } }
+    const count = (name: string) => function blocked() { page.network.push(name); throw new Error(`${name}: no network in the demo`); };
+    const values: Record<string, unknown> = {
+      document, window, ResizeObserver, IntersectionObserver,
+      requestAnimationFrame: (f: (t: number) => void) => { const id = page.nextFrame++; page.frames.set(id, f); return id; },
+      cancelAnimationFrame: (id: number) => { page.frames.delete(id); },
+      performance: { now: () => page.clock },
+      fetch: count('fetch'), XMLHttpRequest: count('XMLHttpRequest'), WebSocket: count('WebSocket'), EventSource: count('EventSource'), Image: count('Image'),
+      navigator: { sendBeacon: count('sendBeacon'), languages: ['en'], language: 'en' },
+    };
+    for (const [k, v] of Object.entries(values)) { this.#saved.set(k, Object.getOwnPropertyDescriptor(globalThis, k)); Object.defineProperty(globalThis, k, { value: v, configurable: true, writable: true }); }
+  }
+  uninstall(): void {
+    for (const [k, d] of this.#saved) { if (d) Object.defineProperty(globalThis, k, d); else delete (globalThis as Record<string, unknown>)[k]; }
+    this.#saved.clear();
+  }
+  /** Run frames of 16 ms for `ms`, as the browser would while some are asked for. */
+  run(ms: number): void {
+    for (let t = 0; t < ms; t += 16) {
+      this.clock += 16;
+      const due = [...this.frames]; this.frames.clear();
+      for (const [, f] of due) f(this.clock);
+    }
+  }
+  /** The demo shows this share of itself (and the window this tall). */
+  view(ratio: number): void { for (const cb of [...this.views.values()]) cb([{ isIntersecting: ratio > 0, intersectionRatio: ratio, intersectionRect: { height: 500 * ratio }, rootBounds: { height: 800 } }]); }
+  setHidden(hidden: boolean): void { this.hidden = hidden; for (const l of [...this.docListeners.get('visibilitychange') ?? []]) l({ type: 'visibilitychange', preventDefault() {} }); }
+  listenerCount(): number { let n = 0; for (const set of this.docListeners.values()) n += set.size; return n; }
+}
+
+/** Mount the demo on a fake page with a control that hands its store out (the shape the app's control will have). */
+function mounted(opts: { width?: number; reduced?: boolean } = {}) {
+  const page = new FakePage();
+  page.width = opts.width ?? 700; page.reduced = opts.reduced ?? false;
+  page.install();
+  const host = new FakeElement('div', page);
+  let store: DemoStore | null = null, controlHost: FakeElement | null = null, controlDestroyed = 0;
+  const handle = mountDemo(host as unknown as HTMLElement, { control: (h, s) => { store = s; controlHost = h as unknown as FakeElement; return { destroy() { controlDestroyed++; } }; } });
+  return { page, host, handle, store: () => store!, controlHost: () => controlHost!, controlDestroyed: () => controlDestroyed };
+}
+
+test('mounted: the tour plays once when the demo is 45 % in view, through the six scenes, into the demo\'s own store', () => {
+  const m = mounted();
+  try {
+    const states: DemoLevels[] = [];
+    m.store().subscribe(s => states.push(s));
+    m.page.run(100);
+    m.page.view(0.3);
+    m.page.run(1000);
+    assert.equal(states.length, 0, 'under 45 % in view: nothing plays');
+    m.page.view(0.5);
+    m.page.run(33_000);
+    assert.deepEqual(states.map(s => [+s.liq, +s.stops, +s.takes, s.traders]), [
+      [1, 0, 0, 'everyone'], [1, 1, 0, 'everyone'], [1, 1, 1, 'everyone'], [0, 1, 0, 'everyone'], [0, 0, 1, 'everyone'], [1, 1, 1, 'everyone'], [1, 1, 1, 'profitable'], [1, 1, 1, 'everyone']]);
+    const caption = m.host.all().find(e => e.className === 'pd-caption' || e.className.startsWith('pd-caption '))!;
+    assert.equal(caption.textContent, 'Try the switches.', 'back to its invitation at the end');
+    m.page.run(2000);
+    assert.equal(m.page.frames.size, 0, 'nothing moves: no frame is asked for');
+    m.page.view(0); m.page.view(0.9);
+    m.page.run(10_000);
+    assert.equal(states.length, 8, 'it played once');
+  } finally { m.handle.destroy(); m.page.uninstall(); }
+});
+
+test('mounted: out of view or a hidden tab pauses the tour and coming back resumes it; the person\'s use stops it for good', () => {
+  const m = mounted();
+  try {
+    const states: DemoLevels[] = [];
+    m.store().subscribe(s => states.push(s));
+    m.page.view(0.6);
+    m.page.run(500);
+    assert.equal(states.length, 1, 'the first scene');
+    m.page.view(0.1);
+    m.page.run(10_000);
+    assert.equal(states.length, 1, 'out of view: paused');
+    m.page.view(0.6);
+    m.page.run(4000);
+    assert.equal(states.length, 2, 'back in view: on to the second scene');
+    m.page.setHidden(true);
+    m.page.run(10_000);
+    assert.equal(states.length, 2, 'the tab hidden: paused');
+    m.page.setHidden(false);
+    m.page.run(4000);
+    assert.equal(states.length, 3);
+    m.store().set({ liq: false });
+    assert.equal(states.length, 4);
+    m.page.run(20_000);
+    assert.equal(states.length, 4, 'a change from the control stops the tour');
+    m.page.view(0); m.page.view(0.8);
+    m.page.run(20_000);
+    assert.equal(states.length, 4, 'and coming back into view does not restart it');
+  } finally { m.handle.destroy(); m.page.uninstall(); }
+});
+
+test('mounted: a press on the control or on the history stops the tour; under reduced motion it never starts by itself', () => {
+  for (const target of ['control', 'history'] as const) {
+    const m = mounted();
+    try {
+      const states: DemoLevels[] = [];
+      m.store().subscribe(s => states.push(s));
+      m.page.view(0.6);
+      m.page.run(500);
+      const track = m.host.all().find(e => e.getAttribute('role') === 'slider')!;
+      if (target === 'control') m.controlHost().fire('pointerdown');
+      else track.fire('pointerdown', { clientX: 10, pointerId: 1 });
+      m.page.run(20_000);
+      assert.equal(states.length, 1, `${target}: stopped`);
+      if (target === 'history') assert.equal(track.getAttribute('aria-valuenow'), '0', 'the press moved the window to the oldest week');
+    } finally { m.handle.destroy(); m.page.uninstall(); }
+  }
+  const m = mounted({ reduced: true });
+  try {
+    const states: DemoLevels[] = [];
+    m.store().subscribe(s => states.push(s));
+    m.page.view(1);
+    m.page.run(20_000);
+    assert.equal(states.length, 0, 'reduced motion: paused from the start');
+    const play = m.host.all().find(e => e.tagName === 'button' && e.getAttribute('aria-label') === 'Play')!;
+    play.fire('click');
+    m.page.run(5000);
+    assert.ok(states.length >= 2, 'Play starts it by hand');
+  } finally { m.handle.destroy(); m.page.uninstall(); }
+});
+
+test('mounted: destroy() stops every frame, timer, observer and listener, and takes the demo away; pause() holds it', () => {
+  for (const builtIn of [false, true]) {
+    const page = new FakePage();
+    page.install();
+    try {
+      const host = new FakeElement('div', page);
+      let destroyed = 0;
+      const handle = builtIn ? mountDemo(host as unknown as HTMLElement) : mountDemo(host as unknown as HTMLElement, { control: () => ({ destroy() { destroyed++; } }) });
+      page.view(0.7);
+      page.run(1500);
+      if (builtIn) {
+        // The built-in control's note for the last kind on keeps a timer: destroy must clear it too.
+        const rows = host.all().filter(e => e.getAttribute('role') === 'switch');
+        assert.equal(rows.length, 3);
+        rows[0]!.fire('click'); rows[1]!.fire('click'); rows[2]!.fire('click');
+        assert.equal(page.timers.size, 1, 'the note is up');
+      }
+      assert.ok(page.frames.size > 0, 'frames while things move');
+      assert.equal(page.resizes.size, 1); assert.equal(page.views.size, 1); assert.equal(page.listenerCount(), 1);
+      handle.pause();
+      const before = host.all().length;
+      page.run(5000);
+      assert.equal(host.all().length, before);
+      handle.destroy();
+      assert.equal(page.frames.size, 0, 'no frame');
+      assert.equal(page.timers.size, 0, 'no timer');
+      assert.equal(page.resizes.size, 0, 'no resize observer');
+      assert.equal(page.views.size, 0, 'no view observer');
+      assert.equal(page.listenerCount(), 0, 'no listener on the document');
+      assert.equal(host.children.length, 0, 'nothing left in the host');
+      if (!builtIn) assert.equal(destroyed, 1, 'the control passed in is destroyed with it');
+      handle.destroy();
+      assert.deepEqual(page.network, [], 'and nothing asked of the network');
+    } finally { page.uninstall(); }
+  }
+});
+
+test('mounted: the built-in control keeps one kind on and says so; its note goes with a timer that destroy() clears', () => {
+  const page = new FakePage();
+  page.install();
+  try {
+    const host = new FakeElement('div', page);
+    const handle = mountDemo(host as unknown as HTMLElement);
+    const rows = host.all().filter(e => e.getAttribute('role') === 'switch');
+    assert.deepEqual(rows.map(r => r.getAttribute('aria-checked')), ['true', 'true', 'true']);
+    rows[0]!.fire('click'); rows[1]!.fire('click');
+    assert.deepEqual(rows.map(r => r.getAttribute('aria-checked')), ['false', 'false', 'true']);
+    assert.equal(rows[2]!.getAttribute('aria-disabled'), 'true', 'the last kind on cannot be switched off');
+    rows[2]!.fire('click');
+    assert.equal(rows[2]!.getAttribute('aria-checked'), 'true');
+    const note = host.all().find(e => e.className === 'pd-lv-note')!;
+    assert.equal(note.textContent, 'One kind stays on.');
+    assert.equal(page.timers.size, 1);
+    const radios = host.all().filter(e => e.getAttribute('role') === 'radio');
+    radios[1]!.fire('click');
+    assert.deepEqual(radios.map(r => r.getAttribute('aria-checked')), ['false', 'true']);
+    radios[1]!.fire('keydown', { key: 'Home' });
+    assert.deepEqual(radios.map(r => r.getAttribute('aria-checked')), ['true', 'false']);
+    handle.destroy();
+    assert.equal(page.timers.size, 0, 'the note\'s timer is cleared');
+  } finally { page.uninstall(); }
+});
+
+test('mounted: the chart stays within about 300 SVG elements and is 320 px tall on a phone, 372 on a wider screen', () => {
+  for (const [width, height] of [[700, 372], [360, 320], [1200, 372]] as const) {
+    const m = mounted({ width });
+    try {
+      m.page.run(200);
+      const svg = m.host.all().find(e => e.tagName === 'svg' && e.className === 'pd-ch')!;
+      const count = 1 + svg.all().length;
+      assert.ok(count > 60 && count <= 300, `${width} px: ${count} elements`);
+      const box = m.host.all().find(e => e.className === 'pd-chart')!;
+      assert.equal(box.style.height, `${height}px`);
+      assert.equal(svg.getAttribute('height'), String(height));
+    } finally { m.handle.destroy(); m.page.uninstall(); }
+  }
+});
+
+test('the feature pictures: three still pictures, each labelled as illustrative, taken away by destroy()', () => {
+  const page = new FakePage();
+  page.install();
+  try {
+    const hosts = { history: new FakeElement('div', page), layers: new FakeElement('div', page), groups: new FakeElement('div', page) };
+    const v = mountVisuals(hosts as unknown as { history: HTMLElement; layers: HTMLElement; groups: HTMLElement });
+    for (const [name, h] of Object.entries(hosts)) {
+      const svg = h.all().find(e => e.tagName === 'svg')!;
+      assert.ok(svg, `${name}: a picture`);
+      assert.ok(svg.all().length < 120, `${name}: ${svg.all().length} elements`);
+      assert.equal(h.all().find(e => e.className === 'pd-vis-tag')!.textContent, 'Illustrative data');
+    }
+    assert.equal(page.frames.size + page.timers.size + page.resizes.size + page.views.size, 0, 'nothing timed or watched');
+    v.destroy();
+    for (const h of Object.values(hosts)) assert.equal(h.children.length, 0);
+    assert.deepEqual(page.network, []);
+  } finally { page.uninstall(); }
+});
+
+/* ==== no network, no app settings ======================================================================================================= */
+
+test('the module asks nothing of the network and touches none of the app\'s settings: its files and what they import', () => {
+  const dir = path.join(process.cwd(), 'src', 'app', 'plus', 'demo');
+  const files = fs.readdirSync(dir).filter(f => /\.(ts|css)$/.test(f));
+  assert.ok(files.includes('demo.ts') && files.includes('demo.css') && files.includes('data.ts'));
+  const allowed = new Set(['../../i18n.ts', '../../format.ts', '../name.ts', './demo.css']);
+  for (const file of files) {
+    const text = fs.readFileSync(path.join(dir, file), 'utf8');
+    const code = text.replace(/http:\/\/www\.w3\.org\/2000\/svg/g, '');
+    for (const banned of [/\bfetch\s*\(/, /XMLHttpRequest/, /WebSocket/, /EventSource/, /sendBeacon/, /\bimport\s*\(/, /new Image\b/, /importScripts/, /https?:\/\//, /localStorage/, /sessionStorage/, /indexedDB/, /@import/, /url\(\s*['"]?(?!data:)/]) {
+      assert.ok(!banned.test(code), `${file}: ${banned}`);
+    }
+    for (const m of text.matchAll(/^import[^'"]*['"]([^'"]+)['"]/gm)) {
+      const spec = m[1]!;
+      assert.ok(allowed.has(spec) || /^\.\/[\w-]+\.ts$/.test(spec), `${file} imports ${spec}`);
+    }
+  }
+  // What it borrows from the app imports nothing more.
+  for (const borrowed of ['src/app/i18n.ts', 'src/app/format.ts', 'src/app/plus/name.ts']) {
+    const imports = [...fs.readFileSync(borrowed, 'utf8').matchAll(/^import[^'"]*['"]([^'"]+)['"]/gm)].map(m => m[1]);
+    assert.ok(imports.every(s => s === './i18n.ts'), `${borrowed}: ${imports.join(', ')}`);
+  }
 });
