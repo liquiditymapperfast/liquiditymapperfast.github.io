@@ -5,8 +5,9 @@
  * `mountDemo(host, { control })` builds it into `host`. `control(host, store)` is the levels control to put beside the chart (the app's
  * own); without it the demo uses its built-in one (`control.ts`). Either reads and writes the demo's store only.
  *
- * Playing: the tour starts once, the first time the demo is at least 45 % in view, unless the browser asks for reduced motion. It pauses
- * while the demo is out of view or the tab is hidden and goes on when it is back. Any use of the levels control or the history scrubber
+ * Playing: the tour starts once, the first time the demo is at least 45 % in view, unless the browser asks for reduced motion; reduced
+ * motion turned on while it plays by itself stops it (a tour the person started goes on, its motions instant). It pauses while the demo is
+ * out of view or the tab is hidden and goes on when it is back, its motions held still meanwhile. Any use of the levels control or the history scrubber
  * stops it (a store change the tour did not make, or a press or key on the control); Play, Play again and the scene buttons drive it by hand.
  * The returned `pause()` stops it as the person's own pause would: it stays stopped until Play, Play again or a scene, and the first autoplay
  * is used up. `destroy()` stops every frame, observer and listener and takes the demo out of `host`.
@@ -54,7 +55,9 @@ function icon(name: keyof typeof ICONS): SVGSVGElement {
 
 export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle {
   const data = demoData(), store = createDemoStore(), chart = createChart(data);
-  const reduced = (): boolean => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // One query, watched: reduced motion turned on while the demo plays stops what plays by itself (`onMotion`).
+  const motionQuery = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  const reduced = (): boolean => motionQuery?.matches ?? false;
   const now = (): number => performance.now();
 
   // ---- the page
@@ -139,6 +142,12 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
     if (glide?.byTour) glide = null;
     if (tween?.byTour) { weights = { ...target }; tween = null; dirty = true; }
   };
+  /** Every motion at its end at once (reduced motion turned on). */
+  const settle = (): void => {
+    if (tween) { weights = { ...target }; tween = null; }
+    if (glide) { scrub = glide.to; glide = null; syncScrub(); }
+    dirty = true;
+  };
 
   // ---- the caption and the tour
   const setCaption = (s: string): void => {
@@ -160,6 +169,8 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
     idle() { setCaption(idleCaption()); },
   });
   let autoplayed = false, inView = false;
+  /** Who set the tour going: the demo by itself (the autoplay) or the person (Play, Play again). */
+  let startedBy: '' | 'auto' | 'person' = '';
   const sceneBtns = player.scenes.map((s, i) => {
     const bar = node('b', '');
     const b = node('button', 'pd-scene', node('i', '', bar), node('span', '', s.label()));
@@ -200,10 +211,10 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   };
   playBtn.addEventListener('click', () => {
     autoplayed = true;
-    if (player.running) player.pause('user'); else player.resume(now());
+    if (player.running) player.pause('user'); else { startedBy = 'person'; player.resume(now()); }
     syncPlay(); schedule();
   });
-  replayBtn.addEventListener('click', () => { autoplayed = true; player.start(now()); syncPlay(); schedule(); });
+  replayBtn.addEventListener('click', () => { autoplayed = true; startedBy = 'person'; player.start(now()); syncPlay(); schedule(); });
 
   // ---- frames: only while something moves or the tour plays
   function frame(at: number): void {
@@ -261,8 +272,9 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   /** In view and the tab shown: autoplay once, or go on after a pause that was the view's; else pause for the view. */
   const consider = (): void => {
     if (inView && !document.hidden) {
-      if (!autoplayed && !reduced()) { autoplayed = true; player.start(now()); }
-      else if (player.pausedBy === 'view') player.resume(now());
+      if (!autoplayed && !reduced()) { autoplayed = true; startedBy = 'auto'; player.start(now()); }
+      // A tour that started by itself goes on only while motion is welcome; one the person started goes on regardless.
+      else if (player.pausedBy === 'view' && (startedBy === 'person' || !reduced())) player.resume(now());
     } else player.pause('view');
     syncPlay(); schedule();
   };
@@ -277,6 +289,14 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   views.observe(root);
   const onVisibility = (): void => consider();
   document.addEventListener('visibilitychange', onVisibility);
+  /** Reduced motion turned on: a tour that started by itself stops (and does not come back with the view), and what moves is at its end at once. */
+  const onMotion = (): void => {
+    if (!reduced()) return;
+    if (startedBy !== 'person' && (player.running || player.pausedBy === 'view')) { player.interrupt(); dropTourMotion(); }
+    settle();
+    syncPlay(); schedule();
+  };
+  if (motionQuery) { if (typeof motionQuery.addEventListener === 'function') motionQuery.addEventListener('change', onMotion); else motionQuery.addListener(onMotion); }
 
   host.append(root);
   syncScrub(); syncPlay(); fit(); schedule();
@@ -291,6 +311,7 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
       raf = 0;
       sizes.disconnect(); views.disconnect();
       document.removeEventListener('visibilitychange', onVisibility);
+      if (motionQuery) { if (typeof motionQuery.removeEventListener === 'function') motionQuery.removeEventListener('change', onMotion); else motionQuery.removeListener(onMotion); }
       unsubscribe();
       control.destroy();
       root.remove();

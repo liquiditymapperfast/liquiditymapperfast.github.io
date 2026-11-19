@@ -261,6 +261,8 @@ class FakePage {
   timers = new Map<number, () => void>(); nextTimer = 1;
   resizes = new Set<object>(); views = new Map<object, (entries: unknown[]) => void>();
   docListeners = new Map<string, Set<Listener>>();
+  /** The media queries asked for, each one object (as a browser keeps it), and who listens to its changes. */
+  media = new Map<string, { matches: boolean; media: string; listeners: Set<() => void> }>();
   network: string[] = [];
   #saved = new Map<string, PropertyDescriptor | undefined>();
 
@@ -275,7 +277,16 @@ class FakePage {
     };
     const window = {
       get innerHeight() { return 800; },
-      matchMedia: (q: string) => ({ matches: q.includes('reduced-motion') && page.reduced, media: q }),
+      matchMedia: (q: string) => {
+        let mq = page.media.get(q);
+        if (!mq) {
+          const listeners = new Set<() => void>();
+          mq = { get matches() { return q.includes('reduced-motion') && page.reduced; }, media: q, listeners,
+            addEventListener: (_type: string, l: () => void) => { listeners.add(l); }, removeEventListener: (_type: string, l: () => void) => { listeners.delete(l); } } as { matches: boolean; media: string; listeners: Set<() => void> };
+          page.media.set(q, mq);
+        }
+        return mq;
+      },
       setTimeout: (f: () => void) => { const id = page.nextTimer++; page.timers.set(id, f); return id; },
       clearTimeout: (id: number) => { page.timers.delete(id); },
     };
@@ -307,7 +318,9 @@ class FakePage {
   /** The demo shows this share of itself (and the window this tall). */
   view(ratio: number): void { for (const cb of [...this.views.values()]) cb([{ isIntersecting: ratio > 0, intersectionRatio: ratio, intersectionRect: { height: 500 * ratio }, rootBounds: { height: 800 } }]); }
   setHidden(hidden: boolean): void { this.hidden = hidden; for (const l of [...this.docListeners.get('visibilitychange') ?? []]) l({ type: 'visibilitychange', preventDefault() {} }); }
-  listenerCount(): number { let n = 0; for (const set of this.docListeners.values()) n += set.size; return n; }
+  listenerCount(): number { let n = 0; for (const set of this.docListeners.values()) n += set.size; for (const mq of this.media.values()) n += mq.listeners.size; return n; }
+  /** The person turns reduced motion on or off: the media query says so to those listening. */
+  setReduced(on: boolean): void { this.reduced = on; for (const mq of this.media.values()) for (const l of [...mq.listeners]) l(); }
 }
 
 /** The first element under `root` that carries the class `name`. */
@@ -465,6 +478,63 @@ test('mounted: while the tour is paused its history scroll holds still (Pause, p
   }
 });
 
+test('mounted: reduced motion turned on stops a tour that plays by itself, and it does not come back with the view; one the person started goes on', () => {
+  {
+    // Playing by itself, in the middle of the History scroll: it stops, and so does the window.
+    const m = mounted();
+    try {
+      const states: DemoLevels[] = [];
+      m.store().subscribe(s => states.push(s));
+      m.page.view(0.6);
+      m.page.run(28_500);
+      const n = states.length, left = windowLeft(m.host);
+      m.page.setReduced(true);
+      assert.equal(windowLeft(m.host), left, 'the window stops where it was');
+      m.page.run(10_000);
+      assert.equal(states.length, n, 'no further scene');
+      assert.equal(windowLeft(m.host), left);
+      assert.equal(m.page.frames.size, 0, 'nothing moves');
+      byLabel(m.host, 'Play');
+      m.page.view(0); m.page.view(0.9);
+      m.page.run(10_000);
+      assert.equal(states.length, n, 'coming back into view does not restart it');
+    } finally { m.handle.destroy(); m.page.uninstall(); }
+  }
+  {
+    // Paused for the view when reduced motion comes on: back in view, it stays paused.
+    const m = mounted();
+    try {
+      const states: DemoLevels[] = [];
+      m.store().subscribe(s => states.push(s));
+      m.page.view(0.6);
+      m.page.run(500);
+      m.page.view(0.1);
+      m.page.setReduced(true);
+      m.page.view(0.8);
+      m.page.run(20_000);
+      assert.equal(states.length, 1, 'only the first scene');
+    } finally { m.handle.destroy(); m.page.uninstall(); }
+  }
+  {
+    // Started by the person (Play after their own Pause): it goes on, its motions instant from then on.
+    const m = mounted();
+    try {
+      const states: DemoLevels[] = [];
+      m.store().subscribe(s => states.push(s));
+      m.page.view(0.6);
+      m.page.run(500);
+      byLabel(m.host, 'Pause').fire('click');
+      byLabel(m.host, 'Play').fire('click');
+      m.page.setReduced(true);
+      m.page.run(9000);
+      assert.ok(states.length >= 3, `the tour goes on (${states.length} scenes)`);
+      m.page.view(0.1); m.page.view(0.8);
+      m.page.run(30_000);
+      assert.equal(states.length, 8, 'back in view it goes on to its end');
+    } finally { m.handle.destroy(); m.page.uninstall(); }
+  }
+});
+
 test('mounted: destroy() stops every frame, timer, observer and listener, and takes the demo away; pause() holds it', () => {
   for (const builtIn of [false, true]) {
     const page = new FakePage();
@@ -483,7 +553,7 @@ test('mounted: destroy() stops every frame, timer, observer and listener, and ta
         assert.equal(page.timers.size, 1, 'the note is up');
       }
       assert.ok(page.frames.size > 0, 'frames while things move');
-      assert.equal(page.resizes.size, 1); assert.equal(page.views.size, 1); assert.equal(page.listenerCount(), 1);
+      assert.equal(page.resizes.size, 1); assert.equal(page.views.size, 1); assert.equal(page.listenerCount(), 2, 'the visibility of the tab and the reduced-motion query');
       page.view(0);
       handle.pause();
       page.view(0.9);
@@ -496,7 +566,7 @@ test('mounted: destroy() stops every frame, timer, observer and listener, and ta
       assert.equal(page.timers.size, 0, 'no timer');
       assert.equal(page.resizes.size, 0, 'no resize observer');
       assert.equal(page.views.size, 0, 'no view observer');
-      assert.equal(page.listenerCount(), 0, 'no listener on the document');
+      assert.equal(page.listenerCount(), 0, 'no listener on the document or the reduced-motion query');
       assert.equal(host.children.length, 0, 'nothing left in the host');
       if (!builtIn) assert.equal(destroyed, 1, 'the control passed in is destroyed with it');
       handle.destroy();
