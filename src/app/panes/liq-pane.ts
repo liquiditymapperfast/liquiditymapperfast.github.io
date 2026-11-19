@@ -37,6 +37,8 @@ function rgba(hex: string, alpha: number): string {
 }
 
 const pctText = (fraction: number): string => `${Number((fraction * 100).toFixed(2))}%`;
+/** A box a label keeps clear of: its top, its bottom and its right end (each starts at the left of its ladder or half). */
+type Placed = { y0: number; y1: number; x1: number };
 
 /**
  * The phone's Liq tab (dock.ts, next to the Book): Hyperliquid's BTC liquidation levels as a ladder that fills the screen, centred on the
@@ -269,7 +271,9 @@ export class LiqPane {
    * divider, the right set (stops, or the profitable traders') right of it, each grown out of its own right edge as the ladder grows out of the
    * price axis, with its own mountains, milestones and largest levels, on one scale (liquidations beside stops, so a bar compares across) or
    * one each (everyone's are many times the profitable traders'), and captioned at its top. The take profits go with the left half. A half
-   * with nothing to draw says why. A finger reads both halves at its price.
+   * with nothing to draw says why. A finger reads both halves at its price. Its milestones and largest levels keep clear of its caption and of
+   * the lines under it that say its orders are missing: one that would lie under them is left out, as a range's own milestone at the top edge
+   * is (2026-11-19).
    */
   #paintHalves(ctx: CanvasRenderingContext2D, p: Palette, pair: LiqPair, leftHas: { s?: LiqStanding; levels?: LiqLevels; prof?: LiqProfile; tprof?: LiqProfile | null; why: string },
     right: LiqSet, rightHas: { s?: LiqStanding; levels?: LiqLevels; why: string }, step: number, price: number,
@@ -287,38 +291,50 @@ export class LiqPane {
       lines.forEach((text, i) => ctx.fillText(text, h.x0 + hw / 2, H * 0.25 + i * 16));
       ctx.restore();
     };
+    // Each half's caption and, where its orders are missing, the lines under it that say so, laid out first: the boxes its milestones and
+    // largest levels keep clear of.
+    ctx.save();
+    const heads = subNames(pair).map((name, i) => {
+      const h = halves[i as 0 | 1], set = i === 0 ? this.hub.liqLevels : right, lines: string[] = [];
+      ctx.font = `600 11px ${SANS}`;
+      const w = Math.min(h.x1 - h.x0 - 8, ctx.measureText(name).width + 12), keep: Placed[] = [{ y0: 4, y1: 22, x1: h.x0 + 4 + w }];
+      if (set.ordersAbsent() && (i === 0 ? leftHas.s : rightHas.s)) {
+        ctx.font = `10.5px ${SANS}`;
+        const room = h.x1 - h.x0 - 12; let line = '';
+        for (const word of ordersAbsent().split(' ')) { const next = line ? `${line} ${word}` : word; if (line && ctx.measureText(next).width > room) { lines.push(line); line = word; } else line = next; }
+        if (line) lines.push(line);
+        lines.splice(3);
+        keep.push({ y0: 22, y1: 32 + (lines.length - 1) * 13 + 7, x1: h.x0 + 6 + Math.max(...lines.map(l => ctx.measureText(l).width)) });
+      }
+      return { name, w, lines, keep };
+    });
+    ctx.restore();
     // Left half: the left set (and the take profits), or why it has none.
     const a = halves[0], aw = a.x1 - a.x0;
     if (leftHas.s && leftHas.levels && prof) {
       this.#paintMountains(ctx, p, prof, step, price, yOf, a.x1, aw, mid, left.maxCum);
-      const placedA = this.#paintMilestones(ctx, p, leftHas.s, price, yOf, a.x1, a.x0);
+      const placedA = this.#paintMilestones(ctx, p, leftHas.s, price, yOf, a.x1, a.x0, heads[0]!.keep);
       this.#paintBars(ctx, p, prof, step, leftHas.levels, yOf, a.x1, aw, H, placedA, tprof, left.maxLevel, a.x0);
     } else reason(a, leftHas.why || t('Liquidation levels are loading.'));
     // Right half: the right set, or why it has none.
     const b = halves[1], bw = b.x1 - b.x0;
     if (rightHas.s && rightHas.levels && rprof) {
       this.#paintMountains(ctx, p, rprof, step, price, yOf, b.x1, bw, mid, other.maxCum);
-      const placedB = this.#paintMilestones(ctx, p, rightHas.s, price, yOf, b.x1, b.x0);
+      const placedB = this.#paintMilestones(ctx, p, rightHas.s, price, yOf, b.x1, b.x0, heads[1]!.keep);
       this.#paintBars(ctx, p, rprof, step, rightHas.levels, yOf, b.x1, bw, H, placedB, null, other.maxLevel, b.x0);
     } else reason(b, rightHas.why || t('Liquidation levels are loading.'));
-    // The divider, and each half's caption at its top.
+    // The divider, and each half's caption at its top, with the lines under it.
     ctx.save();
     ctx.strokeStyle = p.line; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cut + gap / 2 + 0.5, 0); ctx.lineTo(cut + gap / 2 + 0.5, H); ctx.stroke();
-    ctx.font = `600 11px ${SANS}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    subNames(pair).forEach((name, i) => {
-      const h = halves[i as 0 | 1], w = Math.min(h.x1 - h.x0 - 8, ctx.measureText(name).width + 12);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    heads.forEach(({ name, w, lines }, i) => {
+      const h = halves[i as 0 | 1];
+      ctx.font = `600 11px ${SANS}`;
       ctx.globalAlpha = 0.92; ctx.fillStyle = p.panel; this.#pill(ctx, h.x0 + 4, 4, w, 18, 4); ctx.fill();
       ctx.globalAlpha = 1; ctx.strokeStyle = p.line; this.#pill(ctx, h.x0 + 4.5, 4.5, w - 1, 17, 4); ctx.stroke();
       ctx.fillStyle = p.text; ctx.fillText(name, h.x0 + 10, 13.5, w - 12);
-      const set = i === 0 ? this.hub.liqLevels : right;
-      if (set.ordersAbsent() && (i === 0 ? leftHas.s : rightHas.s)) {
-        ctx.font = `10.5px ${SANS}`; ctx.fillStyle = p.muted;
-        const words = ordersAbsent().split(' '), room = h.x1 - h.x0 - 12, lines: string[] = []; let line = '';
-        for (const word of words) { const next = line ? `${line} ${word}` : word; if (line && ctx.measureText(next).width > room) { lines.push(line); line = word; } else line = next; }
-        if (line) lines.push(line);
-        lines.slice(0, 3).forEach((text, n) => ctx.fillText(text, h.x0 + 6, 32 + n * 13));
-        ctx.font = `600 11px ${SANS}`;
-      }
+      ctx.font = `10.5px ${SANS}`; ctx.fillStyle = p.muted;
+      lines.forEach((text, n) => ctx.fillText(text, h.x0 + 6, 32 + n * 13));
     });
     ctx.restore();
     this.#paintPrice(ctx, p, price, mid, xR, W);
@@ -420,10 +436,11 @@ export class LiqPane {
 
   /**
    * The milestones: at round distances from the price, a faint line and what would be liquidated getting there, shorts above and longs
-   * below, on the left where the mountains reach. Returns the boxes it took, for the level labels to keep clear of.
+   * below, on the left where the mountains reach. Returns the boxes it took, for the level labels to keep clear of, after `keepOut`'s (a
+   * split half's caption and the lines under it): a milestone that would lie under one of those is left out.
    */
-  #paintMilestones(ctx: CanvasRenderingContext2D, p: Palette, s: LiqStanding, price: number, yOf: (pr: number) => number, plotW: number, x0 = 0): { y0: number; y1: number; x1: number }[] {
-    const placed: { y0: number; y1: number; x1: number }[] = [], used: number[] = [];
+  #paintMilestones(ctx: CanvasRenderingContext2D, p: Palette, s: LiqStanding, price: number, yOf: (pr: number) => number, plotW: number, x0 = 0, keepOut: Placed[] = []): Placed[] {
+    const placed: Placed[] = [...keepOut], used: number[] = [];
     ctx.save(); ctx.font = `600 10.5px ${SANS}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     for (const d of MILESTONES) {
       // Within an eighth of the range of the price there is rarely anything to say, and the labels would crowd the middle.
@@ -434,6 +451,7 @@ export class LiqPane {
       used.push(yUp);
       for (const side of ['short', 'long'] as const) {
         const y = side === 'short' ? yUp : yDown, color = this.#color(p, side);
+        if (keepOut.some(b => y - 9 < b.y1 && y + 9 > b.y0 && x0 + 6 < b.x1 + 4)) continue;
         const amount = side === 'short' ? standingBelow(s, 'short', price * (1 + d)) - standingBelow(s, 'short', price) : standingBelow(s, 'long', price) - standingBelow(s, 'long', price * (1 - d));
         ctx.globalAlpha = 0.5; ctx.strokeStyle = color; ctx.setLineDash([2, 4]); ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(x0, Math.round(y) + 0.5); ctx.lineTo(plotW, Math.round(y) + 0.5); ctx.stroke(); ctx.setLineDash([]);

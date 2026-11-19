@@ -214,3 +214,10 @@ test('Sol 5 (P2): an empty stops lane gives no reading: the liquidations\' lane 
   const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
   assert.match(heat, /levels = inTakes \? src\.takes : x >= lanes\.levels\.x0 && x < lanes\.levels\.x1 \? src\.levels : null;/);
 });
+
+test('the seam beside a column too narrow to split weighs what the column draws (Liq | Stops: the two added up); beside a drawn split, the left set', () => {
+  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
+  assert.match(heat, /  #paintSeam\(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number\): void \{\n    const hv = this\.#profileHover, src: LiqSet = this\.#liqDrawnSet \?\? this\.hub\.liqLevels,/);
+  assert.match(heat, /const set: LiqSet = pair\?\.split === 'kinds' \? src\.setOf\(narrowView\(pair\)\) : src;\n    this\.#liqDrawnSet = set;/, 'the unsplit column keeps what it drew');
+  assert.match(heat, /  #paintLiqSplit\(ctx: CanvasRenderingContext2D[^\n]*\n[^\n]*\n[^\n]*\n    this\.#liqDrawnSet = null;/, 'a drawn split keeps none: the seam weighs the left set');
+});

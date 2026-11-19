@@ -4388,10 +4388,11 @@ export class HeatPane {
    * would be liquidated (the bids against the longs below, the asks against the shorts above), in the band and over the columns on screen;
    * the rank correlation of level size with book size over the rows that hold liquidations; and at the largest levels, whether the book
    * stands as a wall or thins to a void. The liquidations are Hyperliquid's alone and some 40 minutes old; the book is every enabled
-   * venue's, now: the box says so.
+   * venue's, now: the box says so. It weighs what the column beside it draws (`#liqDrawnSet`: under a split too narrow to draw, liquidations
+   * and stops added up); beside a drawn split, the left set, as the Depth pane does (2026-11-19).
    */
   #paintSeam(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
-    const hv = this.#profileHover, src = this.hub.liqLevels, frame = state.levels, s = src.levels && src.state === 'ready' ? src.standing() : null;
+    const hv = this.#profileHover, src: LiqSet = this.#liqDrawnSet ?? this.hub.liqLevels, frame = state.levels, s = src.levels && src.state === 'ready' ? src.standing() : null;
     // The seam weighs the book against what would be forced out; take profits alone are resting orders like the book's own, so there is none.
     if (!hv || hv.column !== 'seam' || !frame || !s || !liqColumnShown(state) || !state.show.profile || src.levels?.kind === 'takes') return;
     const p = this.#palette, v = this.view, step = niceStep(v.p1 - v.p0, ph / 3), price = this.#liqPrice(state);

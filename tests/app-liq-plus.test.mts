@@ -1098,14 +1098,16 @@ test('a saved levels setting in the older form with a switch that is not a boole
 
 /**
  * A stand-in page for one pane in Node: elements that keep their classes, text and children, a 2D context that draws nothing, and the page's
- * timers held for the test to run, so a frame can be drawn without the second's tick (as the page does after a change of the setting).
+ * timers held for the test to run, so a frame can be drawn without the second's tick (as the page does after a change of the setting). The
+ * Liq tab's range is `range` (±10% unless said).
  */
-function standInPage(width = 390, drawn?: { texts: { t: string; x: number; y: number }[]; lines: { x: number; y: number }[] }) {
+function standInPage(width = 390, drawn?: { texts: { t: string; x: number; y: number }[]; lines: { x: number; y: number }[] }, range = '0.1') {
   const g = globalThis as unknown as Record<string, unknown>, saved = { document: g.document, window: g.window, ResizeObserver: g.ResizeObserver };
-  // Draws nothing; given `drawn`, it keeps the texts and the line ends drawn.
+  // Draws nothing; given `drawn`, it keeps the texts and the line ends drawn, and measures a text at 6 px a character.
   const ctx: unknown = new Proxy(function () { /* draws nothing */ }, { get: (_t, k) => k === Symbol.toPrimitive ? () => 0 : k === 'then' ? undefined
     : drawn && k === 'fillText' ? (t: unknown, x: number, y: number) => { drawn.texts.push({ t: String(t), x, y }); return ctx; }
-    : drawn && k === 'lineTo' ? (x: number, y: number) => { drawn.lines.push({ x, y }); return ctx; } : ctx, apply: () => ctx, set: () => true });
+    : drawn && k === 'lineTo' ? (x: number, y: number) => { drawn.lines.push({ x, y }); return ctx; }
+    : drawn && k === 'measureText' ? (t: unknown) => ({ width: String(t).length * 6 }) : ctx, apply: () => ctx, set: () => true });
   class StandIn {
     children: (StandIn | string)[] = []; dataset: Record<string, string> = {}; style: Record<string, string> = {}; className = ''; hidden = false;
     clientWidth = width; clientHeight = 640; width = 0; height = 0;
@@ -1147,7 +1149,7 @@ function standInPage(width = 390, drawn?: { texts: { t: string; x: number; y: nu
   const timeouts = new Map<number, () => void>(), intervals = new Map<number, () => void>();
   let ids = 0;
   g.document = { createElement: (tag: string) => new StandIn(tag), addEventListener() { /* none */ }, removeEventListener() { /* none */ }, hidden: false };
-  g.window = { devicePixelRatio: 1, localStorage: { getItem: (key: string) => key === 'hlm-liq-range' ? '0.1' : null, setItem() { /* kept nowhere */ }, removeItem() { /* kept nowhere */ } },
+  g.window = { devicePixelRatio: 1, localStorage: { getItem: (key: string) => key === 'hlm-liq-range' ? range : null, setItem() { /* kept nowhere */ }, removeItem() { /* kept nowhere */ } },
     setTimeout: (fn: () => void) => { timeouts.set(++ids, fn); return ids; }, clearTimeout: (id: number) => { timeouts.delete(id); },
     setInterval: (fn: () => void) => { intervals.set(++ids, fn); return ids; }, clearInterval: (id: number) => { intervals.delete(id); } };
   g.ResizeObserver = class { observe(): void { /* sized once */ } disconnect(): void { /* nothing held */ } };
@@ -1498,8 +1500,8 @@ test('the phone\'s Liq tab under a split: halves at a phone\'s width, named by t
 
 /** The phone's Liq tab at a phone's width with a split chosen, on the stand-in page; `files` are the Plus answers. */
 async function tabWith(files: Record<string, LiqAnswer>, lv: Partial<import('../src/app/liq-url.ts').LiqLevelSettings>, freeDoc: () => unknown = () => free(NEAR.all.liq),
-  drawn?: { texts: { t: string; x: number; y: number }[]; lines: { x: number; y: number }[] }) {
-  const page = standInPage(390, drawn), now = Date.now();
+  drawn?: { texts: { t: string; x: number; y: number }[]; lines: { x: number; y: number }[] }, range?: string) {
+  const page = standInPage(390, drawn, range), now = Date.now();
   plus().accept({ key: 'standin-key-0123456789', pass: standInPass(now + 23 * 3_600_000), until: now + 20 * DAY_MS });
   const s = service(files, { value: 'v1.pass.sig' }, freeDoc);
   const store = new Store(initialState());
@@ -1580,5 +1582,63 @@ test('Sol r2-3 (P2): a finger on a right-only ladder draws its line and its pric
     const tags = drawn.texts.filter(e => Math.abs(e.x - tagX) < 0.5).map(e => e.t);
     assert.equal(new Set(tags).size, 2, `the price's tag and the finger's: ${JSON.stringify(tags)}`);
     assert.ok(drawn.lines.some(l => l.x === xR && Math.abs(l.y - 200.5) < 1), 'the finger\'s line across to the axis');
+  } finally { t.done(); }
+});
+
+// The phone's halves keep their labels clear of what is written at their tops (2026-11-19): a label under a half's caption, or under the lines
+// saying its orders are missing, was hidden by them.
+const drawnOf = (): { texts: { t: string; x: number; y: number }[]; lines: { x: number; y: number }[] } => ({ texts: [], lines: [] });
+/** The halves at 390 px: the axis takes 60, the two share the rest either side of a 6 px gap. */
+const HALF = { left: { x0: 0, x1: 162 }, right: { x0: 168, x1: 330 } };
+/** One more frame of the tab, its texts only. */
+const redrawn = (t: { pane: LiqPane; page: { frames(): void } }, drawn: { texts: unknown[] }): void => { drawn.texts.length = 0; t.pane.invalidate(); t.page.frames(); };
+
+test('the phone\'s halves leave out a range\'s own milestone at the top edge, where the captions are, and keep the one at the bottom', async () => {
+  // ±10% (a milestone of its own): liquidations beside stops, both standing.
+  const drawn = drawnOf();
+  const t = await tabWith({ [U.triggers]: { status: 200, body: triggers(NEAR.all.stops, NEAR.all.takes) } }, { liq: true, stops: true, takes: false, group: 'all', split: 'kinds' },
+    () => free(NEAR.all.liq), drawn);
+  try {
+    assert.equal(t.src.state, 'ready'); assert.equal(t.src.right!.state, 'ready');
+    redrawn(t, drawn);
+    const halvesWith = (tag: string): number => new Set(drawn.texts.filter(e => e.t === tag).map(e => e.x < HALF.left.x1 ? 'left' : 'right')).size;
+    assert.equal(halvesWith('+10%'), 0, `the top edge's, under the captions: ${JSON.stringify(drawn.texts.filter(e => e.t === '+10%'))}`);
+    assert.equal(halvesWith('−10%'), 2, 'the bottom edge\'s, in each half');
+    assert.equal(halvesWith('+7.5%'), 2, 'and the next one in, clear of the captions, in each');
+  } finally { t.done(); }
+});
+
+test('a largest level\'s label that would lie under a half\'s caption is left out, as one under a milestone is; one in the clear is drawn', async () => {
+  // ±2.5% (no milestone at the edge): everyone's liquidations, the shorts' at 102.4-102.5 just under the top, where the left caption is, and
+  // the longs' at 98.4-98.5, in the clear.
+  const drawn = drawnOf();
+  const doc = (): unknown => ({ ...free([[984, 0, 100, 0, 0, 5, 0, 100, 0], [1024, 0, 0, 0, 100, 0, 5, 0, 100]]), step: 0.1 });
+  const t = await tabWith({ [U.triggers]: { status: 200, body: triggers(NEAR.all.stops, NEAR.all.takes) } }, { liq: true, stops: true, takes: false, group: 'all', split: 'kinds' },
+    doc, drawn, '0.025');
+  try {
+    assert.equal(t.src.state, 'ready'); assert.equal(t.pane.framePrice, 100);
+    redrawn(t, drawn);
+    const labels = drawn.texts.filter(e => /^(◆ )?\$/.test(e.t) && e.x < HALF.left.x1);
+    assert.deepEqual(labels.filter(e => e.y < 40), [], `nothing under the caption: ${JSON.stringify(labels)}`);
+    assert.ok(labels.some(e => e.y > 500 && e.y < 530), `the longs' label, in the clear: ${JSON.stringify(labels)}`);
+  } finally { t.done(); }
+});
+
+test('a largest level\'s label that would lie under the lines saying a half\'s orders are missing is left out too', async () => {
+  // Everyone | Profitable, liquidations and stops, ±10%: the profitable traders' order files answer 404, and their liquidations' largest row
+  // is at 109.0-109.1, under those lines.
+  const drawn = drawnOf();
+  const theirs = { ...groups([[1090, 0, 0, 0, 100, 0, 5, 0, 100]], null), step: 0.1 };
+  const t = await tabWith({ [U.groups]: { status: 200, body: theirs }, [U.triggers]: { status: 200, body: triggers(NEAR.all.stops, NEAR.all.takes) } },
+    { liq: true, stops: true, takes: false, group: 'all', split: 'groups' }, () => free(NEAR.all.liq), drawn);
+  try {
+    const right = t.src.right!;
+    assert.equal(right.state, 'ready'); assert.equal(right.ordersAbsent(), true);
+    redrawn(t, drawn);
+    const note = drawn.texts.filter(e => e.x === HALF.right.x0 + 6 && e.y >= 32);
+    assert.ok(note.length >= 2, `the lines are there: ${JSON.stringify(note)}`);
+    const bottom = Math.max(...note.map(e => e.y)) + 7;
+    const under = drawn.texts.filter(e => /^(◆ )?\$/.test(e.t) && e.x >= HALF.right.x0 && e.x < HALF.right.x1 && e.y < bottom + 10);
+    assert.deepEqual(under, [], `nothing under the caption or the lines: ${JSON.stringify(under)}`);
   } finally { t.done(); }
 });
