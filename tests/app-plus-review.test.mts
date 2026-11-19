@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PLUS_STORE, Plus, type Post } from '../src/app/plus/pass.ts';
 import { activateKey, keyEntry, maskKey, type KeyOutcome } from '../src/app/plus/key.ts';
-import { createStatusPop, popPress, popView, type PopUi } from '../src/app/plus/panel.ts';
+import { createStatusPop, popPress, popView, restoreFocus, type PopUi } from '../src/app/plus/panel.ts';
 import { FakeElement, FakeEvent, FakePage } from './fake-dom.mts';
 
 const b64url = (text: string): string => Buffer.from(text, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -151,5 +151,56 @@ test('Sol 4 (P2): a clipboard refusal that comes after Hide, another key or the 
     const p = mounted(page, m, { copy: () => new Promise(resolve => { refuse = resolve; }) });
     p.press('copy'); refuse('select'); await flush();
     assert.equal(p.keyShown(), KEY_A); assert.ok(p.body.textContent.includes('Key selected. Copy it now.'));
+  } finally { done(); }
+});
+
+test('Sol 5 (P2): the pop-up takes the keyboard as it opens, moves it with its presses, and gives it back to its button when it closes', async () => {
+  const page = new FakePage(), done = page.install();
+  try {
+    const anchor = new FakeElement('BUTTON'); page.body.append(anchor); anchor.focus();
+    const m = membership(KEY_A), p = mounted(page, m);
+    p.pop.focusFirst(p.body as unknown as HTMLElement);
+    assert.ok(p.body.contains(page.activeElement), 'the keyboard is in the pop-up');
+    p.press('remove'); await flush();
+    assert.equal(page.activeElement?.dataset.focus, 'remove-no', 'Remove asks: the keyboard on Keep');
+    p.press('remove-no'); await flush();
+    assert.equal(page.activeElement?.dataset.focus, 'remove', 'Keep: back on Remove');
+    p.press('remove'); await flush(); p.press('remove-yes'); await flush();
+    assert.equal(page.activeElement?.dataset.focus, 'see', 'removed: on See what Plus adds, not lost');
+    // Closed with the keyboard inside it: the panel goes, the focus with it, and it comes back to the button.
+    p.body.remove(); p.pop.destroy();
+    restoreFocus(anchor as unknown as HTMLElement);
+    assert.equal(page.activeElement, anchor);
+    // Closed by a press elsewhere that took the keyboard: it is not taken back.
+    const other = new FakeElement('INPUT'); page.body.append(other); other.focus();
+    restoreFocus(anchor as unknown as HTMLElement);
+    assert.equal(page.activeElement, other);
+  } finally { done(); }
+});
+
+test('Sol 6 (P2): Replace key keeps its field, its answer and a key being checked through every redraw; Cancel gives the check up', async () => {
+  const page = new FakePage(), done = page.install();
+  try {
+    const m = membership(KEY_A);
+    const checks: { signal: AbortSignal; answer: (o: KeyOutcome) => void }[] = [];
+    const p = mounted(page, m, { entry: o => keyEntry({ ...o, activate: (_text, d) => new Promise(resolve => { checks.push({ signal: d.signal, answer: resolve }); }) }) });
+    p.press('replace'); await flush();
+    const input = p.body.querySelector('.key-in')!;
+    input.value = KEY_B;
+    p.press('reveal');
+    assert.equal(p.body.querySelector('.key-in'), input, 'the same field after Reveal\'s redraw'); assert.equal(input.value, KEY_B, 'what was typed stays');
+    (input.form as FakeElement).requestSubmit();
+    assert.equal(checks.length, 1);
+    m.change({ state: 'on' });   // a renewal elsewhere draws the pop-up again
+    assert.equal(p.body.querySelector('.key-in'), input);
+    assert.ok(p.body.textContent.includes('Checking Plus with the server…'), 'the check under way is still said');
+    assert.equal((p.body.querySelector('.key-go') as FakeElement).disabled, true);
+    p.press('cancel');
+    assert.equal(checks[0]!.signal.aborted, true, 'Cancel gives the check up');
+    assert.equal(p.body.querySelector('.key-in'), null);
+    checks[0]!.answer({ kind: 'abandoned' }); await flush();
+    assert.equal(p.body.querySelector('.key-in'), null, 'its late answer brings nothing back');
+    p.pop.destroy();
+    assert.equal(m.listening, 0, 'closed: no listener left');
   } finally { done(); }
 });

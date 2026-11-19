@@ -102,12 +102,15 @@ export interface PopDeps {
 export interface StatusPop {
   /** Draw it into `body` (the panel's, emptied by the panel). */
   build(body: HTMLElement): void;
+  /** Give the keyboard its first control (the pop-up just opened). */
+  focusFirst(body: HTMLElement): void;
   /** It closed: its listener, a pending copy and a key being checked are given up. */
   destroy(): void;
 }
 
 /**
- * The status pop-up's contents and behaviour, apart from the panel it is shown in. Reveal holds for the key it was pressed for; a clipboard answer that comes after
+ * The status pop-up's contents and behaviour, apart from the panel it is shown in. It keeps one key form while it is shown, through every
+ * redraw (what is typed in it and a key being checked stay); Reveal holds for the key it was pressed for; a clipboard answer that comes after
  * Hide, another key or the pop-up's closing is dropped; a press that moves the keyboard says where.
  */
 export function createStatusPop(deps: PopDeps): StatusPop {
@@ -174,10 +177,10 @@ export function createStatusPop(deps: PopDeps): StatusPop {
       b.dataset.focus = action;
       return b;
     });
-    // A key form drawn afresh each time (the one before given up with any key it was checking).
+    // One key form while it is wanted, kept through every redraw: its field, its answer and a key being checked stay.
     const want = view.entry ? (member.state === 'on' ? 'replace' : member.state === 'ended' ? 'ended' : 'none') : null;
-    dropEntry();
-    if (want) {
+    if (entry && entry.kind !== want) dropEntry();
+    if (want && !entry) {
       const form = (deps.entry ?? (o => keyEntry(o)))({ onSuccess: () => { if (want === 'replace') { ui = { ...ui, mode: 'idle', revealed: null }; hint = t('Key replaced.'); hintFor = member.key; focusNext = 'replace'; dropEntry(); redraw(); } } });
       entry = { kind: want, form };
     }
@@ -207,18 +210,26 @@ export function createStatusPop(deps: PopDeps): StatusPop {
   };
   return {
     build,
+    focusFirst: body => { body.querySelector<HTMLElement>('[data-focus]')?.focus({ preventScroll: true }); },
     destroy: () => { gone = true; copies++; off(); dropEntry(); for (const id of timers) window.clearTimeout(id); timers.clear(); },
   };
 }
 
-/** The status pop-up by the toolbar's Plus button (a browser with a key): its contents (`createStatusPop`) in a panel. */
+/** The keyboard back on `anchor` when a closed pop-up took it along (the focus was in it, so it is now nowhere): never taken from elsewhere. */
+export function restoreFocus(anchor: HTMLElement): void {
+  const active = document.activeElement;
+  if ((!active || active === document.body) && anchor.isConnected) anchor.focus({ preventScroll: true });
+}
+
+/** The status pop-up by the toolbar's Plus button (a browser with a key): its contents (`createStatusPop`) in a panel, the keyboard in and back out. */
 function toggleStatus(anchor: HTMLElement): Panel | null {
   const member = plus();
   let panel: Panel | null = null;
   const draw = (_tools: HTMLElement, body: HTMLElement): void => { body.classList.add('pp-body'); pop.build(body); };
   const pop = createStatusPop({ member, redraw: () => { panel?.render(draw); }, close: () => { panel?.close(); }, see: () => { seePlus(anchor); } });
-  panel = togglePanel(anchor, { title: PLUS_NAME, width: 340, align: 'right', onClose: () => { pop.destroy(); } }, draw);
+  panel = togglePanel(anchor, { title: PLUS_NAME, width: 340, align: 'right', onClose: () => { pop.destroy(); restoreFocus(anchor); } }, draw);
   if (!panel) { pop.destroy(); return null; }
+  pop.focusFirst(panel.body);
   // A membership being checked: the pop-up asks the server once more as it opens (at most once a minute, `renew`).
   if (member.state === 'checking') member.renew();
   return panel;
