@@ -15,7 +15,7 @@ import { sheetKey } from './modal.ts';
 import { plusOnSale } from './config.ts';
 import { PLUS_NAME } from './name.ts';
 import { plus } from './pass.ts';
-import { keyEntry, onText, plusDate } from './key.ts';
+import { keyEntry, onText, plusDate, type KeyEntry } from './key.ts';
 import { SITE_PLUS, availability, features, hero, legal, trust } from './present.ts';
 
 /** The sheet open now, and how to close it. */
@@ -58,20 +58,23 @@ export function openSheet(opener: HTMLElement): void {
   const scrim = el('div', { class: 'px-scrim' }), layer = el('div', { class: 'px-layer' }, scrim, sheet);
 
   // The access card and the hero's state: drawn again when the membership changes while the sheet is open.
-  let entryShown = false;
+  // The access card's key form while one is shown: given up (a key being checked dropped with its answer) when it goes or the sheet closes.
+  let form: KeyEntry | null = null, formFor: string | null = null;
+  const dropForm = (): void => { form?.destroy(); form = null; formFor = null; };
+  const newForm = (): HTMLFormElement => { form?.destroy(); form = keyEntry(); return form.root; };
   const drawAccess = (): void => {
     const stands = member.state, sale = plusOnSale();
     onPill.hidden = stands !== 'on'; cta.hidden = stands === 'on';
     cta.textContent = sale ? t('Get Plus') : t('Activate a key');
     accessTitle.textContent = stands === 'on' ? t('Your Plus') : t('Get Plus');
     if (stands === 'on') {
-      entryShown = false;
+      dropForm();
       access.replaceChildren(accessTitle, el('p', { class: 'px-status ok', role: 'status' }, el('span', { class: 'px-check', ariaHidden: 'true' }), el('span', { textContent: onText(member.until) })));
       return;
     }
     // A key field stays as it is (what is typed, what the server said) while the membership has not changed state.
-    if (entryShown && access.querySelector('.key-form')) return;
-    entryShown = true;
+    if (form && formFor === stands && access.contains(form.root)) return;
+    formFor = stands;
     const offer: HTMLElement[] = stands === 'ended'
       ? [el('p', { class: 'px-muted', textContent: member.until ? t('Plus ended on {date}. Everything free stays.', { date: plusDate(member.until) }) : t('Plus has ended in this browser. Everything free stays.') })]
       : stands === 'checking' ? [el('p', { class: 'px-muted', textContent: t('Checking Plus with the server…') })] : [];
@@ -79,11 +82,11 @@ export function openSheet(opener: HTMLElement): void {
       const subscribe = el('a', { class: 'px-subscribe', href: SITE_PLUS, target: '_blank', rel: 'noopener', textContent: t('Subscribe') });
       access.classList.add('stack');
       access.replaceChildren(el('div', { class: 'px-offer' }, accessTitle, ...offer, el('p', { class: 'px-price', textContent: availability() }), subscribe),
-        el('div', { class: 'px-key' }, el('h3', { textContent: t('Have a key?') }), keyEntry().root));
+        el('div', { class: 'px-key' }, el('h3', { textContent: t('Have a key?') }), newForm()));
     } else {
       access.classList.remove('stack');
       access.replaceChildren(el('div', { class: 'px-offer' }, accessTitle, ...offer, el('p', { class: 'px-muted', textContent: t('Gift keys can be activated now. Purchases aren\'t open yet.') })),
-        el('div', { class: 'px-key' }, keyEntry().root));
+        el('div', { class: 'px-key' }, newForm()));
     }
   };
   drawAccess();
@@ -117,7 +120,7 @@ export function openSheet(opener: HTMLElement): void {
   const finish = (restore: boolean): void => {
     if (open?.close !== finish) return;
     open = null;
-    window.clearTimeout(mountTimer); demo?.destroy(); demo = null; off();
+    window.clearTimeout(mountTimer); demo?.destroy(); demo = null; off(); dropForm();
     document.removeEventListener('keydown', onKey, true);
     layer.remove(); html.style.overflow = overflow;
     for (const child of made) child.inert = false;

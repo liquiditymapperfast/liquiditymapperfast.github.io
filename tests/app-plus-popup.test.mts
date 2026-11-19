@@ -78,7 +78,7 @@ test('a key entered in the app is sent to the renewal alone, taken as the member
   const grant = { pass: passFor('gift_x', NOW + 24 * HOUR), paidUntil: UNTIL, renews: false, now: NOW };
   const post: Post = async (url, body) => { sent.push({ url, body }); return { status: 200, body: grant }; };
   const accepted: unknown[] = [];
-  const member = { accept: (g: unknown) => { accepted.push(g); return true; } };
+  const member = { generation: () => 0, acceptIf: (_gen: number, g: unknown) => { accepted.push(g); return 'kept' as const; } };
   const ok = await activateKey(`  ${KEY}  `, { post, api: () => 'http://127.0.0.1:8799/v1', member });
   assert.equal(ok.kind, 'ok');
   assert.deepEqual(sent, [{ url: 'http://127.0.0.1:8799/v1/pass/renew', body: { key: KEY } }], 'trimmed, to the renewal, nothing else');
@@ -90,7 +90,7 @@ test('a key entered in the app is sent to the renewal alone, taken as the member
   assert.ok(keyShaped(KEY) && !keyShaped('x'.repeat(15)) && !keyShaped('x'.repeat(201)));
   const offline = await activateKey(KEY, { post: () => Promise.reject(new TypeError('Failed to fetch')), member });
   assert.equal(offline.kind, 'offline');
-  const kept = await activateKey(KEY, { post, member: { accept: () => false } });
+  const kept = await activateKey(KEY, { post, member: { generation: () => 0, acceptIf: () => 'unkept' as const } });
   assert.deepEqual(kept.kind === 'ok' && kept.kept, false, 'a browser that will not keep it is said');
 });
 

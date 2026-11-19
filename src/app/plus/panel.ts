@@ -4,7 +4,7 @@ import { lazy } from '../lazy.ts';
 import { t } from '../i18n.ts';
 import { PLUS_NAME } from './name.ts';
 import { plus, type PlusState } from './pass.ts';
-import { keyEntry, maskKey, offlineText, onText, plusDate } from './key.ts';
+import { keyEntry, maskKey, offlineText, onText, plusDate, type KeyEntry } from './key.ts';
 
 export { PLUS_NAME };
 
@@ -87,8 +87,18 @@ const LABELS: Record<PopAction, () => string> = {
 function toggleStatus(anchor: HTMLElement): Panel | null {
   const member = plus();
   let ui: PopUi = { mode: 'idle', revealed: false, removed: false }, hint = '', focus: string | null = null, off: (() => void) | null = null;
-  let panel: Panel | null = null;
+  /** The key forms drawn last: a redraw, Cancel or the pop-up closing gives their checks up (their answers are never taken). */
+  let forms: KeyEntry[] = [];
+  const dropForms = (): void => { for (const f of forms) f.destroy(); forms = []; };
+  let panel: Panel | null = null, lastKey = member.key;
   const draw = (_tools: HTMLElement, body: HTMLElement): void => {
+    dropForms();
+    // Another key came in (the one just entered in Replace key, or another tab's): Replace key and Remove's question were about the old one.
+    if (member.key !== lastKey) {
+      const replaced = ui.mode === 'replace' && member.state === 'on';
+      lastKey = member.key; ui = { ...ui, mode: 'idle', revealed: false }; hint = replaced ? t('Key replaced.') : '';
+      if (replaced) focus = 'replace';
+    }
     body.classList.add('pp-body');
     // Drawn afresh (a press, a change of the membership): the control that had the focus gets it back where nothing else is asked for.
     const had = document.activeElement instanceof HTMLElement && body.contains(document.activeElement) ? document.activeElement.dataset.f ?? null : null;
@@ -137,11 +147,12 @@ function toggleStatus(anchor: HTMLElement): Panel | null {
     } else if (view.entry && member.state === 'on') {
       // Replace key: a field for the new one, and Cancel.
       const entry = keyEntry({ onSuccess: () => { ui = { ...ui, mode: 'idle', revealed: false }; hint = t('Key replaced.'); focus = 'replace'; redraw(); } });
+      forms.push(entry);
       parts.push(el('div', { class: 'pp-replace' }, entry.root, el('div', { class: 'pp-actions' }, ...buttons(view.actions))));
       focus ??= 'entry';
       if (focus === 'entry') { focus = null; queueMicrotask(() => entry.input.focus({ preventScroll: true })); }
     } else {
-      if (view.entry) parts.push(keyEntry().root);
+      if (view.entry) { const entry = keyEntry(); forms.push(entry); parts.push(entry.root); }
       if (view.actions.length) parts.push(el('div', { class: 'pp-actions' }, ...buttons(view.actions)));
     }
     const see = el('button', { type: 'button', class: 'pp-see', onclick: () => { panel?.close(); seePlus(anchor); } }, el('span', { textContent: t('See what Plus adds') }), el('span', { class: 'pp-arrow', ariaHidden: 'true', textContent: '→' }));
@@ -155,7 +166,7 @@ function toggleStatus(anchor: HTMLElement): Panel | null {
     }
   };
   const redraw = (): void => { panel?.render(draw); };
-  panel = togglePanel(anchor, { title: PLUS_NAME, width: 340, align: 'right', onClose: () => { off?.(); off = null; } }, draw);
+  panel = togglePanel(anchor, { title: PLUS_NAME, width: 340, align: 'right', onClose: () => { off?.(); off = null; dropForms(); } }, draw);
   if (panel) {
     off = member.subscribe(redraw);
     // A membership being checked: the pop-up asks the server once more as it opens (at most once a minute, `renew`).
