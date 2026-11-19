@@ -164,9 +164,13 @@ function readPart(long: unknown, short: unknown, n: number): HistPart | null {
  * Free: `[asOf, createdAt, fetchedAt, mark, beyondLong, beyondShort, long[n], short[n]]`. Orders: `[asOf, createdAt, fetchedAt, mark, stops,
  * takes]`, a part `[beyondLong, beyondShort, long[n], short[n]]` or null. Groups: the same times and mark, then a part a group, of which only
  * HyperTracker's profitable traders' is read, at its place among the file's `groups` names where it names them (none of them it: no rows),
- * else the first; whatever else a row holds is left unread and never kept. Ordered by fetch time.
+ * else the first; whatever else a row holds is left unread and never kept. Their orders (`orderGroups`) are read strictly, refused whole as
+ * null (`readOrderGroupRows`). Ordered by fetch time.
  */
-export function readHistRows(raw: unknown, n: number, family: LiqFamily): HistRow[] {
+export function readHistRows(raw: unknown, n: number, family: Exclude<LiqFamily, 'orderGroups'>): HistRow[];
+export function readHistRows(raw: unknown, n: number, family: LiqFamily): HistRow[] | null;
+export function readHistRows(raw: unknown, n: number, family: LiqFamily): HistRow[] | null {
+  if (family === 'orderGroups') return readOrderGroupRows(raw, n);
   const doc = raw && typeof raw === 'object' ? raw as { rows?: unknown; groups?: unknown } : null, rows = doc?.rows;
   if (!Array.isArray(rows)) return [];
   const names = family === 'groups' && Array.isArray(doc?.groups) ? doc.groups as unknown[] : null, named = names ? names.indexOf('profitable') : 0;
@@ -189,6 +193,44 @@ export function readHistRows(raw: unknown, n: number, family: LiqFamily): HistRo
       }
     }
     if (parts) out.push({ asOf: asOf as number, createdAt: createdAt as number, fetchedAt: fetchedAt as number, mark: mark as number, parts });
+  }
+  return out.sort((a, b) => a.fetchedAt - b.fetchedAt);
+}
+
+/** A part with its beyond figures (`[beyondLong, beyondShort, long[n], short[n]]`), every one of them checked. */
+function readWholePart(cell: unknown, n: number): HistPart | null {
+  if (!Array.isArray(cell) || cell.length !== 4 || !cell.slice(0, 2).every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0)) return null;
+  return readPart(cell[2], cell[3], n);
+}
+
+/**
+ * The profitable traders' stop and take-profit history (`trigger-history-groups`, its days and its rollup): after each row's times and mark
+ * come its cells group by group as the file's `groups` names them and, within a group, kind by kind as its `kinds` does, which must be
+ * exactly stops then take profits; theirs are read at their place, a cell `[beyondLong, beyondShort, long[n], short[n]]` or null. A file that
+ * does not name them once (everyone's trigger history names no group), names other kinds, or holds a single malformed row is refused whole
+ * (null): never read in part, never read as theirs (Sol, review 2026-11-19, round 2).
+ */
+function readOrderGroupRows(raw: unknown, n: number): HistRow[] | null {
+  const doc = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as { rows?: unknown; groups?: unknown; kinds?: unknown } : null;
+  if (!doc || !Array.isArray(doc.rows) || !Array.isArray(doc.groups) || !Array.isArray(doc.kinds)) return null;
+  const groups = doc.groups as unknown[], kinds = doc.kinds as unknown[];
+  if (kinds.length !== 2 || kinds[0] !== 'stops' || kinds[1] !== 'takes') return null;
+  if (!groups.every(g => typeof g === 'string') || new Set(groups).size !== groups.length) return null;
+  const place = groups.indexOf('profitable');
+  if (place < 0) return null;
+  const at = 4 + place * kinds.length, length = 4 + groups.length * kinds.length, out: HistRow[] = [];
+  for (const row of doc.rows as unknown[]) {
+    if (!Array.isArray(row) || row.length !== length) return null;
+    const [asOf, createdAt, fetchedAt, mark] = row as unknown[];
+    if (![asOf, createdAt, fetchedAt, mark].every(v => typeof v === 'number' && Number.isFinite(v)) || !((mark as number) > 0)) return null;
+    const parts: (HistPart | null)[] = [];
+    for (const cell of [row[at], row[at + 1]]) {
+      if (cell === null) { parts.push(null); continue; }
+      const p = readWholePart(cell, n);
+      if (!p) return null;
+      parts.push(p);
+    }
+    out.push({ asOf: asOf as number, createdAt: createdAt as number, fetchedAt: fetchedAt as number, mark: mark as number, parts });
   }
   return out.sort((a, b) => a.fetchedAt - b.fetchedAt);
 }
@@ -223,12 +265,13 @@ export function readDay(raw: unknown, edges: readonly number[]): LiqRow[] {
   return readHistRows(raw, edges.length, 'free').map(r => cumulate(r, r.parts[0]!, edges));
 }
 
-/** A rollup (`…-4h.json`): its 13 bucket edges, how many hours a row stands for, and its rows. Null when malformed. */
+/** A rollup (`…-4h.json`): its 13 bucket edges, how many hours a row stands for, and its rows. Null when malformed (their orders' refused: `readOrderGroupRows`). */
 export function readRollup(raw: unknown, family: LiqFamily): { edges: readonly number[]; hours: number; rows: HistRow[] } | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>, edges = readEdges(o.edges), hours = o.hours;
   if (!edges || typeof hours !== 'number' || !(hours > 0 && hours <= 24)) return null;
-  return { edges, hours, rows: readHistRows(raw, edges.length, family) };
+  const rows = readHistRows(raw, edges.length, family);
+  return rows ? { edges, hours, rows } : null;
 }
 
 /** The bucket a band of `radius` (a fraction of the price) ends on: the last edge within it, or -1 when the band is narrower than the first bucket. */
@@ -471,7 +514,10 @@ export class LiqHistory {
     this.get(dayUrl(dayText(day)), pass).then(raw => {
       if (probe) this.#probed(true, now);
       if (this.#index?.edges !== edges || steps !== this.#steps) return;
-      entry.rows = readHistRows(raw, edges.length, family); entry.at = now; entry.missing = false; entry.absent = false; this.version++;
+      // Their orders' file refused (not theirs, or malformed): a failed read, asked again in a minute; what was read of the day before stays.
+      const rows = readHistRows(raw, edges.length, family);
+      if (!rows) { entry.failed = now; return; }
+      entry.rows = rows; entry.at = now; entry.missing = false; entry.absent = false; this.version++;
       // A day the gate had refused is open now (its rule or the page's clock changed): the days from it on are, and the ones before it are
       // asked again in turn.
       if (pass === null && family === 'free' && day < this.#refusedBefore) this.#refusedBefore = this.#onSale() && day <= this.access.freeFrom(now) ? -Infinity : day;

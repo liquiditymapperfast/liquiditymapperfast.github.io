@@ -1032,3 +1032,60 @@ test('the Depth pane\'s Range summary says the profitable traders\' orders are m
   const empty = held(MINE_STOPS, [], false);
   assert.ok(summary.lines(sel, empty, true, empty.key, r.now).some(l => l.key === 'dp-empty' && /No stop levels snapshot/.test(l.cells[0] ?? '')), 'a file without their rows keeps the old words');
 });
+
+test('the profitable traders\' orders\' history is read only from a file that names them, by their place, and refused whole otherwise (Sol, round 2)', () => {
+  const kinds = ['stops', 'takes'], mine = (g: number[]): unknown[] => plusRow(g[0]!, part({ 20: [g[1]!, 0] }), part({ 30: [0, g[1]!] }));
+  const read = (doc: unknown) => readHistRows(doc, EDGES.length, 'orderGroups');
+  // As the levels service writes it: their cells, stops then take profits, at their place among the groups named.
+  const ok = read({ v: 1, coin: 'BTC', groups: ['profitable'], kinds, rows: [mine([2, 7]), mine([1, 5])] })!;
+  assert.deepEqual(ok.map(r => [r.fetchedAt, r.parts[0]!.long[20], r.parts[1]!.short[30]]), [[1, 5, 5], [2, 7, 7]], 'read, ordered by fetch time');
+  const second = read({ groups: ['other', 'profitable'], kinds, rows: [[1, 1, 1, 100_000, part({ 20: [1, 0] }), part({}), part({ 20: [9, 0] }), part({ 30: [0, 8] })]] })!;
+  assert.deepEqual([second[0]!.parts[0]!.long[20], second[0]!.parts[1]!.short[30]], [9, 8], 'the cells at their place, the other group\'s left unread');
+  // Everyone's file (no group named), a file of everyone (\`all\`), of another group, of other kinds, or of kinds in another order: refused whole.
+  const rows = [mine([1, 5])];
+  assert.equal(read({ kinds, rows }), null, 'everyone\'s trigger history names no group');
+  assert.equal(read({ groups: ['all'], kinds, rows }), null, 'everyone is not the profitable traders');
+  assert.equal(read({ groups: ['other'], kinds, rows }), null);
+  assert.equal(read({ groups: 'profitable', kinds, rows }), null);
+  assert.equal(read({ groups: ['profitable', 'profitable'], kinds, rows }), null, 'named twice: no place');
+  assert.equal(read({ groups: ['profitable'], rows }), null, 'no kinds');
+  assert.equal(read({ groups: ['profitable'], kinds: ['takes', 'stops'], rows }), null, 'the kinds in another order');
+  assert.equal(read({ groups: ['profitable'], kinds: ['stops'], rows }), null);
+  // A valid row beside a malformed one: nothing of the file, never part of it.
+  for (const bad of [[3, 3, 3, 100_000, part({}), [0, 0, [1], [2]]], [3, 3, 3, 100_000, part({})], [3, 3, 3, 0, part({}), part({})], [3, 'x', 3, 100_000, part({}), part({})], [3, 3, 3, 100_000, part({}), part({}), part({})],
+    [3, 3, 3, 100_000, part({}), [-1, 0, zeros(), zeros()]], 'row']) {
+    assert.equal(read({ groups: ['profitable'], kinds, rows: [mine([1, 5]), bad] }), null, JSON.stringify(bad).slice(0, 60));
+  }
+  assert.deepEqual(read({ groups: ['profitable'], kinds, rows: [] }), [], 'a day without their rows is read, empty');
+  // The rollup: the same rule.
+  assert.equal(readRollup({ hours: 4, edges: ROLLUP_EDGES, kinds, rows: [plusRow(5, part({ 9: [1, 2] }, 13), part({}, 13))] }, 'orderGroups'), null, 'everyone\'s rollup is not theirs');
+  assert.equal(readRollup({ hours: 4, edges: ROLLUP_EDGES, groups: ['profitable'], kinds, rows: [plusRow(5, part({ 9: [1, 2] }, 13), part({}, 13))] }, 'orderGroups')!.rows.length, 1);
+});
+
+test('the history never draws a file of everyone\'s orders, or a partly malformed one, under the profitable traders\' name, in days or in the 4-hour history (Sol, round 2)', async () => {
+  const f = familyHistory();
+  // Everyone's day and rollup where theirs are asked for (no group named), and their day with a malformed row beside a valid one.
+  f.put(U.triggersGroupsDay(dayText(f.day)), { kinds: ['stops', 'takes'], rows: [plusRow(f.t, part({ 20: [1_000, 1_000] }), part({ 30: [1_000, 1_000] }))] });
+  f.put(U.rollup.triggersGroups, { hours: 4, edges: ROLLUP_EDGES, groups: ['all'], kinds: ['stops', 'takes'], rows: [plusRow(f.t, part({ 9: [1_000, 1_000] }, 13), part({ 9: [1_000, 1_000] }, 13))] });
+  f.put(U.triggersGroupsDay(dayText(f.day - DAY_MS)), { groups: ['profitable'], kinds: ['stops', 'takes'], rows: [plusRow(f.t - DAY_MS, part({ 20: [5, 5] }), part({})), [1, 2, 3, 100_000, part({}), [0, 0, [1], [2]]]] });
+  for (const [from, label] of [[f.day - DAY_MS, 'days'], [f.wideFrom, '4-hour history']] as const) {
+    const stops = view({ liq: false, stops: true, group: 'profitable' }), both = view({ liq: true, stops: true, takes: true, group: 'profitable' });
+    await f.ask(stops, from); await f.ask(both, from);
+    assert.deepEqual(f.h.series(from, f.now, stops).rows, [], `${label}: nothing of everyone's stops, nothing of a partly malformed file`);
+    const s = f.h.series(from, f.now, both);
+    assert.deepEqual(s.rows, [], `${label}: no snapshot with both their liquidations and their stops`); assert.deepEqual(s.takes, [], `${label}: no take profits`);
+  }
+});
+
+test('a saved levels setting in the older form with a switch that is not a boolean is the free view, in settings and in layouts (Sol, round 2)', () => {
+  const on = { on: true, column: true }, free = { ...on, liq: true, stops: false, takes: false, group: 'all' };
+  assert.deepEqual(readLiqLevels({ kind: 'stops', takes: 'invalid', group: 'profitable' }), free, 'Sol\'s case: was the profitable traders\' stops');
+  assert.deepEqual(readLiqLevels({ kind: 'liq', takes: 1, group: 'profitable' }), free);
+  assert.deepEqual(readLiqLevels({ kind: 'both', takes: null }), free);
+  assert.deepEqual(readLiqLevels({ kind: 'both', takes: true, liq: 'yes' }), free, 'a switch of the newer form beside the older one');
+  assert.deepEqual(readLiqLevels({ kind: 'stops', takes: false, group: 'profitable' }), { ...on, liq: false, stops: true, takes: false, group: 'profitable' }, 'booleans: read as before');
+  assert.deepEqual(readLiqLevels({ kind: 'stops', group: 'profitable' }), { ...on, liq: false, stops: true, takes: false, group: 'profitable' }, 'a missing switch is off');
+  assert.deepEqual(readSettings({ liqLevels: { kind: 'stops', takes: 'invalid', group: 'profitable' } }).liqLevels, free, 'nor in a saved page');
+  assert.deepEqual(carriedSettings({ liqLevels: { kind: 'stops', takes: 'invalid', group: 'profitable' } } as never).liqLevels, free, 'nor through a layout');
+  assert.deepEqual(carriedSettings({ liqLevels: { kind: 'both', takes: 0 } } as never).liqLevels, free);
+});
