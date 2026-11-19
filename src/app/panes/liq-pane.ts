@@ -136,9 +136,16 @@ export class LiqPane {
     if (this.#sub.textContent !== sub) this.#sub.textContent = sub;
   }
 
+  /**
+   * The levels kept fresh for the setting as it is now, the source turned to it: each second (`#tick`) and before every frame, so a frame drawn
+   * for a change of the setting reads the new choice's levels, not those the last tick left (Sol, review 2026-11-19, round 3: the profitable
+   * traders' caption stood over everyone's levels until the next tick).
+   */
+  #ensure(): void { this.hub.liqLevels.ensure(currentCoin(), () => this.invalidate(), liveView(this.store.state.liqLevels)); }
+
   #tick(): void {
     const src = this.hub.liqLevels;
-    src.ensure(currentCoin(), () => this.invalidate(), liveView(this.store.state.liqLevels));
+    this.#ensure();
     if (src.levels && !replaying()) src.observe(dollarPriceOf(this.store.state));
     this.invalidate();
   }
@@ -187,6 +194,7 @@ export class LiqPane {
     if (!this.#shown || W < 80 || H < 80) return;
     ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0);
     ctx.fillStyle = p.bg; ctx.fillRect(0, 0, W, H);
+    this.#ensure();
     const src = this.hub.liqLevels, levels = src.levels, state = this.store.state;
     this.#syncHead();
     const why = replaying() ? t('Liquidation levels show the live market only.') : src.state === 'other-coin' ? t('Liquidation levels are for BTC only for now.')

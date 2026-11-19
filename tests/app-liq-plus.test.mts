@@ -13,6 +13,8 @@ import { columnNotes, liqNote, liqWhy, ordersAbsent, splitAmounts, splitText, ta
 import { dollars, mirrorSplits, probeBoxLines, readingTexts, stripeBoxLines } from '../src/app/liq-box.ts';
 import { usd } from '../src/app/format.ts';
 import { DepthRangeSummary, depthHeldKey, type DepthPaneHeld } from '../src/app/range/depth-lines.ts';
+import { LiqPane } from '../src/app/panes/liq-pane.ts';
+import { plus } from '../src/app/plus/pass.ts';
 import type { InfoLine } from '../src/app/infobox.ts';
 import { BTC } from '../src/shared/coins.ts';
 import type { CandleRow } from '../src/app/store.ts';
@@ -1041,7 +1043,7 @@ test('the profitable traders\' orders\' history is read only from a file that na
   assert.deepEqual(ok.map(r => [r.fetchedAt, r.parts[0]!.long[20], r.parts[1]!.short[30]]), [[1, 5, 5], [2, 7, 7]], 'read, ordered by fetch time');
   const second = read({ groups: ['other', 'profitable'], kinds, rows: [[1, 1, 1, 100_000, part({ 20: [1, 0] }), part({}), part({ 20: [9, 0] }), part({ 30: [0, 8] })]] })!;
   assert.deepEqual([second[0]!.parts[0]!.long[20], second[0]!.parts[1]!.short[30]], [9, 8], 'the cells at their place, the other group\'s left unread');
-  // Everyone's file (no group named), a file of everyone (\`all\`), of another group, of other kinds, or of kinds in another order: refused whole.
+  // Everyone's file (no group named), a file of everyone (`all`), of another group, of other kinds, or of kinds in another order: refused whole.
   const rows = [mine([1, 5])];
   assert.equal(read({ kinds, rows }), null, 'everyone\'s trigger history names no group');
   assert.equal(read({ groups: ['all'], kinds, rows }), null, 'everyone is not the profitable traders');
@@ -1088,4 +1090,97 @@ test('a saved levels setting in the older form with a switch that is not a boole
   assert.deepEqual(readSettings({ liqLevels: { kind: 'stops', takes: 'invalid', group: 'profitable' } }).liqLevels, free, 'nor in a saved page');
   assert.deepEqual(carriedSettings({ liqLevels: { kind: 'stops', takes: 'invalid', group: 'profitable' } } as never).liqLevels, free, 'nor through a layout');
   assert.deepEqual(carriedSettings({ liqLevels: { kind: 'both', takes: 0 } } as never).liqLevels, free);
+});
+
+// Sol's review, round 3.
+
+/**
+ * A stand-in page for one pane in Node: elements that keep their classes, text and children, a 2D context that draws nothing, and the page's
+ * timers held for the test to run, so a frame can be drawn without the second's tick (as the page does after a change of the setting).
+ */
+function standInPage() {
+  const g = globalThis as unknown as Record<string, unknown>, saved = { document: g.document, window: g.window, ResizeObserver: g.ResizeObserver };
+  const ctx: unknown = new Proxy(function () { /* draws nothing */ }, { get: (_t, k) => k === Symbol.toPrimitive ? () => 0 : k === 'then' ? undefined : ctx, apply: () => ctx, set: () => true });
+  class StandIn {
+    children: (StandIn | string)[] = []; dataset: Record<string, string> = {}; style: Record<string, string> = {}; className = ''; hidden = false;
+    clientWidth = 390; clientHeight = 640; width = 0; height = 0;
+    #text: string | null = null;
+    constructor(readonly tagName: string) {}
+    #classes(): string[] { return this.className.split(/\s+/).filter(Boolean); }
+    readonly classList = {
+      add: (...names: string[]): void => { this.className = [...new Set([...this.#classes(), ...names])].join(' '); },
+      remove: (...names: string[]): void => { this.className = this.#classes().filter(c => !names.includes(c)).join(' '); },
+      toggle: (name: string, on?: boolean): boolean => { const want = on ?? !this.#classes().includes(name); if (want) this.classList.add(name); else this.classList.remove(name); return want; },
+      contains: (name: string): boolean => this.#classes().includes(name),
+    };
+    get textContent(): string { return this.#text ?? this.children.map(c => typeof c === 'string' ? c : c.textContent).join(''); }
+    set textContent(value: string) { this.#text = String(value); this.children = []; }
+    append(...nodes: (StandIn | string)[]): void { this.children.push(...nodes); }
+    setAttribute(): void { /* not read */ }
+    getAttribute(): null { return null; }
+    addEventListener(): void { /* no events */ }
+    removeEventListener(): void { /* no events */ }
+    closest(): null { return null; }
+    querySelector(): null { return null; }
+    getContext(): unknown { return ctx; }
+    getBoundingClientRect(): { top: number; left: number; width: number; height: number } { return { top: 0, left: 0, width: 390, height: 640 }; }
+    setPointerCapture(): void { /* no pointer */ }
+    /** The first element at or below this one holding every class of `names`. */
+    find(names: string): StandIn | null {
+      if (names.split(' ').every(n => this.#classes().includes(n))) return this;
+      for (const c of this.children) { const hit = typeof c === 'string' ? null : c.find(names); if (hit) return hit; }
+      return null;
+    }
+  }
+  const timeouts = new Map<number, () => void>(), intervals = new Map<number, () => void>();
+  let ids = 0;
+  g.document = { createElement: (tag: string) => new StandIn(tag), addEventListener() { /* none */ }, removeEventListener() { /* none */ }, hidden: false };
+  g.window = { devicePixelRatio: 1, localStorage: { getItem: (key: string) => key === 'hlm-liq-range' ? '0.1' : null, setItem() { /* kept nowhere */ }, removeItem() { /* kept nowhere */ } },
+    setTimeout: (fn: () => void) => { timeouts.set(++ids, fn); return ids; }, clearTimeout: (id: number) => { timeouts.delete(id); },
+    setInterval: (fn: () => void) => { intervals.set(++ids, fn); return ids; }, clearInterval: (id: number) => { intervals.delete(id); } };
+  g.ResizeObserver = class { observe(): void { /* sized once */ } disconnect(): void { /* nothing held */ } };
+  const parent = new StandIn('div');
+  return {
+    parent,
+    /** The frames waiting (the pane's `invalidate`), not the tick. */
+    frames(): void { for (const [id, fn] of [...timeouts]) { timeouts.delete(id); fn(); } },
+    /** The second's tick. */
+    tick(): void { for (const fn of [...intervals.values()]) fn(); },
+    text: (names: string): string | undefined => parent.find(names)?.textContent,
+    restore(): void { g.document = saved.document; g.window = saved.window; g.ResizeObserver = saved.ResizeObserver; },
+  };
+}
+/** A pass the page reads as one in force until `exp` (its signature is the server's business). */
+const standInPass = (exp: number): string => `v1.${Buffer.from(JSON.stringify({ sub: 'standin', exp })).toString('base64url')}.sig`;
+/** Both families' levels around the price (100): stops of longs at [90, 100) and of shorts at [100, 110), everyone's ten times theirs. */
+const NEAR = {
+  all: { liq: [[9, 0, 100, 0, 0, 5, 0, 100, 0]], stops: [[9, 100, 0, 0, 0, 5, 0, 100, 0], [10, 0, 0, 100, 0, 0, 5, 0, 100]], takes: [[10, 100, 0, 0, 0, 5, 0, 100, 0]] },
+  profitable: { liq: [[9, 0, 10, 0, 0, 1, 0, 10, 0]], stops: [[9, 10, 0, 0, 0, 1, 0, 10, 0], [10, 0, 0, 10, 0, 0, 1, 0, 10]], takes: [[10, 10, 0, 0, 0, 1, 0, 10, 0]] },
+};
+
+test('the phone\'s Liq tab draws a new choice from its first frame, never the last tick\'s source under the new caption, both ways (Sol, round 3)', async () => {
+  const page = standInPage(), now = Date.now();
+  plus().accept({ key: 'standin-key-0123456789', pass: standInPass(now + 23 * 3_600_000), until: now + 20 * DAY_MS });
+  try {
+    const s = service({ [U.groups]: { status: 200, body: groups(NEAR.profitable.liq, null) }, [U.triggers]: { status: 200, body: triggers(NEAR.all.stops, NEAR.all.takes) },
+      [U.triggersGroups]: { status: 200, body: triggerGroups(NEAR.profitable.stops, NEAR.profitable.takes) } }, { value: 'v1.pass.sig' }, () => free(NEAR.all.liq));
+    const store = new Store(initialState());
+    const choose = (group: 'all' | 'profitable'): void => store.set({ liqLevels: { ...store.state.liqLevels, liq: false, stops: true, takes: false, group } });
+    const settle = async (): Promise<void> => { for (let i = 0; i < 3; i++) { page.tick(); await tick(); } page.frames(); };
+    choose('all');
+    const pane = new LiqPane(page.parent as never, store, { liqLevels: s.src } as never);
+    pane.setShown(true);
+    await settle();
+    // Both families held, as after a visit to each.
+    choose('profitable'); await settle(); choose('all'); await settle();
+    assert.equal(page.text('liq-sub'), 'BTC · Hyperliquid'); assert.equal(page.text('liq-usd long'), '$100');
+    // The choice changes: the page draws the tab again at once (main.ts), before the next tick.
+    choose('profitable'); pane.invalidate(); page.frames();
+    assert.equal(page.text('liq-sub'), 'Profitable traders · BTC · Hyperliquid');
+    assert.equal(page.text('liq-usd long'), '$10', 'their stops below the price from the first frame');
+    assert.equal(page.text('liq-usd short'), '$10', 'and above it');
+    choose('all'); pane.invalidate(); page.frames();
+    assert.equal(page.text('liq-sub'), 'BTC · Hyperliquid'); assert.equal(page.text('liq-usd long'), '$100', 'everyone\'s again from the first frame');
+    pane.setShown(false);
+  } finally { plus().forget(); page.restore(); }
 });
