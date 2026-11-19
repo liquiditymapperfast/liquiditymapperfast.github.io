@@ -92,7 +92,8 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
   - `demo/`: the demo (made-up numbers labelled as such, its own store, never the page's settings); `demo-levels.ts` puts the page's own
     levels control on the demo's store.
   - `page.ts`, `index.html`, `page.css`, `boot.ts`: the Plus page (`plus/`), the only page with the checkout or another site's script;
-    `page-flow.ts`: its checkout's pass and its restore by receipt, taken like a key (below), and its Reveal rule.
+    `page-flow.ts`: its checkout's pass and its restore by receipt, taken like a key (below), when a payment waiting here is asked for
+    again and what settles it, and its Reveal and thanks rules; `paid.ts`: the payments waiting here (`lmf.plus.paid`, below).
   - `liq-history.ts` asks for a paid day only with a pass (`LiqAccess`), and for the Plus families (groups, orders, rollups) only with
     one; `panes/lower-panes.ts` draws the closed stretch and its lock.
   - `liq-view.ts` (the choice and the view drawn), `levels-control.ts` (the Levels control), `liq-words.ts` (the words by kind).
@@ -120,9 +121,14 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
   changed elsewhere. A key is entered once on each browser and address (the membership is kept per origin). The Plus page takes a
   checkout's pass and a membership found by the receipt the same way (`passFor`, `restoreBy`: the generation when the payment went through
   or the receipt was sent): one that comes after another tab stored a key, or after the key here was removed, changes nothing. A paid
-  checkout then stays waiting in this browser (`lmf.plus.paid`, a day at most), beside the membership when Plus is on, with its Try again,
-  until its own setting-up, a key that opens Plus on the page or a restore settles it. The page's Reveal, and the showing after a checkout
-  or a restore, hold for that key only.
+  checkout then stays waiting in this browser (`paid.ts`, `lmf.plus.paid`): one record per transaction, `{ id, at, generation, stale }`,
+  written once when its checkout completes and never dated again, and given up a day after that checkout. A reload asks for it again by
+  itself only while nothing changed since: the membership's generation is still the record's, and no answer for it was dropped for a
+  change (`stale`). Otherwise it waits, beside the membership when Plus is on, for its Try again, which asks for it for the membership as
+  it is then, and only while its record is kept (`planPayment`). Its own setting-up settles it; a key that opens Plus on the page, or a
+  restore, settles the payments that were waiting when it was sent, and only those (one paid meanwhile, in another tab, keeps its record).
+  The page's Reveal, and the showing after a checkout or a restore, hold for that key only, and so do the thanks after a checkout
+  (`besideMembership`), beside which a payment still waiting stays in sight.
 
 ## How the page behaves
 

@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PLUS_STORE, Plus, type Post } from '../src/app/plus/pass.ts';
-import { keyShownFor, passFor, restoreBy, type Answer, type Ask } from '../src/app/plus/page-flow.ts';
+import { besideMembership, keySettling, keyShownFor, passFor, planPayment, restoreBy, restoreSettling, setUpPayment, type Answer, type Ask, type PaidPlan } from '../src/app/plus/page-flow.ts';
+import { PAID_STORE, PaidStore } from '../src/app/plus/paid.ts';
 import { keyEntry } from '../src/app/plus/key.ts';
 import { FakePage } from './fake-dom.mts';
 
@@ -33,6 +34,18 @@ const tabs = (): { storage: ReturnType<typeof shared>; here: Plus; there: Plus }
   return { storage, here: new Plus(storage, noPost, () => NOW), there: new Plus(storage, noPost, () => NOW) };
 };
 const give = (member: Plus, key: string): void => { member.accept({ key, pass: passOf(key.slice(0, 9), NOW + 24 * HOUR), until: UNTIL }); };
+/** Paddle's transactions. */
+const TXN_A = 'txn_01hzaaaaaaaaaaaaaaaaaaaaaa', TXN_B = 'txn_01hzbbbbbbbbbbbbbbbbbbbbbb', TXN_X = 'txn_01hzxxxxxxxxxxxxxxxxxxxxxx';
+/** The membership a payment is asked for (`planPayment` said to ask). */
+const askFor = (plan: PaidPlan): number => { assert.equal(plan.kind, 'ask'); return plan.kind === 'ask' ? plan.generation : -1; };
+/** The Plus server's address in these tests, and a key's renewal sent to the slow server by its path. */
+const API = 'https://plus.test/v1';
+const postVia = (server: ReturnType<typeof slow>): Post => async url => { const a = await server.ask(url.slice(API.length), null); if (!a) throw new Error('not reached'); return a; };
+/** The key kept here as the server's refusal leaves it (`replaced`: newer keys pushed it out), or as a pass that ran out does (checking); neither is a new generation. */
+const endKept = (s: ReturnType<typeof shared>, why: 'replaced' | null): void => {
+  const held = JSON.parse(s.data.get(PLUS_STORE)!) as Record<string, unknown>;
+  s.data.set(PLUS_STORE, JSON.stringify(why ? { ...held, pass: '', ended: true, why } : { ...held, pass: '' }));
+};
 
 test('Sol 1 (P1): a checkout\'s key that arrives after another tab stored key C, or removed the key here, never replaces C or brings it back', async () => {
   // Another tab stores C while the checkout's pass is on its way.
@@ -90,23 +103,151 @@ test('Sol 1 (P1): a membership found by the receipt that arrives after another t
 test('Sol 1 (P1): the page takes a key, a checkout\'s pass and a receipt\'s membership only through the guarded paths, never member.accept itself', () => {
   const page = read('src/app/plus/page.ts');
   assert.ok(!/member\.accept\(/.test(page), 'no unconditional accept on the page');
-  assert.match(page, /keyEntry\(\{ onSuccess:/, 'the key box is the app\'s key form (activateKey: acceptIf)');
-  assert.match(page, /await passFor\(transactionId, \{ ask: post, member \}\)/);
-  assert.match(page, /await restoreBy\(email, invoice, \{ ask: post, member \}\)/);
+  assert.match(page, /keyEntry\(\{ activate: \(text, deps\) => keySettling\(text, \{ \.\.\.deps, paid \}\), onSuccess:/, 'the key box is the app\'s key form (activateKey: acceptIf)');
+  assert.match(page, /await setUpPayment\(transactionId, plan\.generation, \{ ask: post, member, paid \}\)/, 'passFor, for the membership planPayment names');
+  assert.match(page, /await restoreSettling\(email, invoice, \{ ask: post, member, paid \}\)/, 'restoreBy');
   assert.ok(!/\/pass\/renew/.test(page), 'the page sends no key of its own');
+  assert.ok(!/localStorage\.(setItem|removeItem)\('lmf\.plus\.paid'/.test(page) && !/PAID_STORE/.test(page), 'the payments waiting are kept by paid.ts alone');
 });
 
-test('Sol 1 (P1): a paid checkout dropped because another key came in is not lost: it waits beside the membership with Try again, across a reload', () => {
-  const page = read('src/app/plus/page.ts');
-  // Dropped: nothing said, the payment kept (only the payment's own setting-up, a key that opened Plus here or a restore settles it).
-  assert.match(page, /state\.said = out\.kind === 'stale' \? null :/);
-  assert.equal((page.match(/setPaid\(null\)/g) ?? []).length, 3, 'the checkout\'s ok, the key box\'s success and the restore\'s ok');
-  assert.match(page, /keyEntry\(\{ onSuccess: outcome => \{ setPaid\(null\);/);
-  assert.match(page, /if \(out\.kind === 'ok'\) \{\n    setPaid\(null\); state\.unkept = !out\.kept; state\.shown = out\.grant\.key;\n    state\.said = \{ where: 'restore'/);
-  // Shown with the membership when no prices are drawn; a reload with Plus on keeps it (it is given up after a day by itself).
-  assert.match(page, /const pending = buying \? null : paidPending\(\);\n  if \(pending && !state\.fresh\) box\.append\(\.\.\.pendingNote\(pending\)\);/);
-  assert.match(page, /\{ const pending = paidPending\(\); if \(pending && member\.state !== 'on'\) void completed\(pending\.id\); \}/);
-  assert.ok(!/else if \(pending\) setPaid\(null\)/.test(page), 'no reload drops a payment that was never set up here');
+test('Sol 1 (P1): a paid checkout dropped because another key came in is not lost: it waits beside the membership with Try again, across a reload', async () => {
+  const { storage, here, there } = tabs(), server = slow(), paidHere = new PaidStore(storage, () => NOW);
+  const plan = planPayment(TXN_B, 'checkout', { member: here, paid: paidHere });
+  assert.equal(plan.kind, 'ask');
+  const paying = setUpPayment(TXN_B, askFor(plan), { ask: server.ask, member: here, paid: paidHere });
+  give(there, KEY_C);
+  server.asked[0]!.answer(issuedFor(KEY_B));
+  assert.deepEqual(await paying, { kind: 'stale' });
+  // Kept, in the storage both tabs share; beside C's membership with its Try again; a reload does not ask for it by itself.
+  const reloaded = new PaidStore(storage, () => NOW);
+  assert.deepEqual(reloaded.list().map(p => [p.id, p.at, p.stale]), [[TXN_B, NOW, true]]);
+  assert.equal(besideMembership(null, KEY_C, reloaded.list()).waiting?.id, TXN_B);
+  here.reload();
+  assert.deepEqual(planPayment(TXN_B, 'resume', { member: here, paid: reloaded }), { kind: 'waits' });
+  // Its Try again asks for it for the membership as it is now, and takes it.
+  const again = planPayment(TXN_B, 'retry', { member: here, paid: reloaded });
+  assert.deepEqual(again, { kind: 'ask', generation: here.generation() });
+  const retried = setUpPayment(TXN_B, askFor(again), { ask: server.ask, member: here, paid: reloaded });
+  server.asked[1]!.answer(issuedFor(KEY_B));
+  assert.equal((await retried).kind, 'ok');
+  assert.equal(stored(storage), KEY_B); assert.deepEqual(reloaded.list(), [], 'settled');
+});
+
+// Sol's final round on the payment flow (2026-11-19): how a payment waiting in this browser is kept, settled and asked for again. Each case
+// failed on the page's logic before the fix (its single record cleared by any settlement, stamped again by every attempt, asked for again by
+// a reload whatever changed, and hidden behind any earlier thanks).
+test('Sol final 1 (P1): a restore or a key that began before another tab\'s payment settles only what was waiting then: the later payment keeps its record and its Try again', async () => {
+  for (const how of ['restore', 'key'] as const) {
+    const { storage, here, there } = tabs(), server = slow();
+    const paidHere = new PaidStore(storage, () => NOW), paidThere = new PaidStore(storage, () => NOW);
+    // Tab A asks for a membership (the receipt's, or a key's); meanwhile tab B's checkout completes and asks for its key.
+    const taking = how === 'restore' ? restoreSettling('buyer@example.com', 'INV-1234', { ask: server.ask, member: here, paid: paidHere })
+      : keySettling(KEY_A, { post: postVia(server), api: () => API, member: here, paid: paidHere });
+    const plan = planPayment(TXN_B, 'checkout', { member: there, paid: paidThere });
+    const paying = setUpPayment(TXN_B, askFor(plan), { ask: server.ask, member: there, paid: paidThere });
+    assert.deepEqual(server.asked.map(a => a.path), [how === 'restore' ? '/restore' : '/pass/renew', '/pass'], how);
+    // A's membership comes first: taken, and it settles nothing that was not waiting when it was asked for.
+    server.asked[0]!.answer(issuedFor(KEY_A));
+    assert.equal((await taking).kind, 'ok', how);
+    assert.deepEqual(paidThere.ids(), [TXN_B], `${how}: B's record stands`);
+    // B's key comes after the membership changed: dropped, and B waits with its Try again, seen from either tab.
+    server.asked[1]!.answer(issuedFor(KEY_B));
+    assert.deepEqual(await paying, { kind: 'stale' }, how);
+    assert.equal(stored(storage), KEY_A, how);
+    assert.deepEqual(paidHere.list().map(p => [p.id, p.stale]), [[TXN_B, true]], how);
+    assert.equal(besideMembership(null, here.key, paidHere.list()).waiting?.id, TXN_B, `${how}: beside the membership`);
+  }
+  // A payment that was waiting when the receipt was asked for is settled by it (the visitor took that membership), and only that one.
+  const { storage, here } = tabs(), server = slow(), paidHere = new PaidStore(storage, () => NOW);
+  paidHere.begin(TXN_X, here.generation());
+  const taking = restoreSettling('buyer@example.com', 'INV-1234', { ask: server.ask, member: here, paid: paidHere });
+  paidHere.begin(TXN_B, here.generation());
+  server.asked[0]!.answer(issuedFor(KEY_A));
+  assert.equal((await taking).kind, 'ok');
+  assert.deepEqual(paidHere.ids(), [TXN_B], 'X settled, B (paid after the receipt was asked for) kept');
+});
+
+test('Sol final 2 (P2): a payment dropped for another key is not set up by a reload once that key is removed, checking or ended (replaced): only its Try again asks', async () => {
+  for (const after of ['removed', 'checking', 'replaced'] as const) {
+    const { storage, here, there } = tabs(), server = slow(), paidHere = new PaidStore(storage, () => NOW);
+    const paying = setUpPayment(TXN_B, askFor(planPayment(TXN_B, 'checkout', { member: here, paid: paidHere })), { ask: server.ask, member: here, paid: paidHere });
+    give(there, KEY_C);
+    server.asked[0]!.answer(issuedFor(KEY_B));
+    assert.deepEqual(await paying, { kind: 'stale' }, after);
+    if (after === 'removed') there.forget();
+    else endKept(storage, after === 'replaced' ? 'replaced' : null);
+    // The page comes back: nothing is asked and nothing taken; the payment waits for its Try again.
+    const page = new Plus(storage, noPost, () => NOW), paidPage = new PaidStore(storage, () => NOW);
+    assert.equal(page.state === 'on', false, after);
+    assert.deepEqual(planPayment(TXN_B, 'resume', { member: page, paid: paidPage }), { kind: 'waits' }, after);
+    assert.equal(server.asked.length, 1, `${after}: not asked again`);
+    assert.equal(stored(storage), after === 'removed' ? null : KEY_C, `${after}: the membership as the visitor left it`);
+  }
+  // Never answered (the tab closed) while another key came and went: the membership's generation alone keeps it waiting.
+  {
+    const { storage, here, there } = tabs(), paidHere = new PaidStore(storage, () => NOW);
+    planPayment(TXN_B, 'checkout', { member: here, paid: paidHere });
+    give(there, KEY_C); there.forget();
+    const page = new Plus(storage, noPost, () => NOW);
+    assert.deepEqual(planPayment(TXN_B, 'resume', { member: page, paid: new PaidStore(storage, () => NOW) }), { kind: 'waits' });
+  }
+  // Nothing changed since its checkout (its answer late): a reload asks again, for the membership of the checkout, and takes it.
+  {
+    const { storage, here } = tabs(), server = slow(), paidHere = new PaidStore(storage, () => NOW);
+    const plan = planPayment(TXN_B, 'checkout', { member: here, paid: paidHere });
+    const page = new Plus(storage, noPost, () => NOW), paidPage = new PaidStore(storage, () => NOW);
+    assert.deepEqual(planPayment(TXN_B, 'resume', { member: page, paid: paidPage }), plan);
+    const paying = setUpPayment(TXN_B, askFor(plan), { ask: server.ask, member: page, paid: paidPage });
+    server.asked[0]!.answer(issuedFor(KEY_B));
+    assert.equal((await paying).kind, 'ok'); assert.equal(stored(storage), KEY_B); assert.deepEqual(paidPage.list(), []);
+  }
+});
+
+test('Sol final 3 (P2): the thanks after a checkout belong to its key: once it is removed and another tab\'s key takes its place, a later payment that waits is in sight with its Try again', async () => {
+  const { storage, here, there } = tabs(), server = slow(), paidHere = new PaidStore(storage, () => NOW);
+  // Checkout A is set up here: thanked for.
+  const a = setUpPayment(TXN_A, askFor(planPayment(TXN_A, 'checkout', { member: here, paid: paidHere })), { ask: server.ask, member: here, paid: paidHere });
+  server.asked[0]!.answer(issuedFor(KEY_A));
+  const done = await a;
+  assert.equal(done.kind, 'ok');
+  const fresh = { id: TXN_A, key: done.kind === 'ok' ? done.grant.key : '' };
+  assert.deepEqual(besideMembership(fresh, here.key, paidHere.list()), { thanks: true, waiting: null });
+  // A is removed; checkout B completes; another tab stores C before B's key comes: B waits.
+  here.forget();
+  const b = setUpPayment(TXN_B, askFor(planPayment(TXN_B, 'checkout', { member: here, paid: paidHere })), { ask: server.ask, member: here, paid: paidHere });
+  give(there, KEY_C);
+  server.asked[1]!.answer(issuedFor(KEY_B));
+  assert.deepEqual(await b, { kind: 'stale' });
+  here.reload();
+  const beside = besideMembership(fresh, here.key, paidHere.list());
+  assert.equal(beside.thanks, false, 'no thanks for a key no longer held');
+  assert.equal(beside.waiting?.id, TXN_B, 'B in sight, with its Try again');
+  // An unrelated payment waiting beside the thanks for the key held stays in sight too.
+  assert.equal(besideMembership({ id: TXN_X, key: KEY_C }, KEY_C, paidHere.list()).waiting?.id, TXN_B);
+});
+
+test('Sol final 4 (P2): Try again a day after its checkout asks nothing and keeps nothing; an attempt never dates a payment again, only a checkout completing does', async () => {
+  const clock = { now: NOW }, now = (): number => clock.now;
+  const storage = shared(), here = new Plus(storage, noPost, now), paidHere = new PaidStore(storage, now), server = slow();
+  // Checkout B: the server looks and will not set it up (it waits, with what was said and its Try again).
+  const first = setUpPayment(TXN_B, askFor(planPayment(TXN_B, 'checkout', { member: here, paid: paidHere })), { ask: server.ask, member: here, paid: paidHere });
+  server.asked[0]!.answer({ status: 403, body: { error: 'not_active' } });
+  assert.equal((await first).kind, 'no');
+  // Pressed again five hours on: asked, and still dated by its checkout.
+  clock.now = NOW + 5 * HOUR;
+  const again = setUpPayment(TXN_B, askFor(planPayment(TXN_B, 'retry', { member: here, paid: paidHere })), { ask: server.ask, member: here, paid: paidHere });
+  server.asked[1]!.answer({ status: 403, body: { error: 'not_active' } });
+  assert.equal((await again).kind, 'no');
+  assert.equal(paidHere.get(TXN_B)?.at, NOW, 'not dated again');
+  // The page left open past the day: its Try again asks nothing and leaves no record.
+  clock.now = NOW + 25 * HOUR;
+  assert.deepEqual(planPayment(TXN_B, 'retry', { member: here, paid: paidHere }), { kind: 'gone' });
+  assert.equal(server.asked.length, 2, 'not asked');
+  assert.equal(storage.data.get(PAID_STORE), undefined, 'nothing kept');
+  assert.deepEqual(planPayment(TXN_B, 'resume', { member: here, paid: paidHere }), { kind: 'gone' }, 'nor by a reload');
+  // A new checkout completing starts its own day.
+  assert.equal(planPayment(TXN_X, 'checkout', { member: here, paid: paidHere }).kind, 'ask');
+  assert.deepEqual(paidHere.list().map(p => [p.id, p.at]), [[TXN_X, NOW + 25 * HOUR]]);
 });
 
 test('Sol 2 (P2): the page\'s key field is the app\'s masked one: a password field with Reveal / Hide, no text field of its own', () => {

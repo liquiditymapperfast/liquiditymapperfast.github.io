@@ -1,7 +1,8 @@
 /**
  * Plus, the paid tier (2026-11): what the page has to know about it. The page stays free and open source; Plus pays for the servers behind
- * it and opens what they store. What is free and what is Plus is decided by the server (a Worker in front of the levels service, the
- * `HyperLiquidMap_Plus` project): the page only knows the rule so that it can say it, and never asks for what it would be refused.
+ * it and opens what they store. What is free and what is Plus is decided by the server (the levels service, which checks each pass itself;
+ * the `HyperLiquidMap_Plus` Worker only signs the passes): the page only knows the rule so that it can say it, and never asks for what it
+ * would be refused.
  */
 
 export const DAY_MS = 86_400_000;

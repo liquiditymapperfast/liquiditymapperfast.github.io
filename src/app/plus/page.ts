@@ -5,7 +5,8 @@
  * checkout and with another site's script: Paddle's checkout (Paddle is the seller of record), fetched only when a visitor presses a price. After the checkout the page hands the transaction to the site's own server (`config.ts` `plusApi`), which
  * answers with the key and a pass; both go into the storage the app shares (`pass.ts`), so an open tab of the app is unlocked at once.
  * The key box is the app's own key form (`key.ts`), and a checkout's or a receipt's membership is taken the same way (`page-flow.ts`): never
- * over a membership that changed while it was asked for.
+ * over a membership that changed while it was asked for. A payment whose Plus is not set up waits in this browser (`paid.ts`) until it is,
+ * or until a key or a receipt's membership taken here settles it.
  */
 import './page.css';
 import './present.css';
@@ -23,7 +24,8 @@ import { ARRIVAL_SECONDS, Arrival, countsDown, placeOf, stopOnActivity, type Arr
 import { mountDemo, mountVisuals } from './demo/index.ts';
 import { demoControl } from './demo-levels.ts';
 import { keyEntry, type KeyEntry } from './key.ts';
-import { keyShownFor, passFor, restoreBy, type Answer } from './page-flow.ts';
+import { PaidStore, type Paid } from './paid.ts';
+import { besideMembership, keySettling, keyShownFor, planPayment, restoreSettling, setUpPayment, type Answer, type Fresh, type PaidVia } from './page-flow.ts';
 import { features, hero, trust } from './present.ts';
 
 /** The part of Paddle's script this page uses (Paddle.js v2). */
@@ -87,11 +89,12 @@ cta.addEventListener('click', () => {
 /** What the page shows beside what the membership says: a message under the price or a form, and whether something is under way. */
 const state: { busy: '' | 'checkout' | 'pass' | 'restore'; said: { where: 'buy' | 'restore'; text: string; good?: boolean } | null;
   /** The key Reveal was pressed for, or the one a checkout or a restore just issued: shown in clear while it is this browser's key (`keyShownFor`). */ shown: string | null;
-  first: number | null; fresh: boolean;
+  first: number | null;
+  /** The checkout just set up here and the key it issued: thanked for while that key is this browser's (`besideMembership`). */ fresh: Fresh | null;
   /** What is typed in the receipt form, kept across the page being drawn again (an answer, another tab). */ typed: { email: string; invoice: string };
   /** When "Remove Plus from this browser" was first pressed (it takes two presses). */ armed: number;
   /** The browser would not keep the membership: it lasts as long as this tab. */ unkept: boolean } =
-  { busy: '', said: null, shown: null, first: null, fresh: false, typed: { email: '', invoice: '' }, armed: 0, unkept: false };
+  { busy: '', said: null, shown: null, first: null, fresh: null, typed: { email: '', invoice: '' }, armed: 0, unkept: false };
 
 /** A request to the Plus server, or null when it could not be reached. */
 async function post(path: string, body: unknown): Promise<Answer | null> {
@@ -99,22 +102,11 @@ async function post(path: string, body: unknown): Promise<Answer | null> {
 }
 
 /**
- * A payment made in this browser whose Plus is not set up yet (`{ id, at }`: Paddle's transaction and when it was paid), kept until it is,
- * so that a reload asks again and the prices stay away meanwhile: nobody pays twice because the first setting-up failed. Given up after a
- * day (the receipt's email and invoice number still bring Plus back).
+ * The payments made in this browser whose Plus is not set up yet (`paid.ts`): each kept from its checkout until it is, so that a reload asks
+ * again and the prices stay away meanwhile (nobody pays twice because the first setting-up failed), and given up a day after its checkout
+ * (the receipt's email and invoice number still bring Plus back).
  */
-const PAID_STORE = 'lmf.plus.paid', PAID_KEEP_MS = 86_400_000;
-function paidPending(): { id: string; at: number } | null {
-  try {
-    const o = JSON.parse(localStorage.getItem(PAID_STORE) ?? 'null') as { id?: unknown; at?: unknown } | null;
-    if (!o || typeof o.id !== 'string' || !/^txn_[a-z0-9]{8,64}$/.test(o.id) || typeof o.at !== 'number') return null;
-    if (Date.now() - o.at > PAID_KEEP_MS || o.at > Date.now() + 3_600_000) { localStorage.removeItem(PAID_STORE); return null; }
-    return { id: o.id, at: o.at };
-  } catch { return null; }
-}
-function setPaid(id: string | null): void {
-  try { if (id) localStorage.setItem(PAID_STORE, JSON.stringify({ id, at: Date.now() })); else localStorage.removeItem(PAID_STORE); } catch { /* kept for this tab only */ }
-}
+const paid = new PaidStore();
 /**
  * The confirmation at the top of the window right after Plus came on here (`arrival.ts`): drawn apart from the page (which is drawn afresh
  * on every change, and would announce it again each time), built once per confirmation and given the focus, its countdown changed in place.
@@ -178,7 +170,7 @@ function loadPaddle(): Promise<PaddleApi | null> {
         const api = window.Paddle;
         if (!api) { fail(); return; }
         if (PADDLE.environment === 'sandbox') api.Environment.set('sandbox');
-        api.Initialize({ token: PADDLE.token, eventCallback: event => { if (event.name === 'checkout.completed' && event.data?.transaction_id) void completed(event.data.transaction_id); } });
+        api.Initialize({ token: PADDLE.token, eventCallback: event => { if (event.name === 'checkout.completed' && event.data?.transaction_id) void completed(event.data.transaction_id, 'checkout'); } });
         resolve(api);
       } catch { fail(); }
     };
@@ -201,19 +193,21 @@ async function buy(price: PlusPrice): Promise<void> {
 }
 
 /**
- * The checkout is paid: the server is asked for the key and the pass until the subscription exists on Paddle's side (`passFor`). Plus comes on
- * here only if the membership did not change meanwhile; if another tab stored a key or removed the one here, the payment stays waiting in this
- * browser and its "Try again" asks for its key afresh.
+ * A payment's setting-up (`planPayment`, `setUpPayment`): its checkout completed, the page came back to it, or its Try again was pressed. The
+ * server is asked for the key and the pass until the subscription exists on Paddle's side. Plus comes on here only if the membership did not
+ * change meanwhile; if another tab stored a key or removed the one here, the payment stays waiting in this browser, and only its Try again
+ * asks for its key afresh, for the membership as it is then. A payment given up (a day after its checkout) is not asked for again.
  */
-async function completed(transactionId: string): Promise<void> {
-  if (state.busy === 'pass') return;
-  if (paidPending()?.id !== transactionId) setPaid(transactionId);
+async function completed(transactionId: string, via: PaidVia): Promise<void> {
+  // A checkout's record is written whatever else is under way; it is asked for in its turn (a reload, or its Try again).
+  if (state.busy === 'pass') { if (via === 'checkout') { paid.begin(transactionId, member.generation()); render(); } return; }
+  const plan = planPayment(transactionId, via, { member, paid });
+  if (plan.kind !== 'ask') { render(); return; }
   state.busy = 'pass'; state.said = { where: 'buy', text: t('Paid. Setting up Plus in this browser…'), good: true }; render();
-  const out = await passFor(transactionId, { ask: post, member });
+  const out = await setUpPayment(transactionId, plan.generation, { ask: post, member, paid });
   state.busy = '';
   if (out.kind === 'ok') {
-    setPaid(null);
-    state.unkept = !out.kept; state.fresh = true; state.shown = out.grant.key;
+    state.unkept = !out.kept; state.fresh = { id: transactionId, key: out.grant.key }; state.shown = out.grant.key;
     state.said = { where: 'buy', text: t('Thank you. Plus is on in this browser.'), good: true };
     try { window.Paddle?.Checkout.close(); } catch { /* the overlay closes itself */ }
     render(); arrived('checkout'); return;
@@ -222,14 +216,17 @@ async function completed(transactionId: string): Promise<void> {
   render();
 }
 
-/** The membership paid with this email, by the receipt's invoice number (`restoreBy`): taken only if the membership did not change meanwhile. */
+/**
+ * The membership paid with this email, by the receipt's invoice number (`restoreSettling`): taken only if the membership did not change
+ * meanwhile, and then it settles the payments that were waiting here when it was asked for (a payment made meanwhile keeps waiting).
+ */
 async function restore(email: string, invoice: string): Promise<void> {
   if (state.busy) return;
   state.busy = 'restore'; state.said = null; render();
-  const out = await restoreBy(email, invoice, { ask: post, member });
+  const out = await restoreSettling(email, invoice, { ask: post, member, paid });
   state.busy = '';
   if (out.kind === 'ok') {
-    setPaid(null); state.unkept = !out.kept; state.shown = out.grant.key;
+    state.unkept = !out.kept; state.shown = out.grant.key;
     state.said = { where: 'restore', text: t('Found. Plus is on in this browser.'), good: true };
   } else state.said = out.kind === 'no' ? { where: 'restore', text: out.text } : null;
   render();
@@ -241,11 +238,12 @@ const link = (href: string, text: string): HTMLAnchorElement => el('a', { href, 
 
 /**
  * A payment made in this browser whose Plus is not set up here (the setting-up failed, or the membership changed while it ran: another tab's
- * key, the key here removed), with Try again, which asks for its key afresh and takes it for the membership as it is then.
+ * key, the key here removed), with Try again, which asks for its key afresh and takes it for the membership as it is then (`withSaid`: what
+ * the page said about the checkout goes with it, unless the thanks beside it say it).
  */
-const pendingNote = (pending: { id: string }): HTMLElement[] => [...said('buy'),
+const pendingNote = (pending: Paid, withSaid = true): HTMLElement[] => [...(withSaid ? said('buy') : []),
   el('p', { textContent: t('A payment made in this browser is still being set up. The prices come back once it is, so it is not paid twice.') }),
-  el('p', { class: 'actions' }, el('button', { type: 'button', id: 'plus-paid-again', disabled: state.busy !== '', textContent: t('Try again'), onclick: () => { void completed(pending.id); } }))];
+  el('p', { class: 'actions' }, el('button', { type: 'button', id: 'plus-paid-again', disabled: state.busy !== '', textContent: t('Try again'), onclick: () => { void completed(pending.id, 'retry'); } }))];
 
 /** The price buttons, or why there are none yet. */
 function buySection(): HTMLElement {
@@ -254,7 +252,7 @@ function buySection(): HTMLElement {
     box.append(el('h2', { textContent: t('Not on sale yet') }), el('p', { textContent: t('Plus is being set up. This page will carry its price and the checkout when it opens.') }));
     return box;
   }
-  const pending = paidPending();
+  const pending = paid.list()[0];
   if (pending) {
     box.append(el('h2', { textContent: t('Get Plus') }), ...pendingNote(pending));
     return box;
@@ -306,10 +304,11 @@ function memberSection(buying: boolean): HTMLElement {
     ...(stands !== 'ended' ? [el('p', { class: 'fine', textContent: t('The key is your Plus on your other devices too: open this page there and enter it. Keep it to yourself.') })] : []),
     el('p', { class: 'actions' }, ...(stands === 'ended' || renews === false ? [] : PADDLE.portal ? [link(PADDLE.portal, t('End the subscription or change the card'))] : [el('span', { class: 'fine', textContent: t('To end the subscription or change the card, use the link in your receipt from Paddle.') })]), remove),
   );
-  if (state.fresh) box.append(...said('buy'), el('p', { class: 'actions' }, el('a', { class: 'go', href: '../', textContent: t('Open the map') })));
-  // A payment made here whose Plus is not set up (the membership changed while it was): said beside the membership, with its Try again.
-  const pending = buying ? null : paidPending();
-  if (pending && !state.fresh) box.append(...pendingNote(pending));
+  // The thanks after a checkout, for its own key; a payment made here whose Plus is not set up (the membership changed while it was) is said
+  // beside the membership with its Try again, thanks or not (when no prices are drawn: they say it where they would be).
+  const beside = besideMembership(state.fresh, member.key, buying ? [] : paid.list());
+  if (beside.thanks) box.append(...said('buy'), el('p', { class: 'actions' }, el('a', { class: 'go', href: '../', textContent: t('Open the map') })));
+  if (beside.waiting) box.append(...pendingNote(beside.waiting, !beside.thanks));
   return box;
 }
 
@@ -320,8 +319,9 @@ function memberSection(buying: boolean): HTMLElement {
  */
 let keyBox: KeyEntry = newKeyBox(), keyBoxOut = false;
 function newKeyBox(): KeyEntry {
-  // A key that opened Plus here settles a payment still waiting here, as the receipt's form does: the visitor chose the membership to keep.
-  return keyEntry({ onSuccess: outcome => { setPaid(null); state.unkept = !outcome.kept; render(); arrived('key'); } });
+  // A key that opened Plus here settles the payments that were waiting when it was sent, as the receipt's form does (`keySettling`): the
+  // visitor chose the membership to keep. A payment made meanwhile keeps waiting.
+  return keyEntry({ activate: (text, deps) => keySettling(text, { ...deps, paid }), onSuccess: outcome => { state.unkept = !outcome.kept; render(); arrived('key'); } });
 }
 
 /** Bringing Plus to this device: the key, or the receipt's email and invoice number. */
@@ -348,8 +348,10 @@ function drawPage(): void {
   const stands = member.state;
   onPill.hidden = stands !== 'on'; cta.hidden = stands === 'on';
   cta.textContent = plusOnSale() ? t('Get Plus') : t('Activate a key');
-  // Reveal and the showing after a checkout or a restore hold for their own key only: another key in its place starts masked.
+  // Reveal and the showing after a checkout or a restore hold for their own key only: another key in its place starts masked. The thanks
+  // after a checkout go the same way.
   if (state.shown !== null && state.shown !== member.key) state.shown = null;
+  if (state.fresh !== null && state.fresh.key !== member.key) state.fresh = null;
   // Nothing is sold to a browser whose membership is in force or still being checked: only where there is none, or the server ended it
   // (a key replaced by newer ones belongs to a subscription that may well be paid: the receipt brings Plus back, not a second purchase).
   const buying = stands === 'none' || (stands === 'ended' && member.why !== 'replaced');
@@ -378,9 +380,9 @@ function drawPage(): void {
 
 member.subscribe(render);
 render();
-// A payment made here and not set up yet is set up again where Plus is not on; where it is (another key came in while it was being set up),
-// it waits beside the membership for its Try again (`pendingNote`), and is given up after a day.
-{ const pending = paidPending(); if (pending && member.state !== 'on') void completed(pending.id); }
+// A payment made here and not set up yet is asked for again while nothing changed since its checkout (the same membership, no answer for it
+// dropped); else it waits for its Try again (`pendingNote`). Each is given up a day after its checkout.
+{ const ready = paid.list().find(p => planPayment(p.id, 'resume', { member, paid }).kind === 'ask'); if (ready) void completed(ready.id, 'resume'); }
 // How far back the history goes, for the first line of what Plus adds (the public index says).
 const urls = historyUrls(LIQ_LEVELS_URL);
 if (urls) void fetch(urls.index).then(answer => answer.ok ? answer.json() : null).then((raw: unknown) => {

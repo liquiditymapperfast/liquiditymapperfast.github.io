@@ -2,11 +2,15 @@
  * What the Plus page (`plus/page.ts`) asks its server for besides a key, which goes through the app's own key form (`key.ts`): the pass for
  * a checkout just paid, and a membership found by the receipt's email and invoice number. Both are memberships issued for this browser, and
  * both are taken the way a key is: only while the membership is still the one it was when the request went out (`Plus.acceptIf`). An answer
- * that comes after another tab stored a key, or after the key here was removed, changes nothing (Sol, review 2026-11-19). It also holds the
- * rule for the page's Reveal: it is pressed for one key. No styles and no page: the tests drive it with a server that answers late.
+ * that comes after another tab stored a key, or after the key here was removed, changes nothing (Sol, review 2026-11-19). A payment whose
+ * setting-up did not end in Plus waits in this browser (`paid.ts`): when it is asked for again and for which membership (`planPayment`),
+ * and which payments a key or a receipt's membership settles. It also holds the rules for the page's Reveal (pressed for one key) and its
+ * thanks (for one checkout's key). No styles and no page: the tests drive it with a server that answers late and two tabs over one storage.
  */
 import { t } from '../i18n.ts';
 import { PLUS_CONTACT, PLUS_KEYS } from './config.ts';
+import { activateKey, type ActivateDeps, type KeyOutcome } from './key.ts';
+import type { Paid, PaidStore } from './paid.ts';
 import { errorOf, readGrant, type Grant, type Plus } from './pass.ts';
 
 /** An answer of the Plus server: its status, its body, and the wait it asked for (`Retry-After`, in seconds). */
@@ -37,8 +41,11 @@ function takeIssued(member: Pick<Plus, 'acceptIf'>, generation: number, grant: G
 }
 const issued = (grant: Grant | null): (Grant & { key: string }) | null => grant?.key ? { ...grant, key: grant.key } : null;
 
-/** What the page's flows are given: the server, the membership, and (for the tests) the clock and the wait between two asks. */
-export interface FlowDeps { ask: Ask; member: Pick<Plus, 'acceptIf' | 'generation'>; now?: () => number; wait?: (ms: number) => Promise<void> }
+/**
+ * What the page's flows are given: the server, the membership, and (for the tests) the clock and the wait between two asks. `generation`:
+ * the membership a checkout's key is taken for, where it is not the one now (`planPayment`).
+ */
+export interface FlowDeps { ask: Ask; member: Pick<Plus, 'acceptIf' | 'generation'>; now?: () => number; wait?: (ms: number) => Promise<void>; generation?: number }
 
 /** After a checkout the subscription can take a few seconds to exist on Paddle's side: the pass is asked for this often, this long. */
 export const PASS_RETRY_MS = 2_500, PASS_WAIT_MS = 90_000;
@@ -47,11 +54,12 @@ export const PASS_RETRY_MS = 2_500, PASS_WAIT_MS = 90_000;
 export type PassOutcome = Issued | { kind: 'no'; text: string } | { kind: 'late' };
 /**
  * The checkout `transactionId` is paid: the server is asked for the key and the pass until the subscription exists on Paddle's side, and the
- * membership it gives is taken only if the membership here is still the one it was when the payment went through.
+ * membership it gives is taken only if the membership here is still the one it was when the payment went through (`deps.generation`, else
+ * the one now).
  */
 export async function passFor(transactionId: string, deps: FlowDeps): Promise<PassOutcome> {
   const now = deps.now ?? Date.now, wait = deps.wait ?? ((ms: number) => new Promise<void>(resolve => { setTimeout(resolve, ms); }));
-  const generation = deps.member.generation(), started = now();
+  const generation = deps.generation ?? deps.member.generation(), started = now();
   for (;;) {
     const answer = await deps.ask('/pass', { transactionId });
     const grant = issued(answer?.status === 200 ? readGrant(answer.body) : null);
@@ -77,6 +85,58 @@ export async function restoreBy(email: string, invoice: string, deps: FlowDeps):
   const grant = issued(answer?.status === 200 ? readGrant(answer.body) : null);
   if (grant) return takeIssued(deps.member, generation, grant);
   return { kind: 'no', text: problem(answer, t('No subscription in good standing was found for that email and invoice number.')) };
+}
+
+/** How a payment's setting-up starts: its checkout completing, the page coming back to it (a reload), or its Try again. */
+export type PaidVia = 'checkout' | 'resume' | 'retry';
+/** Whether a payment is asked for now, and for which membership (`ask`), or not: it waits for its Try again, or it is gone. */
+export type PaidPlan = { kind: 'ask'; generation: number } | { kind: 'waits' } | { kind: 'gone' };
+/**
+ * Whether the payment `id` is asked for now, and for which membership (Sol, review 2026-11-19). Its checkout completing writes its record
+ * (once: `PaidStore.begin`) and asks for the membership as it is then. The page coming back to it asks only while nothing changed since that
+ * checkout: the same membership (its generation) and no answer dropped for a change; else it waits for its Try again. Try again asks for the
+ * membership as it is then, while the record is kept: one given up a day after its checkout, or settled elsewhere, is gone, and nothing but
+ * a checkout completing writes a record.
+ */
+export function planPayment(id: string, via: PaidVia, deps: { member: Pick<Plus, 'generation'>; paid: PaidStore }): PaidPlan {
+  const now = deps.member.generation(), known = deps.paid.get(id);
+  if (!known) return via === 'checkout' ? { kind: 'ask', generation: deps.paid.begin(id, now).generation } : { kind: 'gone' };
+  if (via === 'retry') return { kind: 'ask', generation: now };
+  return known.stale || known.generation !== now ? { kind: 'waits' } : { kind: 'ask', generation: known.generation };
+}
+/** The payment `id` asked for the membership `generation` (`planPayment`): taken, its record is settled; dropped for a change, it is marked so. */
+export async function setUpPayment(id: string, generation: number, deps: FlowDeps & { paid: PaidStore }): Promise<PassOutcome> {
+  const out = await passFor(id, { ...deps, generation });
+  if (out.kind === 'ok') deps.paid.settle([id]);
+  else if (out.kind === 'stale') deps.paid.markStale(id);
+  return out;
+}
+/**
+ * A membership found by the receipt (`restoreBy`). Taken, it settles the payments that were waiting when it was asked for, and only those:
+ * one paid meanwhile, in another tab, keeps its record and its Try again (Sol, review 2026-11-19).
+ */
+export async function restoreSettling(email: string, invoice: string, deps: FlowDeps & { paid: PaidStore }): Promise<RestoreOutcome> {
+  const waiting = deps.paid.ids();
+  const out = await restoreBy(email, invoice, deps);
+  if (out.kind === 'ok') deps.paid.settle(waiting);
+  return out;
+}
+/** A key entered on the page (`activateKey`). Taken, it settles as a receipt's membership does: the payments that were waiting when it was sent. */
+export async function keySettling(text: string, deps: ActivateDeps & { paid: PaidStore }): Promise<KeyOutcome> {
+  const waiting = deps.paid.ids();
+  const out = await activateKey(text, deps);
+  if (out.kind === 'ok') deps.paid.settle(waiting);
+  return out;
+}
+
+/** The thanks after a checkout: the payment it was and the key it issued. */
+export type Fresh = { id: string; key: string };
+/**
+ * What the page shows beside the membership: the thanks after a checkout while the key that checkout issued is the one held, and a payment
+ * still waiting whatever was thanked for (an unrelated one stays in sight with its Try again; Sol, review 2026-11-19).
+ */
+export function besideMembership(fresh: Fresh | null, key: string | null, waiting: readonly Paid[]): { thanks: boolean; waiting: Paid | null } {
+  return { thanks: fresh !== null && key !== null && fresh.key === key, waiting: waiting.find(p => p.id !== fresh?.id) ?? null };
 }
 
 /**
