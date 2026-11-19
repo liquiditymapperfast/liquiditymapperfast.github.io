@@ -76,32 +76,35 @@ export function createData(seed: number = SEED): DemoData {
   }
   price[HH - 1] = NOW_PRICE;
   const hash = (a: number, b: number): number => { let x = (Math.imul(a, 374761393) + Math.imul(b, 668265263) + 1013904223) | 0; x = Math.imul(x ^ (x >>> 13), 1274126177); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
-  // Noise that drifts slowly from one snapshot to the next, so a level lives for a while.
-  const smooth = (r: number, c: number, salt: number): number => { const d = c / 30 + hash(r, salt) * 0.999, d0 = Math.floor(d), f = d - d0, e = f * f * (3 - 2 * f), a = r * 7 + salt * 7919; return hash(a, d0) * (1 - e) + hash(a, d0 + 1) * e; };
+  // Noise that drifts slowly from one snapshot to the next, so a level lives for a while: per row and salt, a value every 30 snapshots
+  // (from an offset of the row's own), eased from one to the next. The hashes it eases between are worked out once per row and salt, not
+  // once per snapshot (the same numbers, a sixth of a phone's time).
+  const SALTS = [1, 2, 3, 11, 12, 13], STEPS = Math.ceil((SNAPS - 1) / 30) + 2;
+  const offsets = SALTS.map(salt => Float64Array.from({ length: ROWS }, (_, r) => hash(r, salt) * 0.999));
+  const knots = SALTS.map(salt => { const t = new Float64Array(ROWS * STEPS); for (let r = 0; r < ROWS; r++) for (let k = 0; k < STEPS; k++) t[r * STEPS + k] = hash(r * 7 + salt * 7919, k); return t; });
+  const smooth = (r: number, c: number, salt: number): number => {
+    const s = SALTS.indexOf(salt), d = c / 30 + offsets[s]![r]!, d0 = Math.floor(d), f = d - d0, e = f * f * (3 - 2 * f), t = knots[s]!, i = r * STEPS + d0;
+    return t[i]! * (1 - e) + t[i + 1]! * e;
+  };
   const bump = (x: number, c: number, s: number): number => { const z = (x - c) / s; return Math.exp(-0.5 * z * z); };
   const n = SNAPS * ROWS;
   const liqL = new Float32Array(n), liqS = new Float32Array(n), stopL = new Float32Array(n), stopS = new Float32Array(n), tpL = new Float32Array(n), tpS = new Float32Array(n);
   const pfLiq = new Float32Array(n), pfStop = new Float32Array(n), pfTp = new Float32Array(n);
-  // Round prices where orders gather and stay, snapshot after snapshot.
-  const sticky: Readonly<Record<'liqL' | 'liqS' | 'stopL' | 'stopS' | 'tpL' | 'tpS', readonly (readonly [number, number])[]>> = {
-    liqL: [[60_000, 1], [58_500, 0.7], [57_000, 0.6], [61_500, 0.35]], liqS: [[65_000, 1], [66_500, 0.55], [68_000, 0.8], [70_000, 0.5]],
-    stopL: [[61_000, 0.8], [60_000, 1], [59_000, 0.45]], stopS: [[64_000, 0.75], [65_000, 1], [66_000, 0.45]],
-    tpL: [[65_000, 1], [66_000, 0.55], [68_000, 0.7], [70_000, 0.9]], tpS: [[60_000, 1], [59_000, 0.5], [58_000, 0.8], [56_000, 0.6]],
-  };
-  const stick = (list: readonly (readonly [number, number])[], y: number, c: number): number => { let v = 0; for (const [p, a] of list) if (Math.abs(y - p) < ROW_STEP / 2) v += a * (0.75 + 0.25 * Math.sin(c / 31 + p / 997)); return v; };
+  // (The prototype also added levels at a few round prices, but none of them fell inside a row: each sits on the edge between two rows, so
+  // they added nothing. Left out; the numbers are the same.)
   for (let c = 0; c < SNAPS; c++) {
     const P = price[c * SNAP_HH + 3]!;
     for (let r = 0; r < ROWS; r++) {
       const y = ROW0 + (r + 0.5) * ROW_STEP, d = (y - P) / P * 100, ad = Math.abs(d), i = c * ROWS + r;
       const taper = Math.min(1, ad / 0.35), n1 = smooth(r, c, 1), n2 = smooth(r, c, 2), n3 = smooth(r, c, 3);
       if (d < 0) {
-        liqL[i] = taper * 6.0e6 * ((1.0 * bump(ad, 2.4, 0.9) + 1.35 * bump(ad, 5.3, 1.4) + 1.1 * bump(ad, 9.2, 2.4) + 0.55 * bump(ad, 15, 4)) * (0.1 + 2.1 * n1 * n1 * n1) + 5 * stick(sticky.liqL, y, c));
-        stopL[i] = taper * 2.6e6 * ((1.2 * bump(ad, 0.9, 0.55) + 1.0 * bump(ad, 2.7, 0.9) + 0.35 * bump(ad, 6, 2.2)) * (0.08 + 2.3 * n2 * n2 * n2) + 4 * stick(sticky.stopL, y, c));
-        tpS[i] = taper * 2.1e6 * ((0.8 * bump(ad, 2.9, 1.0) + 1.0 * bump(ad, 6.2, 1.8) + 0.4 * bump(ad, 11, 3)) * (0.08 + 2.2 * n3 * n3 * n3) + 5 * stick(sticky.tpS, y, c));
+        liqL[i] = taper * 6.0e6 * ((1.0 * bump(ad, 2.4, 0.9) + 1.35 * bump(ad, 5.3, 1.4) + 1.1 * bump(ad, 9.2, 2.4) + 0.55 * bump(ad, 15, 4)) * (0.1 + 2.1 * n1 * n1 * n1));
+        stopL[i] = taper * 2.6e6 * ((1.2 * bump(ad, 0.9, 0.55) + 1.0 * bump(ad, 2.7, 0.9) + 0.35 * bump(ad, 6, 2.2)) * (0.08 + 2.3 * n2 * n2 * n2));
+        tpS[i] = taper * 2.1e6 * ((0.8 * bump(ad, 2.9, 1.0) + 1.0 * bump(ad, 6.2, 1.8) + 0.4 * bump(ad, 11, 3)) * (0.08 + 2.2 * n3 * n3 * n3));
       } else {
-        liqS[i] = taper * 6.0e6 * ((0.9 * bump(ad, 2.0, 0.8) + 1.3 * bump(ad, 4.7, 1.3) + 1.15 * bump(ad, 8.4, 2.3) + 0.5 * bump(ad, 14, 4)) * (0.1 + 2.1 * n1 * n1 * n1) + 5 * stick(sticky.liqS, y, c));
-        stopS[i] = taper * 2.6e6 * ((1.1 * bump(ad, 1.0, 0.6) + 0.9 * bump(ad, 3.1, 1.0) + 0.35 * bump(ad, 6.5, 2.2)) * (0.08 + 2.3 * n2 * n2 * n2) + 4 * stick(sticky.stopS, y, c));
-        tpL[i] = taper * 2.1e6 * ((0.8 * bump(ad, 2.6, 1.0) + 1.0 * bump(ad, 5.6, 1.7) + 0.4 * bump(ad, 10.5, 3)) * (0.08 + 2.2 * n3 * n3 * n3) + 5 * stick(sticky.tpL, y, c));
+        liqS[i] = taper * 6.0e6 * ((0.9 * bump(ad, 2.0, 0.8) + 1.3 * bump(ad, 4.7, 1.3) + 1.15 * bump(ad, 8.4, 2.3) + 0.5 * bump(ad, 14, 4)) * (0.1 + 2.1 * n1 * n1 * n1));
+        stopS[i] = taper * 2.6e6 * ((1.1 * bump(ad, 1.0, 0.6) + 0.9 * bump(ad, 3.1, 1.0) + 0.35 * bump(ad, 6.5, 2.2)) * (0.08 + 2.3 * n2 * n2 * n2));
+        tpL[i] = taper * 2.1e6 * ((0.8 * bump(ad, 2.6, 1.0) + 1.0 * bump(ad, 5.6, 1.7) + 0.4 * bump(ad, 10.5, 3)) * (0.08 + 2.2 * n3 * n3 * n3));
       }
       const q1 = smooth(r, c, 11), q2 = smooth(r, c, 12), q3 = smooth(r, c, 13);
       pfLiq[i] = 0.05 + 0.6 * q1 * q1;
