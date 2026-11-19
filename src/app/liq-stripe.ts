@@ -68,15 +68,16 @@ export function paintStripe(ctx: CanvasRenderingContext2D, o: { src: LiqLevelsSo
     painted.right = { lane: lanes.right, set: right, whose: plan.whose[1] };
   }
   if (pair) {
-    // Under a split every lane says what it holds (`stripePlan`): whose take profits, the liquidations' and the stops' lanes (whose, where
-    // not everyone's), everyone's and the profitable traders' lanes, or everyone's levels alone beside a column too narrow to split.
-    const [leftWords, rightWords] = plan.captions;
+    // Under a split every lane painted says what it holds (`stripePlan`): whose take profits, the liquidations' and the stops' lanes (whose,
+    // where not everyone's), everyone's and the profitable traders' lanes, or everyone's levels alone beside a column too narrow to split. A
+    // lane with nothing painted has no caption (the note under the legend says why).
+    const [leftWords, rightWords] = plan.captions, left = painted.lanes;
     painted.captions = [
-      ...(lanes.takes && plan.takes ? [{ lane: lanes.takes, words: plan.takes, dashed: true }] : []),
-      ...(leftWords ? [{ lane: lanes.levels, words: leftWords, dashed: false }] : []),
-      ...(lanes.right && rightWords && (plan.standalone || painted.right) ? [{ lane: lanes.right, words: rightWords, dashed: false }] : []),
+      ...(left?.takes && plan.takes ? [{ lane: left.takes, words: plan.takes, dashed: true }] : []),
+      ...(left && leftWords ? [{ lane: left.levels, words: leftWords, dashed: false }] : []),
+      ...(painted.right && rightWords ? [{ lane: painted.right.lane, words: rightWords, dashed: false }] : []),
     ];
-  } else painted.takesLane = lanes.takes;
+  } else painted.takesLane = painted.lanes?.takes ?? null;
   return painted;
 }
 

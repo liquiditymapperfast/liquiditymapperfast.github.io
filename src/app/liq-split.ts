@@ -3,7 +3,7 @@
  * two sub-columns go, when there is room for them, their scales, and the stripe's lanes and captions (`stripePlan`). Pure, so the painters
  * (panes/heat-pane.ts, panes/liq-pane.ts) only call what the tests hold.
  */
-import type { Lane } from './liq-levels.ts';
+import { LANE_MIN_W, type Lane } from './liq-levels.ts';
 import { curveOf, groupName, kindName, type LiqPair, type LiqView } from './liq-view.ts';
 import { takesOf } from './liq-words.ts';
 import { wrapText } from './text-fit.ts';
@@ -51,12 +51,17 @@ export function splitScales(left: SubScale, right: SubScale, shared: boolean): [
 /**
  * The stripe's lanes under a split drawn as two lanes (`stripePlan`), between the live edge `x0` and the plot's right edge: the take profits'
  * lane by the live edge where they show (three tenths of the stripe), then the left column's set, then the right column's beside the column,
- * 2 px apart, in the column's order (liquidations then stops, or everyone's then the profitable traders').
+ * 2 px apart, in the column's order (liquidations then stops, or everyone's then the profitable traders'). Every lane given is at least
+ * `LANE_MIN_W` wide: on a thin stripe the take profits' lane narrows so the two lanes of levels keep that, and goes where it cannot keep it
+ * itself (Sol, review 2026-11-19: at 9 and 10 px a lane of 1 px was captioned and answered the pointer, unpainted). Two lanes of levels need
+ * `2 * LANE_MIN_W + 2` px, which every stripe the map draws has (it draws from 9 px); with less, the left lane takes the stripe alone.
  */
-export function splitLanes(x0: number, right: number, takes: boolean): { takes: Lane | null; left: Lane; right: Lane } {
-  const w = Math.max(0, right - x0), tw = takes ? (w >= 30 ? Math.round(w * 0.3) : Math.floor(w / 3)) : 0;
-  const t = takes ? { x0, x1: x0 + tw } : null, from = Math.min(right, takes ? x0 + tw + 2 : x0), rest = Math.max(0, right - from), half = Math.floor((rest - 2) / 2);
-  return { takes: t, left: { x0: from, x1: Math.min(right, from + Math.max(0, half)) }, right: { x0: Math.min(right, from + Math.max(0, half) + 2), x1: right } };
+export function splitLanes(x0: number, right: number, takes: boolean): { takes: Lane | null; left: Lane; right: Lane | null } {
+  const w = Math.max(0, right - x0), two = 2 * LANE_MIN_W + 2;
+  if (w < two) return { takes: null, left: { x0, x1: Math.max(x0, right) }, right: null };
+  const tw = takes ? Math.min(w >= 30 ? Math.round(w * 0.3) : Math.floor(w / 3), w - 2 - two) : 0, keep = takes && tw >= LANE_MIN_W;
+  const t = keep ? { x0, x1: x0 + tw } : null, from = keep ? x0 + tw + 2 : x0, half = Math.floor((right - from - 2) / 2);
+  return { takes: t, left: { x0: from, x1: from + half }, right: { x0: from + half + 2, x1: right } };
 }
 
 /**
@@ -68,7 +73,7 @@ export function splitLanes(x0: number, right: number, takes: boolean): { takes: 
  * - Everyone beside the profitable traders, with that room (owner, 2026-11-19: one lane there read as a bug): everyone's chosen kinds, then
  *   the profitable traders' from their own files alone, each lane on its own scale (its own rows' colour strength), captioned by what it adds
  *   up and whose ("Liq + stops · Profitable"), each reading naming its group. As the sub-columns do, each stands on its own: the right lane
- *   draws when its set is ready though the left's is not, and both are captioned whatever they draw (`standalone`).
+ *   draws when its set is ready though the left's is not (`standalone`). A lane is captioned only where it is painted (liq-stripe.ts).
  * - Everyone beside the profitable traders without it (a column too narrow to split, a compact map): everyone's in one lane, as the column
  *   falls back to.
  * The take profits stay with the left set: their lane by the live edge, captioned with whose under a split. No split: one lane, and no
@@ -84,7 +89,7 @@ export interface StripePlan {
   /** The group each lane's reading names (`stripeBoxLines`' `whose`), left then right, and the take profits'; null names none. */
   whose: [string | null, string | null];
   takesWhose: string | null;
-  /** The right lane draws on its own set's readiness and is captioned when it draws nothing. */
+  /** The right lane draws on its own set's readiness, though the left set has nothing to draw. */
   standalone: boolean;
 }
 export function stripePlan(pair: LiqPair | null, drawn: boolean): StripePlan {

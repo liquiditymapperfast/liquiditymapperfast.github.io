@@ -516,13 +516,19 @@ export const dashPhase = (x: number, anchor = 0): number => { const n = TAKE_DAS
 /** A lane of the stripe, [x0, x1). */
 export interface Lane { x0: number; x1: number }
 /**
+ * The narrowest lane the stripe paints (`paintLiqStripe` draws nothing narrower): the lanes are laid out so each one they give is at least
+ * this wide, and a lane that cannot be is not given (Sol, review 2026-11-19: a 1 px lane was captioned and answered the pointer unpainted).
+ */
+export const LANE_MIN_W = 2;
+/**
  * Where the stripe's lanes go between the live edge `x0` and the plot's right edge `right`. With take profits, theirs is the lane by the live
  * edge (four tenths of the stripe, half of one under 30 px) and the levels', after a 2 px gap, the one beside the liquidation column, whose
- * curve sums them (Karl, 2026-11-18: the take profits' lane at the right read as the stops'). Without, the levels take the whole stripe.
+ * curve sums them (Karl, 2026-11-18: the take profits' lane at the right read as the stops'). Without, the levels take the whole stripe. Where
+ * the two cannot each be `LANE_MIN_W` wide, the take profits' lane goes and the levels take the stripe.
  */
 export function stripeLanes(x0: number, right: number, takes: boolean): { levels: Lane; takes: Lane | null } {
-  if (!takes) return { levels: { x0, x1: right }, takes: null };
   const w = right - x0, lane = w >= 30 ? Math.round(w * 0.4) : Math.floor(w / 2);
+  if (!takes || lane < LANE_MIN_W || w - lane - 2 < LANE_MIN_W) return { levels: { x0, x1: right }, takes: null };
   return { takes: { x0, x1: x0 + lane }, levels: { x0: Math.min(right, x0 + lane + 2), x1: right } };
 }
 
@@ -561,7 +567,7 @@ export function laneRows(src: Pick<LiqLevelsSource, 'key' | 'takesKey' | 'taken'
  */
 export function paintLiqStripe(ctx: CanvasRenderingContext2D, view: View, x0: number, pw: number, ph: number, rows: readonly LiqRow[], heat: (usd: number) => number, colors: LiqColors, dashed = false): void {
   const w = pw - x0;
-  if (w < 2) return;
+  if (w < LANE_MIN_W) return;
   ctx.save();
   // Take profits (`dashed`): each row a dashed stroke as tall as the row, the dashes on one pattern from the plot's left edge, never weaker
   // than a third so a small one still reads as dashes, not as a faint level.

@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { LiqLevelsSource, type LiqRow, type LiqSet } from '../src/app/liq-levels.ts';
+import { LANE_MIN_W, LiqLevelsSource, stripeLanes, type Lane, type LiqRow, type LiqSet } from '../src/app/liq-levels.ts';
 import { paintStripe, type StripeHeld } from '../src/app/liq-stripe.ts';
 import { View } from '../src/app/view.ts';
 import type { LiqAnswer } from '../src/app/liq-history.ts';
@@ -116,7 +116,7 @@ test('the stripe\'s plan: Everyone | Profitable draws two lanes where the column
   assert.deepEqual(stripePlan(null, true), { two: false, captions: [], takes: null, whose: [null, null], takesWhose: null, standalone: false }, 'no split: one lane, no captions');
   // Two lanes beside the take profits' by the live edge, in the column's order, never outside the stripe.
   const l = splitLanes(100, 400, true);
-  assert.ok(l.takes!.x1 < l.left.x0 && l.left.x1 < l.right.x0 && l.right.x1 === 400);
+  assert.ok(l.takes!.x1 < l.left.x0 && l.left.x1 < l.right!.x0 && l.right!.x1 === 400);
 });
 
 test('the two group lanes\' keys name their group and order family, and each lane draws its own family\'s rows on its own scale', async () => {
@@ -261,4 +261,57 @@ test('the map draws the stripe through its painter and takes only what it painte
   assert.match(heat, /return setBoxLines\(found, set, at > 0 \? at : this\.hub\.liqLevels\.lastPriceOf\(levels\), side => shown\(found, side\), whose\);/);
   // The painter's right lane: from the right set, its rows kept by that set's key.
   assert.match(stripe, /const rr = held\.right = laneRows\(\{ key: \(\) => right\.key\(\), takesKey: \(\) => '', taken: \(\) => right\.taken\(\), takesTaken: \(\) => null \}, 'levels', right\.levels,/);
+});
+
+// Sol's review of af817444..62a84ce3, round 1 (P3): a thin stripe gave lanes the painter skips (1 px at 9 and 10 px), captioned and answering
+// the pointer though nothing was painted there.
+test('every lane the stripe gives can be painted: a sweep of 0 to 40 px with and without take profits, both layouts', () => {
+  const ok = (l: Lane | null, x0: number, right: number): boolean => l === null || (l.x1 - l.x0 >= LANE_MIN_W && l.x0 >= x0 && l.x1 <= right);
+  for (let w = 0; w <= 40; w++) for (const takes of [true, false]) {
+    const x0 = 100, right = 100 + w, s = splitLanes(x0, right, takes), u = stripeLanes(x0, right, takes), name = `${w} px ${takes ? 'with' : 'without'} take profits`;
+    if (w >= 2 * LANE_MIN_W + 2) {
+      for (const l of [s.takes, s.left, s.right]) assert.ok(ok(l, x0, right), `${name}: split ${JSON.stringify(s)}`);
+      assert.ok(s.right && s.left.x1 + 2 <= s.right.x0 && (!s.takes || s.takes.x1 + 2 <= s.left.x0), `${name}: in order, 2 px apart`);
+    } else assert.deepEqual([s.takes, s.right], [null, null], `${name}: one lane where two cannot be painted`);
+    if (w >= LANE_MIN_W) for (const l of [u.takes, u.levels]) assert.ok(ok(l, x0, right), `${name}: unsplit ${JSON.stringify(u)}`);
+  }
+  // The widths that broke: 9 px drops the take profits' lane, 10 px narrows it, the two lanes of levels always paintable.
+  assert.deepEqual(splitLanes(391, 400, true), { takes: null, left: { x0: 391, x1: 394 }, right: { x0: 396, x1: 400 } });
+  assert.deepEqual(splitLanes(390, 400, true), { takes: { x0: 390, x1: 392 }, left: { x0: 394, x1: 396 }, right: { x0: 398, x1: 400 } });
+  assert.deepEqual(splitLanes(100, 400, true), { takes: { x0: 100, x1: 190 }, left: { x0: 192, x1: 295 }, right: { x0: 297, x1: 400 } }, 'a wide stripe as before');
+});
+
+test('the painter at 9, 10, 11 and more px: every lane it reports (the hover lanes) was painted and is paintable, and only those are captioned, in both splits', async () => {
+  const src = familyService();
+  for (const split of ['groups', 'kinds'] as const) {
+    const s = setting({ split });
+    await show(src, s);
+    for (const w of [9, 10, 11, 12, 30, 300]) {
+      const held: Held = { levels: null, takes: null, right: null }, f = frame(src, s, true, held, 400 - w, 400), p = f.painted!, name = `${split} ${w} px`;
+      assert.ok(p && p.lanes && p.right, `${name}: both lanes of levels painted`);
+      assert.equal(!!p.lanes.takes, w >= 10, `${name}: the take profits' lane from 10 px`);
+      const lanes = [p.lanes.levels, p.lanes.takes, p.right.lane].filter((l): l is Lane => !!l);
+      for (const l of lanes) {
+        assert.ok(l.x1 - l.x0 >= LANE_MIN_W, `${name}: ${JSON.stringify(l)} paintable`);
+        assert.ok(f.spans.some(sp => sp.x0 >= l.x0 && sp.x1 <= l.x1 && sp.x1 > sp.x0), `${name}: ${JSON.stringify(l)} painted`);
+      }
+      // Nothing is painted outside the lanes reported, and nothing is captioned that was not painted.
+      assert.ok(f.spans.every(sp => lanes.some(l => sp.x0 >= l.x0 - 0.5 && sp.x1 <= l.x1 + 0.5)), `${name}: every mark inside a reported lane`);
+      assert.ok(p.captions!.every(c => lanes.includes(c.lane)), `${name}: captions only over painted lanes`);
+      assert.equal(p.captions!.length, lanes.length, `${name}: each painted lane captioned`);
+    }
+  }
+});
+
+test('a lane with nothing to paint has no caption and answers no pointer: the profitable traders\' lane without their stops, everyone\'s lane without theirs', async () => {
+  const absent = familyService({ [U.triggersGroups]: { status: 404, body: null } }), stops = setting({ liq: false, takes: false, split: 'groups' });
+  await show(absent, stops);
+  const a = frame(absent, stops, true, { levels: null, takes: null, right: null });
+  assert.ok(a.painted?.lanes && !a.painted.right, 'only everyone\'s stops painted');
+  assert.deepEqual(a.painted.captions!.map(c => c.words), ['Stops · Everyone']);
+  const busy = familyService({ [U.triggers]: { status: 503, body: null, retryAfter: 60 } });
+  await show(busy, stops);
+  const b = frame(busy, stops, true, { levels: null, takes: null, right: null });
+  assert.ok(b.painted && !b.painted.lanes && b.painted.right, 'only the profitable traders\' stops painted');
+  assert.deepEqual(b.painted.captions!.map(c => c.words), ['Stops · Profitable']);
 });

@@ -60,8 +60,10 @@ which comes back with Plus (`effectiveView` in `src/app/liq-view.ts`).
   own colour scale, their captions say kind and group ("Liq + stops · Profitable") and the stripe's box names the group. The profitable
   traders' lane draws the source's right set alone, its rows kept by that set's key (view, group and order family), and stands on its own
   readiness as their sub-column does; with their orders absent it draws their liquidations alone and the note under the legend says they
-  are not available yet. Every sub-column and stripe lane is captioned; the take profits stay with the left set. The phone's Liq tab splits
-  into halves at 2 x 120 px. The Depth pane, and everything else that draws one series, draws the left column's set (`effectiveView`).
+  are not available yet. The stripe is painted by `paintStripe` (`liq-stripe.ts`), which reports what it painted: a lane is given only where
+  it can be painted (`LANE_MIN_W`, 2 px: on a thin stripe the take profits' lane narrows, then goes), and only painted lanes are captioned or
+  answer the pointer. Every sub-column is captioned; the take profits stay with the left set. The phone's Liq tab splits into halves at
+  2 x 120 px. The Depth pane, and everything else that draws one series, draws the left column's set (`effectiveView`).
 - **Liq + stops apart**: wherever the page gives a total of both (the stripe's box, the column's reading and its Mirror box, the Liq tab's
   finger), it adds "Total $X = liquidations $Y + stops $Z" (`partStandings`, `partsBetween`, `partsOnTheWay`); the picture stays the
   total. The Depth pane's readout does not split it: its history rows hold the sum only.

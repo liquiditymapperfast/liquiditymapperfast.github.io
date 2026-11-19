@@ -68,11 +68,11 @@ test('the split column\'s heading: each caption over its column, the maxima unde
 test('the stripe\'s lanes for liquidations beside stops: the take profits by the live edge, then liquidations, then stops beside the column; captions never overlap', () => {
   const lanes = splitLanes(100, 400, true);
   assert.ok(lanes.takes && lanes.takes.x0 === 100 && lanes.takes.x1 === 190, 'three tenths for the take profits');
-  assert.ok(lanes.left.x0 === 192 && lanes.left.x1 <= lanes.right.x0 - 2 && lanes.right.x1 === 400, 'liquidations, 2 px, stops to the column');
+  assert.ok(lanes.left.x0 === 192 && lanes.left.x1 <= lanes.right!.x0 - 2 && lanes.right!.x1 === 400, 'liquidations, 2 px, stops to the column');
   const none = splitLanes(100, 400, false);
-  assert.equal(none.takes, null); assert.equal(none.left.x0, 100); assert.equal(none.right.x1, 400);
+  assert.equal(none.takes, null); assert.equal(none.left.x0, 100); assert.equal(none.right!.x1, 400);
   const narrow = splitLanes(380, 400, true);
-  for (const l of [narrow.takes!, narrow.left, narrow.right]) assert.ok(l.x1 >= l.x0 && l.x0 >= 380 && l.x1 <= 400, 'never outside the stripe');
+  for (const l of [narrow.takes!, narrow.left, narrow.right!]) assert.ok(l.x1 >= l.x0 && l.x0 >= 380 && l.x1 <= 400, 'never outside the stripe');
   // Three plates where two would overlap: the second goes a row down, the third stays up where it is clear.
   assert.deepEqual(stackCaptions([{ x: 10, w: 80 }, { x: 60, w: 80 }, { x: 200, w: 50 }], 6, 15), [6, 23, 6]);
 });
