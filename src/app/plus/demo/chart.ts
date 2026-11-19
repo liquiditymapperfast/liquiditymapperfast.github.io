@@ -246,8 +246,9 @@ export function createChart(data: DemoData): Chart {
     put(E.dRegPlus, 'x', f1(Math.min(xBnd, L.xLive) - 5)); put(E.dRegFree, 'x', f1(Math.max(xBnd, L.padL) + 5));
     put(E.dDates[0]!, 'x', L.padL); put(E.dDates[1]!, 'x', f1((L.padL + L.xLive) / 2)); put(E.dDates[2]!, 'x', L.xLive);
     say(E.dDates[0]!, dayLabel(Math.max(0, start))); say(E.dDates[1]!, dayLabel(start + DEMO_WIN / 2)); say(E.dDates[2]!, live ? t('Now') : dayLabel(end));
-    // A phone's strip has room for its two ends only (a date of the middle ran into the first: "11. Nov.15. Nov.").
-    show(E.dDates[1]!, L.xLive - L.padL >= 170);
+    // A phone's strip (about 100 px) has room for its two ends only: a date of the middle ran into the first ("11. Nov.15. Nov."). A wider
+    // screen's (165 px and up) keeps all three, as the prototype had them.
+    show(E.dDates[1]!, L.xLive - L.padL >= 150);
     const table = depthTable(data, end, w);
     E.cells.forEach(([up, dn], k) => { say(up, solid > 0.02 ? money(table.up[k]!) : '–'); say(dn, solid > 0.02 ? money(table.dn[k]!) : '–'); });
   }
