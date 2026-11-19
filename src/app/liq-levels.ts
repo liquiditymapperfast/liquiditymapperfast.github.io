@@ -1061,8 +1061,10 @@ export class LiqLevelsSource implements LiqSet {
   }
 
   /** Hyperliquid's price as last read (the newest candle's close), or the snapshot's mark before any candle came. */
-  lastPrice(): number {
-    const levels = this.levels, bars = this.candles.bars, last = bars[bars.length - 1];
+  lastPrice(): number { return this.lastPriceOf(this.levels); }
+  /** The same for a set of levels of its own (a split's right column that stands where the left does not): its mark before any newer candle. */
+  lastPriceOf(levels: LiqLevels | null): number {
+    const bars = this.candles.bars, last = bars[bars.length - 1];
     if (!levels) return NaN;
     return last && last[0] >= levels.asOf - MINUTE && Number.isFinite(last[4]) ? last[4] : levels.mark;
   }

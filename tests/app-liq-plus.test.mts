@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { LiqLevelsSource, binsIn, parseTriggerGroups, combineTaken, laneRows, liqCurves, liqProfile, liqRows, onTheWay, parseLiqGroups, parseLiqLevels, parseTriggers, partsBetween, partsOnTheWay, standingBelow, sumLevels, takenByCandles, liqStanding, type LaneRows, type LiqLevels, type LiqRow, type LiqStanding } from '../src/app/liq-levels.ts';
+import { LiqLevelsSource, binsIn, dollarPriceOf, parseTriggerGroups, combineTaken, laneRows, liqCurves, liqProfile, liqRows, onTheWay, parseLiqGroups, parseLiqLevels, parseTriggers, partsBetween, partsOnTheWay, standingBelow, sumLevels, takenByCandles, liqStanding, type LaneRows, type LiqLevels, type LiqRow, type LiqStanding } from '../src/app/liq-levels.ts';
 import { DAY_MS, LIQ_HOLD_MS, LiqHistory, MAX_DAYS, bandOnEdge, dayText, familiesFor, readHistRows, readRollup, retryAfterSeconds, webFetch, type LiqAnswer } from '../src/app/liq-history.ts';
 import { readLiqLevels, plusUrls } from '../src/app/liq-url.ts';
 import { FREE_VIEW, curveOf, effectiveSplit, effectiveView, heldBack, isFreeChoice, levelsDescription, levelsSummary, pairKey, splitPair, takesBeside, viewKey, type LiqView } from '../src/app/liq-view.ts';
@@ -1100,9 +1100,12 @@ test('a saved levels setting in the older form with a switch that is not a boole
  * A stand-in page for one pane in Node: elements that keep their classes, text and children, a 2D context that draws nothing, and the page's
  * timers held for the test to run, so a frame can be drawn without the second's tick (as the page does after a change of the setting).
  */
-function standInPage(width = 390) {
+function standInPage(width = 390, drawn?: { texts: { t: string; x: number; y: number }[]; lines: { x: number; y: number }[] }) {
   const g = globalThis as unknown as Record<string, unknown>, saved = { document: g.document, window: g.window, ResizeObserver: g.ResizeObserver };
-  const ctx: unknown = new Proxy(function () { /* draws nothing */ }, { get: (_t, k) => k === Symbol.toPrimitive ? () => 0 : k === 'then' ? undefined : ctx, apply: () => ctx, set: () => true });
+  // Draws nothing; given `drawn`, it keeps the texts and the line ends drawn.
+  const ctx: unknown = new Proxy(function () { /* draws nothing */ }, { get: (_t, k) => k === Symbol.toPrimitive ? () => 0 : k === 'then' ? undefined
+    : drawn && k === 'fillText' ? (t: unknown, x: number, y: number) => { drawn.texts.push({ t: String(t), x, y }); return ctx; }
+    : drawn && k === 'lineTo' ? (x: number, y: number) => { drawn.lines.push({ x, y }); return ctx; } : ctx, apply: () => ctx, set: () => true });
   class StandIn {
     children: (StandIn | string)[] = []; dataset: Record<string, string> = {}; style: Record<string, string> = {}; className = ''; hidden = false;
     clientWidth = width; clientHeight = 640; width = 0; height = 0;
@@ -1120,7 +1123,14 @@ function standInPage(width = 390) {
     append(...nodes: (StandIn | string)[]): void { this.children.push(...nodes); }
     setAttribute(): void { /* not read */ }
     getAttribute(): null { return null; }
-    addEventListener(): void { /* no events */ }
+    readonly listeners = new Map<string, ((e: unknown) => void)[]>();
+    addEventListener(type: string, fn: (e: unknown) => void): void { this.listeners.set(type, [...(this.listeners.get(type) ?? []), fn]); }
+    /** The first element at or below this one with the tag `tag`. */
+    findTag(tag: string): StandIn | null {
+      if (this.tagName.toLowerCase() === tag) return this;
+      for (const c of this.children) { const hit = typeof c === 'string' ? null : c.findTag(tag); if (hit) return hit; }
+      return null;
+    }
     removeEventListener(): void { /* no events */ }
     closest(): null { return null; }
     querySelector(): null { return null; }
@@ -1487,17 +1497,18 @@ test('the phone\'s Liq tab under a split: halves at a phone\'s width, named by t
 });
 
 /** The phone's Liq tab at a phone's width with a split chosen, on the stand-in page; `files` are the Plus answers. */
-async function tabWith(files: Record<string, LiqAnswer>, lv: Partial<import('../src/app/liq-url.ts').LiqLevelSettings>) {
-  const page = standInPage(390), now = Date.now();
+async function tabWith(files: Record<string, LiqAnswer>, lv: Partial<import('../src/app/liq-url.ts').LiqLevelSettings>, freeDoc: () => unknown = () => free(NEAR.all.liq),
+  drawn?: { texts: { t: string; x: number; y: number }[]; lines: { x: number; y: number }[] }) {
+  const page = standInPage(390, drawn), now = Date.now();
   plus().accept({ key: 'standin-key-0123456789', pass: standInPass(now + 23 * 3_600_000), until: now + 20 * DAY_MS });
-  const s = service(files, { value: 'v1.pass.sig' }, () => free(NEAR.all.liq));
+  const s = service(files, { value: 'v1.pass.sig' }, freeDoc);
   const store = new Store(initialState());
   store.set({ liqLevels: { ...store.state.liqLevels, ...lv } });
   const pane = new LiqPane(page.parent as never, store, { liqLevels: s.src } as never);
   pane.setShown(true);
   for (let i = 0; i < 4; i++) { page.tick(); await tick(); }
   page.frames();
-  return { page, src: s.src, done: (): void => { pane.setShown(false); plus().forget(); page.restore(); } };
+  return { page, src: s.src, store, pane, done: (): void => { pane.setShown(false); plus().forget(); page.restore(); } };
 }
 
 test('Sol 2 (P2): the phone\'s right half says the profitable traders\' stops are not on the server, though their liquidations stand and are drawn', async () => {
@@ -1522,5 +1533,52 @@ test('Sol 3 (P2): the phone\'s halves stand on their own: everyone\'s stops load
     const foot = t.page.text('liq-foot') ?? '';
     assert.match(foot, /Profitable traders' stop orders at \d\d:\d\d/, `the right half's note: ${foot}`);
     assert.ok(foot.length > 0, 'not the empty tab');
+  } finally { t.done(); }
+});
+
+// Sol's review of Split, round 2: the phone's right-only path (everyone's stops not read, the profitable traders' ready).
+const RIGHT_ONLY = { files: { [U.triggers]: { status: 503, body: null }, [U.triggersGroups]: { status: 200, body: triggerGroups(NEAR.profitable.stops, NEAR.profitable.takes) } } as Record<string, LiqAnswer>,
+  lv: { liq: false, stops: true, takes: false, group: 'all' as const, split: 'groups' as const } };
+
+test('Sol r2-1 (P2): the chart\'s price takes the right half\'s levels away on the tab\'s tick, though the left half has none', async () => {
+  const t = await tabWith(RIGHT_ONLY.files, RIGHT_ONLY.lv);
+  try {
+    const right = t.src.right!, longs = (): number => { const st = right.standing()!; return standingBelow(st, 'long', 1_000) - standingBelow(st, 'long', 0); };
+    assert.equal(t.src.levels, null, 'the left half has nothing'); assert.equal(right.state, 'ready');
+    assert.equal(longs(), 10, 'their stops of longs at 90-100 stand');
+    // The chart's market priced in dollars, and the price falls through their band.
+    t.store.set({ markets: [{ id: 'standin-btc-usd', quote: 'USD' }] as never, marketId: 'standin-btc-usd', mark: { ...t.store.state.mark, price: 70 } });
+    assert.equal(dollarPriceOf(t.store.state), 70);
+    t.page.tick(); await tick();
+    assert.equal(longs(), 0, 'gone once price has traded through them');
+  } finally { t.done(); }
+});
+
+test('Sol r2-2 (P2): with the left half out of date and no chart price, the ladder is centred on the right half\'s mark, not the left snapshot\'s', async () => {
+  // Liquidations beside stops: everyone's liquidations four hours old marked at 80 (out of date), their stops fresh, marked at 100.
+  const t = await tabWith({ [U.triggers]: { status: 200, body: triggers(NEAR.all.stops, NEAR.all.takes) } }, { liq: true, stops: true, takes: false, group: 'all', split: 'kinds' },
+    () => ({ ...free(NEAR.all.liq, AS_OF - 210 * MIN), mark: 80 }));
+  try {
+    assert.equal(t.src.state, 'stale', 'the left half is out of date'); assert.equal(t.src.right!.state, 'ready');
+    assert.equal(t.src.lastPrice(), 80, 'the left snapshot\'s mark');
+    assert.equal(t.pane.framePrice, 100, 'the axis is the right half\'s');
+  } finally { t.done(); }
+});
+
+test('Sol r2-3 (P2): a finger on a right-only ladder draws its line and its price\'s tag, not only the box', async () => {
+  const drawn = { texts: [] as { t: string; x: number; y: number }[], lines: [] as { x: number; y: number }[] };
+  const t = await tabWith(RIGHT_ONLY.files, RIGHT_ONLY.lv, () => free(NEAR.all.liq), drawn);
+  try {
+    const price = t.pane.framePrice!;
+    assert.ok(price > 0, 'drawn around a price');
+    const canvas = (t.page.parent as unknown as { findTag(tag: string): { listeners: Map<string, ((e: unknown) => void)[]> } | null }).findTag('canvas')!;
+    drawn.texts.length = 0; drawn.lines.length = 0;
+    // A finger 120 px above the middle of the 640 px ladder.
+    canvas.listeners.get('pointerdown')![0]!({ clientY: 200, pointerId: 1 });
+    t.page.frames();
+    const xR = 390 - 60, tagX = xR + (390 - xR) / 2;
+    const tags = drawn.texts.filter(e => Math.abs(e.x - tagX) < 0.5).map(e => e.t);
+    assert.equal(new Set(tags).size, 2, `the price's tag and the finger's: ${JSON.stringify(tags)}`);
+    assert.ok(drawn.lines.some(l => l.x === xR && Math.abs(l.y - 200.5) < 1), 'the finger\'s line across to the axis');
   } finally { t.done(); }
 });

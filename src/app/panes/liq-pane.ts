@@ -113,6 +113,9 @@ export class LiqPane {
 
   setPalette(name: string): void { this.#palette = paletteOf(name); this.invalidate(); }
 
+  /** The price the ladder was last drawn around (its axis's centre), or null while it draws nothing. */
+  get framePrice(): number | null { return this.#frame?.price ?? null; }
+
   /** Shown while its tab is open: it keeps the levels fresh then (the map, covered, does not) and draws; hidden, it does nothing. */
   setShown(on: boolean): void {
     if (on === this.#shown) return;
@@ -158,7 +161,9 @@ export class LiqPane {
   #tick(): void {
     const src = this.hub.liqLevels;
     this.#ensure();
-    if (src.levels && !replaying()) src.observe(dollarPriceOf(this.store.state));
+    // The chart's price takes levels away from every set held, a split's right half's too, whether or not the left half has levels (Sol,
+    // review 2026-11-19, round 2): never for another coin's price.
+    if (!replaying() && src.state !== 'off' && src.state !== 'other-coin') src.observe(dollarPriceOf(this.store.state));
     this.invalidate();
   }
 
@@ -222,7 +227,7 @@ export class LiqPane {
     const rs = right && !rWhy ? right.standing() : null;
     if ((!s || !levels) && !rs) { this.#empty(why || t('Liquidation levels are loading.')); return; }
     // The price from the chart, else from the levels: the left set's, or the right half's where only it stands.
-    const live = dollarPriceOf(state), last = src.lastPrice(), price = live > 0 ? live : last > 0 ? last : rs && right?.levels ? right.levels.mark : NaN;
+    const live = dollarPriceOf(state), price = live > 0 ? live : s && levels ? src.lastPriceOf(levels) : rs && right?.levels ? src.lastPriceOf(right.levels) : NaN;
     if (!(price > 0)) { this.#empty(t('Liquidation levels are loading.')); return; }
     this.#summary.hidden = false; this.#ranges.hidden = false; this.#pulse.hidden = false;
 
@@ -318,8 +323,10 @@ export class LiqPane {
     ctx.restore();
     this.#paintPrice(ctx, p, price, mid, xR, W);
     if (this.#probe !== null) {
-      if (leftHas.s && leftHas.levels && prof) this.#paintProbe(ctx, p, leftHas.s, leftHas.levels, prof, step, price, yOf, xR, W, H, a);
-      if (rightHas.s && rightHas.levels && rprof) this.#paintProbe(ctx, p, rightHas.s, rightHas.levels, rprof, step, price, yOf, xR, W, H, b, right);
+      // The line and the price's tag once, by the first half that reads (the right one where the left has nothing), the boxes in each.
+      const leftReads = !!(leftHas.s && leftHas.levels && prof);
+      if (leftHas.s && leftHas.levels && prof) this.#paintProbe(ctx, p, leftHas.s, leftHas.levels, prof, step, price, yOf, xR, W, H, a, this.hub.liqLevels, true);
+      if (rightHas.s && rightHas.levels && rprof) this.#paintProbe(ctx, p, rightHas.s, rightHas.levels, rprof, step, price, yOf, xR, W, H, b, right, !leftReads);
     }
   }
 
@@ -531,7 +538,7 @@ export class LiqPane {
 
   /** What a finger reads at its price: the way there, the level itself, and the same distance the other way. */
   #paintProbe(ctx: CanvasRenderingContext2D, p: Palette, s: LiqStanding, levels: LiqLevels, prof: LiqProfile, step: number, price: number, yOf: (pr: number) => number, xR: number, W: number, H: number,
-    half: { x0: number; x1: number } | null = null, set: Pick<LiqSet, 'partStandings'> = this.hub.liqLevels): void {
+    half: { x0: number; x1: number } | null = null, set: Pick<LiqSet, 'partStandings'> = this.hub.liqLevels, decorate = true): void {
     const at = this.#probe!, y = yOf(at);
     if (y < 0 || y > H) return;
     const side = at >= price ? 'short' : 'long', color = this.#color(p, side), d = Math.abs(at - price);
@@ -540,8 +547,8 @@ export class LiqPane {
     const r = Math.floor(at / step) - prof.row0, a = (prof.row0 + r) * step;
     const level = r >= 0 && r < prof.long.length ? (side === 'long' ? prof.long[r]! : prof.short[r]!) : 0;
     const { positions, top } = binsIn(levels, side, a, a + step);
-    // The line across and the price's tag on the axis, once (a split's right half draws only its box).
-    if (!half || half.x0 === 0) {
+    // The line across and the price's tag on the axis, once a frame (`decorate`: the first half of a split that reads draws them).
+    if (decorate) {
       ctx.save();
       ctx.strokeStyle = p.ui; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, Math.round(y) + 0.5); ctx.lineTo(xR, Math.round(y) + 0.5); ctx.stroke();
       ctx.fillStyle = p.ui; this.#pill(ctx, xR + 3, y - 10, W - xR - 6, 20, 4); ctx.fill();
