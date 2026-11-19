@@ -1,0 +1,31 @@
+/* What Plus adds, as the app's presentation sheet (sheet.css) and the Plus page (page.css) both show it (plus/present.ts): the hero and its pills,
+   the three feature sections, the strip of what stays free, the legal line. */
+.vh { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+.px-body h1, .px-body h2, .px-body h3, .px-body p { overflow-wrap: anywhere; }
+.px-hero { padding: 22px 0 0; }
+.px-hero h1 { max-width: 20em; margin: 0; font-size: 40px; line-height: 1.12; font-weight: 650; letter-spacing: -0.015em; }
+.px-sub { margin: 6px 0 0; color: var(--muted); font-size: 18px; line-height: 1.45; }
+.px-avail { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-top: 14px; }
+.px-pill { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; white-space: nowrap; }
+.px-pill.on { border-color: var(--ui); background: color-mix(in srgb, var(--ui) 14%, var(--panel)); }
+.px-pill[hidden], .px-cta[hidden] { display: none; }
+.px-check { flex: none; width: 14px; height: 14px; background: var(--bid); -webkit-mask: var(--mark-check) center / contain no-repeat; mask: var(--mark-check) center / contain no-repeat; }
+.px-cta, .px-subscribe { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 16px; border: 1px solid var(--ui); border-radius: var(--radius); background: var(--ui); color: var(--on-ui, #fff); font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.px-cta:hover, .px-subscribe:hover { border-color: color-mix(in srgb, var(--ui) 86%, var(--text)); background: color-mix(in srgb, var(--ui) 86%, var(--text)); }
+.px-feat { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 20px 36px; align-items: center; margin-top: 56px; }
+.px-feat h2 { margin: 0 0 8px; font-size: 22px; line-height: 1.25; font-weight: 650; }
+.px-feat p { margin: 0; color: var(--muted); }
+.px-feat p + p { margin-top: 10px; font-size: 14px; }
+.px-vis { min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 14px 16px 10px; }
+.px-vis:empty { display: none; }
+.px-feat:has(> .px-vis:empty) { grid-template-columns: minmax(0, 1fr); }
+.px-trust { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--line); }
+.px-trust-lead { display: flex; gap: 10px; margin: 0; font-size: 16px; }
+.px-trust-lead .px-check { margin-top: 5px; }
+.px-trust-list { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 14px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.px-trust-list li { display: inline-flex; align-items: center; gap: 6px; }
+.px-trust-list li::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
+.px-trust-list a, .px-legal a { color: inherit; text-underline-offset: 2px; }
+.px-trust-fine { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
+.px-legal { margin: 28px 0 0; color: var(--muted); font-size: 13px; }
+.px-legal a:hover, .px-trust-list a:hover { color: var(--text); }

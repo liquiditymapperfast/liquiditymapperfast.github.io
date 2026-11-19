@@ -1,16 +1,12 @@
 import { el } from '../dom.ts';
 import { togglePanel, type Panel } from '../ui.ts';
-import { showGuide } from '../help.ts';
+import { lazy } from '../lazy.ts';
 import { t } from '../i18n.ts';
-import { FREE_DAYS, PLUS_PAGE, plusOnSale } from './config.ts';
 import { PLUS_NAME } from './name.ts';
 import { plus, type PlusState } from './pass.ts';
 import { keyEntry, maskKey, offlineText, onText, plusDate } from './key.ts';
 
 export { PLUS_NAME };
-
-/** The Plus page beside the app, wherever the app is served from. */
-export const plusPageUrl = (): string => new URL(PLUS_PAGE, location.href.replace(/[?#].*$/, '')).href;
 
 /** What the toolbar's Plus button opens: a browser without a key gets the presentation, one with a key (on, ended or being checked) its status. */
 export const plusButtonAction = (state: PlusState): 'sheet' | 'status' => state === 'none' ? 'sheet' : 'status';
@@ -75,12 +71,13 @@ export async function copyKey(key: string, clipboard: Pick<Clipboard, 'writeText
   try { await clipboard.writeText(key); return 'copied'; } catch { return 'select'; }
 }
 
-/** The presentation sheet, opened from `opener` (the focus goes back there when it closes). Set by the sheet's module once it can open. */
-let present: ((opener: HTMLElement) => void) | null = null;
-/** Show what Plus adds: the presentation sheet, or until it exists the Guide's section. */
-function seePlus(opener: HTMLElement): void { if (present) present(opener); else showGuide('plus'); }
-/** The sheet's module tells the pop-up how to open it. */
-export function presentWith(open: (opener: HTMLElement) => void): void { present = open; }
+/**
+ * Show what Plus adds: the presentation sheet (plus/sheet.ts), fetched with its styles the first time it opens, never with the page; the
+ * focus goes back to `opener` when it closes. A file that cannot be fetched (a deploy since the tab opened) is said by `lazy`.
+ */
+export function seePlus(opener: HTMLElement): void {
+  void lazy(() => import('./sheet.ts')).then(sheet => { sheet?.openSheet(opener); });
+}
 
 const LABELS: Record<PopAction, () => string> = {
   replace: () => t('Replace key'), remove: () => t('Remove from this browser'), 'remove-yes': () => t('Remove'), 'remove-no': () => t('Keep'), cancel: () => t('Cancel'), retry: () => t('Try again'),
@@ -171,34 +168,12 @@ function toggleStatus(anchor: HTMLElement): Panel | null {
  * The toolbar's Plus button: a browser without a key gets the presentation of what Plus adds; one with a key, the status pop-up (`popView`).
  */
 export function pressPlus(anchor: HTMLElement): void {
-  if (plusButtonAction(plus().state) === 'sheet') { openVisitor(anchor); return; }
+  if (plusButtonAction(plus().state) === 'sheet') { seePlus(anchor); return; }
   toggleStatus(anchor);
 }
 
-function tile(label: string, detail: string, go: { href: string } | { run: () => void }): HTMLElement {
-  if ('href' in go) return el('a', { class: 'author-link', href: go.href, target: '_blank', rel: 'noopener' }, el('b', { textContent: label }), el('span', { textContent: detail }));
-  return el('button', { type: 'button', class: 'author-link plus-tile', onclick: go.run }, el('b', { textContent: label }), el('span', { textContent: detail }));
-}
-
-/** Plus for a browser without a key: the presentation sheet where it can open, else what Plus is in three sentences. */
-function openVisitor(anchor: HTMLElement): Panel | null {
-  if (present) { present(anchor); return null; }
-  return togglePanel(anchor, { title: PLUS_NAME, width: 340, align: 'right' }, (_tools, body) => {
-    body.classList.add('author-body', 'plus-body');
-    body.append(
-      el('p', { class: 'lead', textContent: t('Plus opens what this site\'s servers store: the liquidation levels\' whole history (without Plus, the last {n} days), the levels of HyperTracker\'s profitable traders, and the stop and take-profit levels.', { n: FREE_DAYS }) }),
-      el('p', { class: 'fine', textContent: t('Everything the page does today stays free. Plus pays for the servers behind it.') }),
-      el('div', { class: 'author-links' }, tile(t('What Plus adds'), t('in the Guide, with pictures'), { run: () => { showGuide('plus'); } }),
-        plusOnSale() ? tile(t('Get Plus'), t('opens the Plus page'), { href: plusPageUrl() }) : tile(t('Not on sale yet'), t('the Plus page says when'), { href: plusPageUrl() })),
-      keyEntry().root,
-    );
-  });
-}
-
 /**
- * A lock on the page (a Plus choice without Plus): what Plus adds, opened from `anchor`. For a browser that holds a key (ended, or being
- * checked) the status pop-up says where it stands and takes a key.
+ * A lock on the page (a Plus choice without Plus: the levels control's, the Depth pane's older history): the presentation of what Plus adds,
+ * opened from `anchor`, whose access card takes a key. It changes nothing on the page.
  */
-export function togglePlus(anchor: HTMLElement): void {
-  if (plus().state === 'none') openVisitor(anchor); else toggleStatus(anchor);
-}
+export function togglePlus(anchor: HTMLElement): void { seePlus(anchor); }

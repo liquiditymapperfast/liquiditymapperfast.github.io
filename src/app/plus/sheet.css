@@ -1,0 +1,55 @@
+/* The presentation of Plus (plus/sheet.ts, the shared parts in plus/present.ts): a sheet over the page, 880 px at most and 90 % of the window's height,
+   the whole screen under 640 px. The type is the system's: a 40 px hero (30 on a phone), 16 px text at 1.5, 24 px card padding, 48 to 56 px between
+   sections, one accent for the one action. Words wrap; nothing is cut. */
+.px-layer { position: fixed; inset: 0; z-index: 90; }
+.px-scrim { position: absolute; inset: 0; background: rgb(0 0 0 / .5); opacity: 0; transition: opacity .2s; }
+.px-sheet { position: absolute; left: 50%; top: 50%; display: flex; flex-direction: column; box-sizing: border-box; width: min(880px, calc(100% - 32px)); height: min(90vh, calc(100% - 24px)); height: min(90dvh, calc(100% - 24px));
+  overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); box-shadow: 6px 6px 0 var(--shadow, rgb(0 0 0 / .3));
+  font-size: 16px; line-height: 1.5; opacity: 0; transform: translate(-50%, calc(-50% + 10px)); transition: opacity .2s, transform .2s; }
+.px-sheet:focus { outline: none; }
+.px-layer.in .px-scrim { opacity: 1; }
+.px-layer.in .px-sheet { opacity: 1; transform: translate(-50%, -50%); }
+@media (prefers-reduced-motion: reduce) { .px-sheet, .px-scrim { transition: none; } }
+.px-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 52px; padding: 0 12px 0 24px; border-bottom: 1px solid var(--line); }
+.px-brand { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden; font-size: 14px; white-space: nowrap; }
+.px-brand b { font-weight: 700; }
+.px-brand span { overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; }
+.px-x { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; font-size: 13px; }
+.px-x-mark { width: 12px; height: 12px; background: currentColor; clip-path: polygon(12% 0, 50% 38%, 88% 0, 100% 12%, 62% 50%, 100% 88%, 88% 100%, 50% 62%, 12% 100%, 0 88%, 38% 50%, 0 12%); }
+.px-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 24px 40px; container: px-sheet / inline-size; }
+/* The demo's stage: the demo module draws into it (a placeholder until it is part of the app: nothing shows). */
+.px-stage { margin-top: 18px; }
+.px-stage:empty { display: none; }
+.px-access { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 20px 32px; margin-top: 56px; padding: 24px; border: 1px solid var(--line); border-radius: 8px; scroll-margin-top: 16px; }
+.px-access.stack { grid-template-columns: minmax(0, 1fr); }
+.px-access.stack .px-key { max-width: 540px; }
+.px-access h2 { margin: 0 0 6px; font-size: 22px; line-height: 1.25; font-weight: 650; }
+.px-access h3 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+.px-access p { margin: 0; }
+.px-access .px-offer > * + * { margin-top: 8px; }
+.px-muted { color: var(--muted); }
+.px-price { color: var(--muted); font-size: 16px; }
+.px-status { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 15px; }
+.px-status .px-check { margin-top: 4px; }
+.px-key .key-in { height: 36px; font-size: 14px; }
+.px-key .key-go { min-height: 36px; }
+@container px-sheet (max-width: 600px) {
+  .px-feat { grid-template-columns: minmax(0, 1fr); margin-top: 44px; }
+  .px-access { grid-template-columns: minmax(0, 1fr); margin-top: 44px; padding: 20px 16px; }
+}
+@media (max-width: 639.98px) {
+  .px-sheet { left: 0; top: 0; width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; transform: translateY(10px); }
+  .px-layer.in .px-sheet { transform: none; }
+  .px-head { height: 56px; padding: 0 max(6px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); }
+  .px-body { padding: 0 max(16px, env(safe-area-inset-right, 0px)) max(32px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+  .px-x { justify-content: center; width: 44px; min-height: 44px; padding: 0; }
+  .px-x-text { display: none; }
+  .px-hero { padding-top: 20px; }
+  .px-hero h1 { font-size: 30px; line-height: 1.15; }
+  .px-sub { font-size: 16px; }
+  .px-cta, .px-subscribe, .px-key .key-go { min-height: 44px; }
+  .px-key .key-in { height: 44px; }
+  .px-legal a { display: inline-flex; align-items: center; min-height: 44px; }
+  .px-feat h2, .px-access h2 { font-size: 20px; }
+}
+@media (pointer: coarse) { .px-x { min-width: 44px; min-height: 44px; } }

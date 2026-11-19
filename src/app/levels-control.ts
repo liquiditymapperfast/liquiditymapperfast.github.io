@@ -86,15 +86,39 @@ export interface LevelsControl {
   destroy(): void;
 }
 export interface LevelsOptions {
-  /** A paid choice pressed without Plus: where the Plus panel opens from (the popover and the sheet close first). */
+  /** A paid choice pressed without Plus: where the presentation of Plus opens from (the popover and the sheet close first). */
   locked(from: HTMLElement): void;
   /** A Close button in its heading (the sheet's). */
   close?: () => void;
+  /** The Split choice left out (the Plus demo's control, which has no columns to split). */
+  hideSplit?: boolean;
 }
 
-export function createLevelsControl(store: Store, o: LevelsOptions): LevelsControl {
+/**
+ * What the control reads and writes: the page's choice and membership (`appLevels`), or another store of the same shape (the Plus demo's, so
+ * trying its switches never touches the page's settings). `subscribe` tells of every change of the choice or of the membership.
+ */
+export interface LevelsModel {
+  get(): LiqChoice;
+  set(change: Partial<LiqLevelSettings>): void;
+  subscribe(listener: () => void): () => void;
+  /** Whether the paid choices are open here. */
+  member(): boolean;
+}
+/** The page's own choice (its settings) and membership. */
+export function appLevels(store: Store): LevelsModel {
+  return {
+    get: () => store.state.liqLevels,
+    set: change => { store.set({ liqLevels: { ...store.state.liqLevels, ...change } }); },
+    subscribe: listener => controlListeners(store as unknown as Parameters<typeof controlListeners>[0], plus(), listener, listener),
+    member: () => plusOn(),
+  };
+}
+
+export function createLevelsControl(source: Store | LevelsModel, o: LevelsOptions): LevelsControl {
+  const model: LevelsModel = 'get' in source ? source : appLevels(source);
   const id = `lv${++uid}`, headId = `${id}h`, tradersId = `${id}t`, howId = `${id}w`;
-  const set = (change: Partial<LiqLevelSettings>): void => { store.set({ liqLevels: { ...store.state.liqLevels, ...change } }); };
+  const set = (change: Partial<LiqLevelSettings>): void => { model.set(change); };
   const rows = new Map<LiqPart, { b: HTMLButtonElement; sw: HTMLElement; lock: HTMLElement | null; label: string }>();
   const rowsEl = el('div', { class: 'lv-rows', role: 'group' });
   rowsEl.setAttribute('aria-labelledby', headId);
@@ -110,7 +134,7 @@ export function createLevelsControl(store: Store, o: LevelsOptions): LevelsContr
     const b = el('button', { type: 'button', class: 'lv-row' }, sample(part), el('span', { class: 'lv-label', textContent: label }), el('span', { class: 'lv-ctl' }, sw, ...(lock ? [lock] : [])));
     b.dataset.part = part; b.dataset.focus = `lv-${part}`;
     b.addEventListener('click', () => {
-      const r = pressPart(store.state.liqLevels, part, plusOn());
+      const r = pressPart(model.get(), part, model.member());
       if (r === 'plus') o.locked(b);
       else if (r === 'last') say(lastOnTip());
       else set(r.change);
@@ -124,7 +148,7 @@ export function createLevelsControl(store: Store, o: LevelsOptions): LevelsContr
     const r = el('button', { type: 'button', class: 'lv-radio' }, ...(group !== 'all' ? [el('span', { class: 'plus-tag locked lv-lock', textContent: PLUS_NAME, hidden: true })] : []), el('span', { textContent: groupName(group) }));
     r.dataset.group = group; r.dataset.focus = `lv-${group}`;
     r.addEventListener('click', () => {
-      const p = pressGroup(store.state.liqLevels, group, plusOn());
+      const p = pressGroup(model.get(), group, model.member());
       if (p === 'plus') o.locked(r);
       else set(p.change);
     });
@@ -134,7 +158,7 @@ export function createLevelsControl(store: Store, o: LevelsOptions): LevelsContr
       if (!moves || seg.getAttribute('role') !== 'radiogroup') return;
       event.preventDefault();
       const next: LiqGroup = key === 'Home' ? 'all' : key === 'End' ? 'profitable' : group === 'all' ? 'profitable' : 'all';
-      const p = pressGroup(store.state.liqLevels, next, plusOn());
+      const p = pressGroup(model.get(), next, model.member());
       if (typeof p === 'object') { set(p.change); radios.get(next)?.focus(); }
     });
     seg.append(r); radios.set(group, r);
@@ -157,7 +181,7 @@ export function createLevelsControl(store: Store, o: LevelsOptions): LevelsContr
     el('div', { class: 'lv-foot' }, sum, kept, flash, how, howText));
 
   const sync = (): void => {
-    const member = plusOn(), saved = store.state.liqLevels, s = shownChoice(saved, member), on = LIQ_PARTS.filter(part => s[part]).length;
+    const member = model.member(), saved = model.get(), s = shownChoice(saved, member), on = LIQ_PARTS.filter(part => s[part]).length;
     for (const [part, { b, sw, lock, label }] of rows) {
       const locked = !member && !!lock, last = !locked && s[part] && on === 1;
       sw.hidden = locked; if (lock) lock.hidden = !locked;
@@ -184,7 +208,7 @@ export function createLevelsControl(store: Store, o: LevelsOptions): LevelsContr
   };
   // Told of every change until it is dropped: whoever drops it calls `destroy` (Sol, review 2026-11-19: a guess from being on the page left
   // a panel's controls listening for good).
-  const off = controlListeners(store as unknown as Parameters<typeof controlListeners>[0], plus(), sync, sync);
+  const off = model.subscribe(sync);
   const destroy = (): void => { off(); window.clearTimeout(flashTimer); };
   sync();
   return { root, headId, sync, destroy };
