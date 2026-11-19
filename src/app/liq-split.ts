@@ -24,6 +24,8 @@ export function splitFits(plot: number, columnW: number, floor: number): boolean
 
 /** A sub-column: its left edge and width. */
 export interface Sub { x0: number; w: number }
+/** Which sub-column of a split column [x0, x0 + W) the pointer's `x` is on: 0 the left, 1 the right (from the divider on). */
+export const subAt = (x: number, x0: number, W: number): 0 | 1 => x >= subColumns(x0, W)[1].x0 ? 1 : 0;
 /** The two sub-columns of a column [x0, x0 + W): the left half and the right half (the right one's first pixel is the divider). */
 export function subColumns(x0: number, W: number): [Sub, Sub] {
   const half = Math.floor(W / 2);

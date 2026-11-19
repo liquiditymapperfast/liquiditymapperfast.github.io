@@ -12,7 +12,7 @@ import { paintInfoBox } from '../infobox.ts';
 import { ratioText } from '../mirror.ts';
 import { binsIn, dollarPriceOf, liqProfile, standingBelow, TAKE_DASH, type LiqLevels, type LiqProfile, type LiqSet, type LiqStanding } from '../liq-levels.ts';
 import { curveOf, groupName, groupTitle, heldBack, kindName, kindTitle, liveAsk, liveSplit, liveView, narrowView, plusOn, viewKey, type LiqPair, type LiqView } from '../liq-view.ts';
-import { liqNote, liqWhy, narrowNote, sideTitle, splitName, subNames } from '../liq-words.ts';
+import { liqNote, liqWhy, narrowNote, ordersAbsent, sideTitle, splitName, subNames } from '../liq-words.ts';
 import { ladderSplitFits, splitScales } from '../liq-split.ts';
 import { probeBoxLines } from '../liq-box.ts';
 import { toggleLevels } from '../levels-control.ts';
@@ -217,25 +217,41 @@ export class LiqPane {
     const why = replaying() ? t('Liquidation levels show the live market only.') : src.state === 'other-coin' ? t('Liquidation levels are for BTC only for now.')
       : !levels || one.state !== 'ready' ? liqWhy(one, one.asOfs().liq) || t('Liquidation levels are loading.') : '';
     const s = why ? null : one.standing();
-    if (!s || !levels) { this.#empty(why || t('Liquidation levels are loading.')); return; }
-    const live = dollarPriceOf(state), price = live > 0 ? live : src.lastPrice();
+    // A split in halves stands half by half: one half loading or missing never hides the other (Sol, review 2026-11-19).
+    const right = pair && halves ? src.right : null, rWhy = right ? (replaying() ? t('Liquidation levels show the live market only.') : !right.levels || right.state !== 'ready' ? liqWhy(right, right.asOfs().liq) || t('Liquidation levels are loading.') : '') : '';
+    const rs = right && !rWhy ? right.standing() : null;
+    if ((!s || !levels) && !rs) { this.#empty(why || t('Liquidation levels are loading.')); return; }
+    // The price from the chart, else from the levels: the left set's, or the right half's where only it stands.
+    const live = dollarPriceOf(state), last = src.lastPrice(), price = live > 0 ? live : last > 0 ? last : rs && right?.levels ? right.levels.mark : NaN;
     if (!(price > 0)) { this.#empty(t('Liquidation levels are loading.')); return; }
     this.#summary.hidden = false; this.#ranges.hidden = false; this.#pulse.hidden = false;
 
     const span = price * this.#range, mid = H / 2, half = H / 2 - PAD, xR = W - AXIS, plotW = xR;
     const yOf = (pr: number): number => mid - (pr - price) / span * half;
     const lo = price - span, hi = price + span, step = niceStep(2 * span, Math.max(24, (H - 2 * PAD) / ROW_PX));
-    const prof = liqProfile(s, step, lo, hi, price);
+    const prof = s ? liqProfile(s, step, lo, hi, price) : null;
     // The take profits, where shown: dashed bars on the same scale, never added to the levels (they sit on the other side of the price).
-    const ts = src.takesState === 'ready' ? src.takesStanding() : null, tprof = ts ? liqProfile(ts, step, lo, hi, price) : null;
+    const ts = s && src.takesState === 'ready' ? src.takesStanding() : null, tprof = ts ? liqProfile(ts, step, lo, hi, price) : null;
     this.#frame = { price, span };
 
     // The foot's note: under a split of liquidations beside stops both are drawn (in halves, or added up), so it says both; a fallback says so.
     const both = pair?.split === 'kinds' ? narrowView(pair) : null;
     const note = { src: both ? { ...src.setOf(both), takesState: src.takesState } : src, view: both ?? view, first: fallback ? narrowNote(pair!.split === 'kinds' ? kindName('both') : groupName('all')) : '' };
+    if (pair && halves && right) {
+      // The summary weighs the one series (the left half) where it stands; else it goes, and the foot says why beside the right half's note.
+      if (s && levels) this.#paintSummary(s, levels, price, lo, hi, view, { ...note, last: right.ordersAbsent() && !note.src.ordersAbsent() ? ordersAbsent() : '' });
+      else {
+        this.#summary.hidden = true;
+        const late = src.candlesLate() ? ` · ${t('Hyperliquid\'s candles could not be read, so a level price has passed may still show.')}` : '';
+        this.#foot.textContent = `${why} · ${liqNote({ ...right, takesState: 'off' }, right.view, right.levels!.asOf)}${late}`;
+      }
+      this.#paintGrid(ctx, p, price, lo, hi, span, yOf, xR, W);
+      this.#paintHalves(ctx, p, pair, s && levels && prof ? { s, levels, prof, tprof, why: '' } : { why }, right, rs ? { s: rs, levels: right.levels!, why: '' } : { why: rWhy }, step, price, lo, hi, yOf, xR, mid, W, H);
+      return;
+    }
+    if (!s || !levels || !prof) { this.#empty(why || t('Liquidation levels are loading.')); return; }
     this.#paintSummary(s, levels, price, lo, hi, view, note);
     this.#paintGrid(ctx, p, price, lo, hi, span, yOf, xR, W);
-    if (pair && halves) { this.#paintHalves(ctx, p, pair, s, levels, prof, tprof, step, price, lo, hi, yOf, xR, mid, W, H); return; }
     this.#paintMountains(ctx, p, prof, step, price, yOf, xR, plotW, mid);
     const placed = this.#paintMilestones(ctx, p, s, price, yOf, plotW);
     this.#paintBars(ctx, p, prof, step, levels, yOf, xR, plotW, H, placed, tprof);
@@ -250,32 +266,36 @@ export class LiqPane {
    * one each (everyone's are many times the profitable traders'), and captioned at its top. The take profits go with the left half. A half
    * with nothing to draw says why. A finger reads both halves at its price.
    */
-  #paintHalves(ctx: CanvasRenderingContext2D, p: Palette, pair: LiqPair, s: LiqStanding, levels: LiqLevels, prof: LiqProfile, tprof: LiqProfile | null, step: number, price: number,
+  #paintHalves(ctx: CanvasRenderingContext2D, p: Palette, pair: LiqPair, leftHas: { s?: LiqStanding; levels?: LiqLevels; prof?: LiqProfile; tprof?: LiqProfile | null; why: string },
+    right: LiqSet, rightHas: { s?: LiqStanding; levels?: LiqLevels; why: string }, step: number, price: number,
     lo: number, hi: number, yOf: (pr: number) => number, xR: number, mid: number, W: number, H: number): void {
-    const right = this.hub.liqLevels.right, rs = right && right.levels && right.state === 'ready' && !replaying() ? right.standing() : null;
-    const rprof = rs ? liqProfile(rs, step, lo, hi, price) : null, gap = 6, cut = Math.floor((xR - gap) / 2);
+    const prof = leftHas.prof ?? null, tprof = leftHas.tprof ?? null, rprof = rightHas.s ? liqProfile(rightHas.s, step, lo, hi, price) : null, gap = 6, cut = Math.floor((xR - gap) / 2);
     const halves = [{ x0: 0, x1: cut }, { x0: cut + gap, x1: xR }] as const;
-    const [left, other] = splitScales({ maxLevel: Math.max(prof.maxLevel, tprof?.maxLevel ?? 0), maxCum: prof.maxCum }, { maxLevel: rprof?.maxLevel ?? 0, maxCum: rprof?.maxCum ?? 0 }, pair.split === 'kinds');
-    // Left half: the left set (and the take profits).
-    const a = halves[0], aw = a.x1 - a.x0;
-    this.#paintMountains(ctx, p, prof, step, price, yOf, a.x1, aw, mid, left.maxCum);
-    const placedA = this.#paintMilestones(ctx, p, s, price, yOf, a.x1, a.x0);
-    this.#paintBars(ctx, p, prof, step, levels, yOf, a.x1, aw, H, placedA, tprof, left.maxLevel, a.x0);
-    // Right half: the right set, or why it has none.
-    const b = halves[1], bw = b.x1 - b.x0;
-    if (rs && rprof && right?.levels) {
-      this.#paintMountains(ctx, p, rprof, step, price, yOf, b.x1, bw, mid, other.maxCum);
-      const placedB = this.#paintMilestones(ctx, p, rs, price, yOf, b.x1, b.x0);
-      this.#paintBars(ctx, p, rprof, step, right.levels, yOf, b.x1, bw, H, placedB, null, other.maxLevel, b.x0);
-    } else {
-      const why = replaying() ? t('Liquidation levels show the live market only.') : (right ? liqWhy(right, right.asOfs().liq) : '') || t('Liquidation levels are loading.');
+    const [left, other] = splitScales({ maxLevel: Math.max(prof?.maxLevel ?? 0, tprof?.maxLevel ?? 0), maxCum: prof?.maxCum ?? 0 }, { maxLevel: rprof?.maxLevel ?? 0, maxCum: rprof?.maxCum ?? 0 }, pair.split === 'kinds');
+    /** Why a half has nothing, centred in it. */
+    const reason = (h: { x0: number; x1: number }, why: string): void => {
+      const hw = h.x1 - h.x0;
       ctx.save(); ctx.fillStyle = p.muted; ctx.font = `12px ${SANS}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       const lines: string[] = []; let line = '';
-      for (const word of why.split(' ')) { const next = line ? `${line} ${word}` : word; if (line && ctx.measureText(next).width > bw - 16) { lines.push(line); line = word; } else line = next; }
+      for (const word of why.split(' ')) { const next = line ? `${line} ${word}` : word; if (line && ctx.measureText(next).width > hw - 16) { lines.push(line); line = word; } else line = next; }
       if (line) lines.push(line);
-      lines.forEach((text, i) => ctx.fillText(text, b.x0 + bw / 2, H * 0.25 + i * 16));
+      lines.forEach((text, i) => ctx.fillText(text, h.x0 + hw / 2, H * 0.25 + i * 16));
       ctx.restore();
-    }
+    };
+    // Left half: the left set (and the take profits), or why it has none.
+    const a = halves[0], aw = a.x1 - a.x0;
+    if (leftHas.s && leftHas.levels && prof) {
+      this.#paintMountains(ctx, p, prof, step, price, yOf, a.x1, aw, mid, left.maxCum);
+      const placedA = this.#paintMilestones(ctx, p, leftHas.s, price, yOf, a.x1, a.x0);
+      this.#paintBars(ctx, p, prof, step, leftHas.levels, yOf, a.x1, aw, H, placedA, tprof, left.maxLevel, a.x0);
+    } else reason(a, leftHas.why || t('Liquidation levels are loading.'));
+    // Right half: the right set, or why it has none.
+    const b = halves[1], bw = b.x1 - b.x0;
+    if (rightHas.s && rightHas.levels && rprof) {
+      this.#paintMountains(ctx, p, rprof, step, price, yOf, b.x1, bw, mid, other.maxCum);
+      const placedB = this.#paintMilestones(ctx, p, rightHas.s, price, yOf, b.x1, b.x0);
+      this.#paintBars(ctx, p, rprof, step, rightHas.levels, yOf, b.x1, bw, H, placedB, null, other.maxLevel, b.x0);
+    } else reason(b, rightHas.why || t('Liquidation levels are loading.'));
     // The divider, and each half's caption at its top.
     ctx.save();
     ctx.strokeStyle = p.line; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cut + gap / 2 + 0.5, 0); ctx.lineTo(cut + gap / 2 + 0.5, H); ctx.stroke();
@@ -285,17 +305,26 @@ export class LiqPane {
       ctx.globalAlpha = 0.92; ctx.fillStyle = p.panel; this.#pill(ctx, h.x0 + 4, 4, w, 18, 4); ctx.fill();
       ctx.globalAlpha = 1; ctx.strokeStyle = p.line; this.#pill(ctx, h.x0 + 4.5, 4.5, w - 1, 17, 4); ctx.stroke();
       ctx.fillStyle = p.text; ctx.fillText(name, h.x0 + 10, 13.5, w - 12);
+      const set = i === 0 ? this.hub.liqLevels : right;
+      if (set.ordersAbsent() && (i === 0 ? leftHas.s : rightHas.s)) {
+        ctx.font = `10.5px ${SANS}`; ctx.fillStyle = p.muted;
+        const words = ordersAbsent().split(' '), room = h.x1 - h.x0 - 12, lines: string[] = []; let line = '';
+        for (const word of words) { const next = line ? `${line} ${word}` : word; if (line && ctx.measureText(next).width > room) { lines.push(line); line = word; } else line = next; }
+        if (line) lines.push(line);
+        lines.slice(0, 3).forEach((text, n) => ctx.fillText(text, h.x0 + 6, 32 + n * 13));
+        ctx.font = `600 11px ${SANS}`;
+      }
     });
     ctx.restore();
     this.#paintPrice(ctx, p, price, mid, xR, W);
     if (this.#probe !== null) {
-      this.#paintProbe(ctx, p, s, levels, prof, step, price, yOf, xR, W, H, a);
-      if (rs && rprof && right?.levels) this.#paintProbe(ctx, p, rs, right.levels, rprof, step, price, yOf, xR, W, H, b, right);
+      if (leftHas.s && leftHas.levels && prof) this.#paintProbe(ctx, p, leftHas.s, leftHas.levels, prof, step, price, yOf, xR, W, H, a);
+      if (rightHas.s && rightHas.levels && rprof) this.#paintProbe(ctx, p, rightHas.s, rightHas.levels, rprof, step, price, yOf, xR, W, H, b, right);
     }
   }
 
   /** The summary: the longs that would go below and the shorts above within the range, weighed against each other. */
-  #paintSummary(s: LiqStanding, levels: LiqLevels, price: number, lo: number, hi: number, view: LiqView, note?: { src: Parameters<typeof liqNote>[0]; view: LiqView; first: string }): void {
+  #paintSummary(s: LiqStanding, levels: LiqLevels, price: number, lo: number, hi: number, view: LiqView, note?: { src: Parameters<typeof liqNote>[0]; view: LiqView; first: string; last?: string }): void {
     const longs = Math.max(0, standingBelow(s, 'long', price) - standingBelow(s, 'long', lo));
     const shorts = Math.max(0, standingBelow(s, 'short', hi) - standingBelow(s, 'short', price));
     this.#longUsd.textContent = `$${usd(longs)}`; this.#shortUsd.textContent = `$${usd(shorts)}`;
@@ -312,7 +341,7 @@ export class LiqPane {
     this.#ratio.className = `liq-ratio ${longs >= shorts ? 'long' : 'short'}`;
     const src = this.hub.liqLevels, late = src.candlesLate() ? ` · ${t('Hyperliquid\'s candles could not be read, so a level price has passed may still show.')}` : '';
     const said = note ? liqNote(note.src, note.view, levels.asOf) : liqNote(src, view, levels.asOf);
-    this.#foot.textContent = `${note?.first ? `${note.first} · ` : ''}${said}${late}`;
+    this.#foot.textContent = `${note?.first ? `${note.first} · ` : ''}${said}${note?.last ? ` · ${note.last}` : ''}${late}`;
   }
 
   /** Nothing to draw: the reason, in the middle, and no summary. */

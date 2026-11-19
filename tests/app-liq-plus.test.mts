@@ -1485,3 +1485,42 @@ test('the phone\'s Liq tab under a split: halves at a phone\'s width, named by t
     } finally { plus().forget(); page.restore(); }
   }
 });
+
+/** The phone's Liq tab at a phone's width with a split chosen, on the stand-in page; `files` are the Plus answers. */
+async function tabWith(files: Record<string, LiqAnswer>, lv: Partial<import('../src/app/liq-url.ts').LiqLevelSettings>) {
+  const page = standInPage(390), now = Date.now();
+  plus().accept({ key: 'standin-key-0123456789', pass: standInPass(now + 23 * 3_600_000), until: now + 20 * DAY_MS });
+  const s = service(files, { value: 'v1.pass.sig' }, () => free(NEAR.all.liq));
+  const store = new Store(initialState());
+  store.set({ liqLevels: { ...store.state.liqLevels, ...lv } });
+  const pane = new LiqPane(page.parent as never, store, { liqLevels: s.src } as never);
+  pane.setShown(true);
+  for (let i = 0; i < 4; i++) { page.tick(); await tick(); }
+  page.frames();
+  return { page, src: s.src, done: (): void => { pane.setShown(false); plus().forget(); page.restore(); } };
+}
+
+test('Sol 2 (P2): the phone\'s right half says the profitable traders\' stops are not on the server, though their liquidations stand and are drawn', async () => {
+  // Everyone | Profitable, liquidations and stops: the profitable traders' order files answer 404.
+  const t = await tabWith({ [U.groups]: { status: 200, body: groups(NEAR.profitable.liq, null) }, [U.triggers]: { status: 200, body: triggers(NEAR.all.stops, NEAR.all.takes) } },
+    { liq: true, stops: true, takes: false, group: 'all', split: 'groups' });
+  try {
+    const right = t.src.right!;
+    assert.equal(right.state, 'ready', 'their liquidations stand'); assert.equal(right.ordersAbsent(), true);
+    assert.equal(t.page.text('liq-title'), 'Everyone | Profitable');
+    assert.ok((t.page.text('liq-foot') ?? '').includes(ordersAbsent()), `the foot says so: ${t.page.text('liq-foot')}`);
+    assert.equal(t.page.text('liq-usd long'), '$200', 'the summary is everyone\'s, the left half');
+  } finally { t.done(); }
+});
+
+test('Sol 3 (P2): the phone\'s halves stand on their own: everyone\'s stops loading never hide the profitable traders\' half that is ready', async () => {
+  // Everyone | Profitable, stops alone: everyone's order file answers 503, the profitable traders' own answers.
+  const t = await tabWith({ [U.triggers]: { status: 503, body: null }, [U.triggersGroups]: { status: 200, body: triggerGroups(NEAR.profitable.stops, NEAR.profitable.takes) } },
+    { liq: false, stops: true, takes: false, group: 'all', split: 'groups' });
+  try {
+    assert.notEqual(t.src.state, 'ready', 'the left half has nothing yet'); assert.equal(t.src.right!.state, 'ready', 'the right half is ready');
+    const foot = t.page.text('liq-foot') ?? '';
+    assert.match(foot, /Profitable traders' stop orders at \d\d:\d\d/, `the right half's note: ${foot}`);
+    assert.ok(foot.length > 0, 'not the empty tab');
+  } finally { t.done(); }
+});

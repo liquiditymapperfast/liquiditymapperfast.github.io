@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { LADDER_SUB_MIN, SPLIT_COLUMN_W, SPLIT_SUB_W, kindLanes, ladderSplitFits, liqColumnWidth, splitFits, splitHeads, splitScales, stackCaptions, subColumns } from '../src/app/liq-split.ts';
+import { LADDER_SUB_MIN, SPLIT_COLUMN_W, SPLIT_SUB_W, kindLanes, ladderSplitFits, liqColumnWidth, splitFits, splitHeads, splitScales, stackCaptions, subAt, subColumns } from '../src/app/liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../src/app/layouts/dock-model.ts';
 import { readLiqLevels } from '../src/app/liq-url.ts';
 import { FREE_VIEW, narrowView, splitPair } from '../src/app/liq-view.ts';
@@ -187,10 +187,30 @@ test('the layout asks the same width of the map as the map takes, with a split c
 
 test('the split\'s pieces are where the page draws them: the map\'s split painter, the stripe\'s lanes, the Liq tab\'s halves, the Depth pane\'s note', () => {
   const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8'), tab = fs.readFileSync('src/app/panes/liq-pane.ts', 'utf8'), depth = fs.readFileSync('src/app/panes/lower-panes.ts', 'utf8');
-  assert.match(heat, /if \(pair && W === SPLIT_COLUMN_W\) \{ this\.#paintLiqSplit\(ctx, state, pw, ph, pair\); return; \}/);
+  assert.match(heat, /if \(pair && !strip && W === SPLIT_COLUMN_W\) \{ this\.#paintLiqSplit\(ctx, state, pw, ph, pair\); return; \}/);
   assert.match(heat, /const set: LiqSet = pair\?\.split === 'kinds' \? src\.setOf\(narrowView\(pair\)\) : src;/, 'too narrow: the sum, or everyone\'s');
   assert.match(heat, /kindLanes\(x0, pw, !!takes\)/); assert.match(heat, /this\.#paintLaneCaptions\(ctx, \[/);
   assert.match(heat, /splitScales\(\{ maxLevel: Math\.max\(profs\[0\]\?\.maxLevel \?\? 0, tprof\?\.maxLevel \?\? 0\), maxCum: profs\[0\]\?\.maxCum \?\? 0 \},\n\s+\{ maxLevel: profs\[1\]\?\.maxLevel \?\? 0, maxCum: profs\[1\]\?\.maxCum \?\? 0 \}, pair\.split === 'kinds'\)/);
   assert.match(tab, /halves = !!pair && ladderSplitFits\(W - AXIS\)/); assert.match(tab, /#paintHalves\(/);
   assert.match(depth, /Under a split the Depth pane draws its left column\./);
+});
+
+// Sol's review of Split (2026-11-19): five P2s; the code before the fixes failed each.
+test('Sol 1 (P2): a move across the split column\'s divider at one height redraws the overlay: Mirror follows the sub-column, and so does the hover key', () => {
+  assert.equal(subAt(400, 400, SPLIT_COLUMN_W), 0); assert.equal(subAt(499, 400, SPLIT_COLUMN_W), 0); assert.equal(subAt(500, 400, SPLIT_COLUMN_W), 1, 'from the divider on: the right');
+  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
+  assert.match(heat, /const side = profile\?\.column === 'liq' && profile\.x !== undefined && liqSplitDrawn\(state\) \? `,\$\{subAt\(profile\.x, pw, SPLIT_COLUMN_W\)\}` : '';/);
+  assert.match(heat, /\$\{profile \? `\$\{profile\.column\},\$\{profile\.y\}\$\{side\}` : ''\}/, 'the side is part of the key');
+  assert.match(heat, /at: 0 \| 1 = hv\?\.x !== undefined \? subAt\(hv\.x, x0, W\) : 0/, 'and Mirror reads the same side');
+});
+
+test('Sol 4 (P2): a compact map\'s strip draws what a split falls back to (Liq | Stops: the two added up), never liquidations alone', () => {
+  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
+  assert.match(heat, /    const pair = liveSplit\(state\.liqLevels\);\n    if \(pair && !strip && W === SPLIT_COLUMN_W\)/);
+  assert.ok(!/const pair = strip \? null : liveSplit/.test(heat));
+});
+
+test('Sol 5 (P2): an empty stops lane gives no reading: the liquidations\' lane answers only inside itself', () => {
+  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
+  assert.match(heat, /levels = inTakes \? src\.takes : x >= lanes\.levels\.x0 && x < lanes\.levels\.x1 \? src\.levels : null;/);
 });

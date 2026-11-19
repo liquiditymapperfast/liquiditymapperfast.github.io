@@ -27,7 +27,7 @@ import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText, wrapText } from '../text-fit.ts';
 import { captionPlace, dollarPriceOf, laneRows, liqCurves, liqProfile, onTheWay, seamStats, paintLiqStripe, standingBelow, stripeLanes, TAKE_DASH, type CurvePoint, type Lane, type LaneRows, type LiqLevels, type LiqRow, type LiqSet, type LiqStanding } from '../liq-levels.ts';
-import { SPLIT_COLUMN_W, kindLanes, liqColumnWidth, splitHeads, splitScales, stackCaptions, subColumns, type Sub, type SubScale } from '../liq-split.ts';
+import { SPLIT_COLUMN_W, kindLanes, liqColumnWidth, splitHeads, splitScales, stackCaptions, subAt, subColumns, type Sub, type SubScale } from '../liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../layouts/dock-model.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRowsHeld, type TradedRows } from '../traded.ts';
@@ -838,7 +838,10 @@ export class HeatPane {
     const focus = state.show.bubbles ? this.#bubbleFocus(state, pw, ph) ?? '' : '';
     const pin = hv?.touch ? `${x},${y}` : '';
     const bands = this.#bands.hoverKey(state, { view: this.view, ph });
-    return `${strip}|${focus}|${pin}|${bands}|${profile ? `${profile.column},${profile.y}` : ''}|${traded ? `${traded.side},${traded.i},${traded.y}` : ''}`;
+    // On a split liquidation column Mirror reads the sub-column under the pointer (`#paintLiqSplit`): a move across the divider at one height
+    // changes what the overlay draws (Sol, review 2026-11-19).
+    const side = profile?.column === 'liq' && profile.x !== undefined && liqSplitDrawn(state) ? `,${subAt(profile.x, pw, SPLIT_COLUMN_W)}` : '';
+    return `${strip}|${focus}|${pin}|${bands}|${profile ? `${profile.column},${profile.y}${side}` : ''}|${traded ? `${traded.side},${traded.i},${traded.y}` : ''}`;
   }
   /**
    * Covered by a view of its own (the phone's Candle tab): nothing is drawn, the dust included, until it shows again, when it draws at once.
@@ -2363,7 +2366,7 @@ export class HeatPane {
     const src = this.hub.liqLevels, lanes = this.#liqLanes, v = this.view, stops = this.#liqStopsLane;
     if (!lanes || replaying() || src.state !== 'ready') return [];
     if (stops && this.#liqRightRows && x >= stops.lane.x0 && x < stops.lane.x1) return this.#laneLines(state, stops.set, this.#liqRightRows, y, ph, touch);
-    const inTakes = !!lanes.takes && x >= lanes.takes.x0 && x < lanes.takes.x1, levels = inTakes ? src.takes : x >= lanes.levels.x0 ? src.levels : null;
+    const inTakes = !!lanes.takes && x >= lanes.takes.x0 && x < lanes.takes.x1, levels = inTakes ? src.takes : x >= lanes.levels.x0 && x < lanes.levels.x1 ? src.levels : null;
     if (!levels) return [];
     const { rows, heat } = inTakes ? this.#liqTakeRowsDrawn(levels, ph) : this.#liqRowsDrawn(levels, ph), slop = touch ? 6 : 2;
     const shown = (r: LiqRow, side: 'long' | 'short'): boolean => r[`${side}Left`] > 0 && heat(r[`${side}Left`]) > 0;
@@ -4135,8 +4138,8 @@ export class HeatPane {
     const p = this.#palette, v = this.view, src = this.hub.liqLevels, x0 = pw, W = liqColumnW(state), strip = W < PROFILE_W;
     // A split chosen and drawn: two sub-columns where there is room (`#paintLiqSplit`). Where there is none the column draws what the split
     // falls back to (`narrowView`: liquidations and stops added up, or everyone's levels) and says so under its button (`narrowNote`).
-    const pair = strip ? null : liveSplit(state.liqLevels);
-    if (pair && W === SPLIT_COLUMN_W) { this.#paintLiqSplit(ctx, state, pw, ph, pair); return; }
+    const pair = liveSplit(state.liqLevels);
+    if (pair && !strip && W === SPLIT_COLUMN_W) { this.#paintLiqSplit(ctx, state, pw, ph, pair); return; }
     const set: LiqSet = pair?.split === 'kinds' ? src.setOf(narrowView(pair)) : src;
     this.#liqDrawnSet = set;
     const s = set.levels && set.state === 'ready' && !replaying() ? set.standing() : null;
@@ -4321,7 +4324,7 @@ export class HeatPane {
     heads.across.forEach((line, n) => ctx.fillText(line, x0 + LIQ_PAD, below + 12 * n));
     // Mirror on the sub-column under the pointer, its band and box on that column's set.
     this.#profileBox = null;
-    const hv = this.#profileHover, at: 0 | 1 = hv?.x !== undefined && hv.x >= subs[1].x0 ? 1 : 0, ms = stands[at], mset = sets[at];
+    const hv = this.#profileHover, at: 0 | 1 = hv?.x !== undefined ? subAt(hv.x, x0, W) : 0, ms = stands[at], mset = sets[at];
     if (ms && mset) this.#paintLiqColumnMirror(ctx, state, ms, price, subs[at].x0, ph, subs[at].w, mset);
     ctx.restore(); ctx.textBaseline = 'middle';
     const box = this.#profileBox as { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null; // set by #paintLiqColumnMirror above
