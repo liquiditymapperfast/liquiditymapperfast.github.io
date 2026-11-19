@@ -164,6 +164,10 @@
   .pd button.pd-seg-b { min-height: 48px; font-size: 15px; }
   .pd-lv-head { font-size: 16px; }
 }
+/* Six scenes of 44 px and five gaps of 6 px need 294 px: narrower (a 320 px phone with 16 px gutters gives 288) they take two rows of three. */
+@container pd (width < 294px) {
+  .pd-scenes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 @media (prefers-reduced-motion: reduce) { .pd-caption.pd-swap { animation: none; } .pd-sw, .pd-sw::after { transition: none; } }
 
 /* ---- Classic 95 (the bevel frame): raised buttons, sunken wells, windows; the app's own pictures of the edges where the page has them ---- */

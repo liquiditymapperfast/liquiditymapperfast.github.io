@@ -249,6 +249,8 @@ class FakeElement extends FakeNode {
   fire(type: string, extra: Partial<FakeEvent> = {}): void { for (const l of [...this.listeners.get(type) ?? []]) l({ type, preventDefault() {}, ...extra }); }
   getBoundingClientRect() { return { left: 0, top: 0, right: this.env.width, bottom: 30, width: this.env.width, height: 30 }; }
   setPointerCapture(): void {}
+  /** How long the browser would write this text (the page says how wide its words are). */
+  getComputedTextLength(): number { return this.env.textWidth(this.textContent); }
   focus(): void {}
   /** Every element under this one. */
   all(): FakeElement[] { return this.children.flatMap(c => c instanceof FakeElement ? [c, ...c.all()] : []); }
@@ -257,6 +259,8 @@ class FakeElement extends FakeNode {
 /** The page, as the demo uses it: elements, frames, timers, observers, the media query, the tab's visibility; and what it counted. */
 class FakePage {
   width = 700; reduced = false; hidden = false; clock = 1_000;
+  /** How wide a text is written: six pixels a character unless a test says otherwise. */
+  textWidth = (text: string): number => text.length * 6;
   frames = new Map<number, (t: number) => void>(); nextFrame = 1;
   timers = new Map<number, () => void>(); nextTimer = 1;
   idles = new Map<number, (deadline: { didTimeout: boolean; timeRemaining(): number }) => void>(); nextIdle = 1;
@@ -342,10 +346,11 @@ class FakePage {
 const byClass = (root: FakeElement, name: string): FakeElement => { const found = root.all().find(e => e.classList.contains(name)); assert.ok(found, `.${name}`); return found; };
 
 /** Mount the demo on a fake page with a control that hands its store out (the shape the app's control will have). */
-function mounted(opts: { width?: number; reduced?: boolean } = {}) {
+function mounted(opts: { width?: number; reduced?: boolean; textWidth?: (text: string) => number } = {}) {
   demoData();
   const page = new FakePage();
   page.width = opts.width ?? 700; page.reduced = opts.reduced ?? false;
+  if (opts.textWidth) page.textWidth = opts.textWidth;
   page.install();
   const host = new FakeElement('div', page);
   let store: DemoStore | null = null, controlHost: FakeElement | null = null, controlDestroyed = 0;
@@ -718,6 +723,45 @@ test('cold: the demo paints its frame first and builds the numbers in idle turns
     assert.equal(page.idles.size, 0);
     assert.deepEqual(page.network, []);
   } finally { page.uninstall(); demoData(); }
+});
+
+test('the scenes keep targets of 44 px at every width: six in a row while 294 px hold them, then two rows of three', () => {
+  const css = fs.readFileSync(path.join(process.cwd(), 'src', 'app', 'plus', 'demo', 'demo.css'), 'utf8');
+  // The row: six columns and their gap, in the stylesheet's own numbers.
+  const row = /\n\.pd-scenes \{[^}]*grid-template-columns: repeat\((\d+), minmax\(0, 1fr\)\);[^}]*gap: (\d+)px;/.exec(css);
+  assert.ok(row, 'the scenes row');
+  const columns = Number(row[1]), gap = Number(row[2]);
+  // A phone's target, and the scene buttons sized by it.
+  const phone = /@container pd \(max-width: 600px\) \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
+  const target = Number(/--pd-target: (\d+)px/.exec(phone)?.[1]);
+  assert.equal(target, 44);
+  assert.match(css, /\.pd button\.pd-scene \{[^}]*min-height: var\(--pd-target\)/, 'a scene is as tall as the target');
+  // The narrow rule: where six no longer fit, three to a row.
+  const narrow = /@container pd \(width < (\d+)px\) \{\s*\.pd-scenes \{ grid-template-columns: repeat\((\d+), minmax\(0, 1fr\)\); \}/.exec(css);
+  assert.ok(narrow, 'a rule for narrow containers');
+  const below = Number(narrow[1]), fewer = Number(narrow[2]);
+  assert.equal(below, columns * target + (columns - 1) * gap, 'it starts exactly where six targets and their gaps stop fitting');
+  const width = (n: number, room: number): number => (room - (n - 1) * gap) / n;
+  assert.ok(width(columns, below) >= target && width(columns, below - 1) < target);
+  for (const room of [288, 260, 240]) assert.ok(width(fewer, room) >= target, `${room} px: ${width(fewer, room).toFixed(1)} px a scene`);
+  assert.ok(Math.ceil(6 / fewer) <= 2, 'and at most two rows');
+});
+
+test('the Depth strip\'s dates: three where there is room; on a narrow strip the first only where it fits beside the last', () => {
+  const datesOf = (host: FakeElement): string[] => {
+    const svg = byClass(host, 'pd-ch'), y = svg.all().find(e => e.tagName === 'text' && e.getAttribute('text-anchor') === 'middle')!.getAttribute('y');
+    return svg.all().filter(e => e.tagName === 'text' && e.getAttribute('y') === y && e.style.display !== 'none').map(e => e.textContent);
+  };
+  // A desktop's strip holds three; a 320 px phone's two, or only the last where the words are long (40 px a date, as "Maintenant" is).
+  for (const [width, long, expected] of [[700, false, 3], [288, false, 2], [288, true, 1]] as const) {
+    const m = mounted({ width, ...(long ? { textWidth: () => 40 } : {}) });
+    try {
+      m.page.run(50);
+      const dates = datesOf(m.host);
+      assert.equal(dates.length, expected, `${width} px${long ? ', long words' : ''}: ${dates.join(' | ')}`);
+      assert.equal(dates.at(-1), 'Now', 'the end of the window is always said');
+    } finally { m.handle.destroy(); m.page.uninstall(); }
+  }
 });
 
 /* ==== no network, no app settings ======================================================================================================= */

@@ -56,7 +56,8 @@ export function createChart(): Chart {
   // What a frame rewrites, kept from the last build.
   let built: ReturnType<typeof build> | null = null;
   const words = new WeakMap<Element, string>();
-  const say = (node: Element, s: string): void => { if (words.get(node) !== s) { node.textContent = s; words.set(node, s); } };
+  /** Write `s` into `node` when it says something else; whether it changed. */
+  const say = (node: Element, s: string): boolean => { if (words.get(node) === s) return false; node.textContent = s; words.set(node, s); return true; };
   const put = (node: Element, k: string, v: string | number): void => { const s = String(v); if (node.getAttribute(k) !== s) node.setAttribute(k, s); };
   const op = (node: SVGElement, v: number): void => { const s = v <= 0.001 ? '0' : v >= 0.999 ? '1' : v.toFixed(3); if (node.style.opacity !== s) node.style.opacity = s; };
   const show = (node: SVGElement, on: boolean): void => { const s = on ? '' : 'none'; if (node.style.display !== s) node.style.display = s; };
@@ -127,7 +128,7 @@ export function createChart(): Chart {
     const axisT = axis.map(([p, y]) => text(svg, priceText(p), { x: L.xAxis + 6, y: y + 3.5 }));
     const tagBg = add(svg, 'rect', { class: 'pd-tag-bg', x: L.xAxis + 2, width: L.axisW - 4, height: 16, rx: 2 });
     const tagTx = add(svg, 'text', { class: 'pd-tag-tx', x: L.xAxis + L.axisW / 2, 'text-anchor': 'middle' });
-    return { axis, dPlus, dbUp, dbDn, dEdgeUp, dEdgeDn, dTp, dTpcU, dTpcD, dTpU, dTpD, dBnd, dRegPlus, dRegFree, dDates, cells, traceArea, trace, kinds, colG,
+    return { endsMeasured: false, axis, dPlus, dbUp, dbDn, dEdgeUp, dEdgeDn, dTp, dTpcU, dTpcD, dTpU, dTpD, dBnd, dRegPlus, dRegFree, dDates, cells, traceArea, trace, kinds, colG,
       cumfU, cumfD, barLU, barLD, barSU, barSD, cumlU, cumlD, tpBars, tpbU, tpbD, tpcU, tpcD, laneSep, capLevel, capCum, edge, priceLine, dot, edgeLab, axisT, tagBg, tagTx };
   }
 
@@ -245,7 +246,16 @@ export function createChart(): Chart {
     show(E.dRegPlus, xBnd > L.padL + 30); show(E.dRegFree, xBnd < L.xLive - 30);
     put(E.dRegPlus, 'x', f1(Math.min(xBnd, L.xLive) - 5)); put(E.dRegFree, 'x', f1(Math.max(xBnd, L.padL) + 5));
     put(E.dDates[0]!, 'x', L.padL); put(E.dDates[1]!, 'x', f1((L.padL + L.xLive) / 2)); put(E.dDates[2]!, 'x', L.xLive);
-    say(E.dDates[0]!, dayLabel(Math.max(0, start))); say(E.dDates[1]!, dayLabel(start + DEMO_WIN / 2)); say(E.dDates[2]!, live ? t('Now') : dayLabel(end));
+    const firstDate = E.dDates[0]!, lastDate = E.dDates[2]!;
+    const ends = say(firstDate, dayLabel(Math.max(0, start))); say(E.dDates[1]!, dayLabel(start + DEMO_WIN / 2));
+    if (say(lastDate, live ? t('Now') : dayLabel(end)) || ends || !E.endsMeasured) {
+      // A narrow strip's two ends, measured as written (only when their words change): where the first would run into the last ("11 nov."
+      // into "Maintenant" on a 320 px phone), the last alone says where the window ends.
+      E.endsMeasured = true;
+      show(firstDate, true);
+      const room = typeof firstDate.getComputedTextLength === 'function' ? L.xLive - L.padL - firstDate.getComputedTextLength() - lastDate.getComputedTextLength() : Infinity;
+      show(firstDate, room >= 6);
+    }
     // A phone's strip (about 100 px) has room for its two ends only: a date of the middle ran into the first ("11. Nov.15. Nov."). A wider
     // screen's (165 px and up) keeps all three, as the prototype had them.
     show(E.dDates[1]!, L.xLive - L.padL >= 150);
