@@ -18,7 +18,7 @@
 .px-brand span { overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; }
 .px-x { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; font-size: 13px; }
 .px-x-mark { width: 12px; height: 12px; background: currentColor; clip-path: polygon(12% 0, 50% 38%, 88% 0, 100% 12%, 62% 50%, 100% 88%, 88% 100%, 50% 62%, 12% 100%, 0 88%, 38% 50%, 0 12%); }
-.px-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 24px 40px; container: px-sheet / inline-size; }
+.px-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 24px 40px; container: px / inline-size; }
 /* The demo's stage: the demo module draws into it (a placeholder until it is part of the app: nothing shows). */
 .px-stage { margin-top: 18px; }
 .px-stage:empty { display: none; }
@@ -36,8 +36,8 @@
 .px-status .px-check { margin-top: 4px; }
 .px-key .key-in { height: 36px; font-size: 14px; }
 .px-key .key-go, .px-key .key-show { min-height: 36px; }
-@container px-sheet (max-width: 600px) {
-  .px-feat { grid-template-columns: minmax(0, 1fr); margin-top: 44px; }
+/* Narrow: the access card stacks too (the feature sections' rule, and the hero's on a phone, are in present.css, which the Plus page loads too). */
+@container px (max-width: 600px) {
   .px-access { grid-template-columns: minmax(0, 1fr); margin-top: 44px; padding: 20px 16px; }
 }
 @media (max-width: 639.98px) {
@@ -47,12 +47,8 @@
   .px-body { padding: 0 max(16px, env(safe-area-inset-right, 0px)) max(32px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
   .px-x { justify-content: center; width: 44px; min-height: 44px; padding: 0; }
   .px-x-text { display: none; }
-  .px-hero { padding-top: 20px; }
-  .px-hero h1 { font-size: 30px; line-height: 1.15; }
-  .px-sub { font-size: 16px; }
-  .px-cta, .px-subscribe, .px-key .key-go, .px-key .key-show { min-height: 44px; }
+  .px-subscribe, .px-key .key-go, .px-key .key-show { min-height: 44px; }
   .px-key .key-in { height: 44px; }
-  .px-legal a { display: inline-flex; align-items: center; min-height: 44px; }
-  .px-feat h2, .px-access h2 { font-size: 20px; }
+  .px-access h2 { font-size: 20px; }
 }
 @media (pointer: coarse) { .px-x { min-width: 44px; min-height: 44px; } }

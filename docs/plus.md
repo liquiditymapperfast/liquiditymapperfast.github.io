@@ -76,12 +76,14 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
   - `pass.ts`: the membership as the browser holds it (`localStorage` `lmf.plus`: `{ v, key, pass, until, ended, renews, skew, next }`),
     and its renewal.
   - `panel.ts`: the Plus button's status pop-up (a browser with a key) and the locks' way in (`togglePlus`), which open the presentation.
-  - `key.ts`: a key entered in the app (the pop-up, the presentation's access card): the renewal call, what its answer means, the form.
+  - `key.ts`, `key.css`: a key entered in the app (the pop-up, the presentation's access card) or on the Plus page: the renewal call, what
+    its answer means, the form and its styles (one file the app and the page both load).
   - `sheet-entry.ts` (what the page fetches on demand: the styles, the demo and `sheet.ts`), `sheet.ts`, `sheet.css`: the presentation
     sheet; `present.ts` and `present.css`: the parts the Plus page shares (the hero, the feature sections, what stays free).
   - `demo/`: the demo (made-up numbers labelled as such, its own store, never the page's settings); `demo-levels.ts` puts the page's own
     levels control on the demo's store.
-  - `page.ts`, `index.html`, `page.css`, `boot.ts`: the Plus page (`plus/`), the only page with the checkout or another site's script.
+  - `page.ts`, `index.html`, `page.css`, `boot.ts`: the Plus page (`plus/`), the only page with the checkout or another site's script;
+    `page-flow.ts`: its checkout's pass and its restore by receipt, taken like a key (below), and its Reveal rule.
   - `liq-history.ts` asks for a paid day only with a pass (`LiqAccess`), and for the Plus families (groups, orders, rollups) only with
     one; `panes/lower-panes.ts` draws the closed stretch and its lock.
   - `liq-view.ts` (the choice and the view drawn), `levels-control.ts` (the Levels control), `liq-words.ts` (the words by kind).
@@ -101,11 +103,15 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
   key form; once on sale: Subscribe to `https://liquiditymapper.com/plus/`, the one place Paddle's checkout runs, and "Have a key?"; a
   member: until when), what stays free, and the site's terms, privacy and refunds pages. The Plus page opens on the same hero, demo and
   sections, above its checkout, restore and key management.
-- **A key entered in the app** goes to the renewal the Plus page's key box uses (`POST /v1/pass/renew`), in a masked field with Reveal.
+- **A key entered in the app** or on the Plus page goes to the renewal (`POST /v1/pass/renew`), in the same masked field with Reveal (the
+  page's key box is the app's form, kept through the page's redraws and fresh each time the box comes back).
   Its grant is taken only for the membership it was sent under: the generation in `lmf.plus.gen`, bumped whenever the key held changes
   (taken, removed), is read when the key is sent and again when the grant comes (`Plus.acceptIf`), so a removal or another tab's key
   meanwhile wins; a form given up aborts its request and drops the answer. Try again reads what is kept first and gives up when the key
-  changed elsewhere. A key is entered once on each browser and address (the membership is kept per origin).
+  changed elsewhere. A key is entered once on each browser and address (the membership is kept per origin). The Plus page takes a
+  checkout's pass and a membership found by the receipt the same way (`passFor`, `restoreBy`: the generation when the payment went through
+  or the receipt was sent): one that comes after another tab stored a key, or after the key here was removed, changes nothing, and a paid
+  checkout then stays waiting with its Try again. The page's Reveal, and the showing after a checkout or a restore, hold for that key only.
 
 ## How the page behaves
 

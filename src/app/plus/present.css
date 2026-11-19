@@ -29,3 +29,17 @@
 .px-trust-fine { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
 .px-legal { margin: 28px 0 0; color: var(--muted); font-size: 13px; }
 .px-legal a:hover, .px-trust-list a:hover { color: var(--text); }
+/* Narrow (the sheet's body, or the Plus page, 600 px wide or less: both are the container px): each feature section stacks, its picture under its
+   words at the full width, so the picture's labels keep a readable size (side by side on a 390 px phone a picture had about 140 px to draw in). */
+@container px (max-width: 600px) {
+  .px-feat { grid-template-columns: minmax(0, 1fr); margin-top: 44px; }
+}
+/* A phone: a smaller hero, touch-sized targets. */
+@media (max-width: 639.98px) {
+  .px-hero { padding-top: 20px; }
+  .px-hero h1 { font-size: 30px; line-height: 1.15; }
+  .px-sub { font-size: 16px; }
+  .px-cta { min-height: 44px; }
+  .px-legal a { display: inline-flex; align-items: center; min-height: 44px; }
+  .px-feat h2 { font-size: 20px; }
+}

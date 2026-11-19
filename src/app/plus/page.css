@@ -4,7 +4,8 @@
 :root { color-scheme: light dark; --radius: 6px; --mark-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12.5l5 5L20 6.5'/%3E%3C/svg%3E"); }
 html[data-theme="dark"] { color-scheme: dark; }
 body { margin: 0; background: var(--bg, #fff); color: var(--text, #1b1d1e); font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-.plus-page { max-width: 880px; margin: 0 auto; padding: 28px 20px 48px; }
+/* The container px, as the sheet's body is: the shared feature sections stack by its width (present.css). */
+.plus-page { max-width: 880px; margin: 0 auto; padding: 28px 20px 48px; container: px / inline-size; }
 .plus-rest a, .plus-page footer a { color: var(--ui, #1f6feb); }
 .plus-head { display: flex; align-items: baseline; gap: 8px; font-size: 14px; }
 .plus-head b { font-weight: 700; }
@@ -29,6 +30,10 @@ body { margin: 0; background: var(--bg, #fff); color: var(--text, #1b1d1e); font
 .plus-rest :is(.said-bad, .said-good) { margin: 0 0 10px; padding: 8px 10px; border-left: 3px solid var(--ask, #c2255c); background: color-mix(in srgb, var(--ask, #c2255c) 8%, transparent); font-size: 14px; }
 .plus-rest .said-good { border-left-color: var(--bid, #2b8a3e); background: color-mix(in srgb, var(--bid, #2b8a3e) 10%, transparent); }
 .plus-rest .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+/* The key box is the app's own key form (key.ts, key.css), as tall as the page's other fields. */
+.plus-rest .key-form { margin: 0 0 14px; }
+.plus-rest .key-form .key-in { height: 36px; font-size: 14px; }
+.plus-rest .key-form :is(.key-go, .key-show) { min-height: 36px; }
 .plus-rest input { flex: 1 1 200px; min-width: 0; font: inherit; padding: 6px 10px; border: 1px solid var(--line, #d7dbe0); border-radius: 6px; background: var(--bg, #fff); color: var(--text, #1b1d1e); }
 .plus-page :is(input, button, a):focus-visible { outline: 2px solid var(--ui, #1f6feb); outline-offset: 2px; }
 .plus-rest .keyrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
@@ -41,6 +46,8 @@ body { margin: 0; background: var(--bg, #fff); color: var(--text, #1b1d1e); font
 @media (max-width: 640px) {
   .plus-page { padding: 18px 16px 36px; }
   .plus-rest button.price-main, .plus-rest button.price-plain { flex: 1 1 100%; }
+  .plus-rest .key-form .key-in { height: 44px; }
+  .plus-rest .key-form :is(.key-go, .key-show) { min-height: 44px; }
 }
 /* The confirmation right after Plus came on here (arrival.ts): at the top of the window, over the page, on a phone too; a bar runs down with
    the countdown (still where motion is reduced: the seconds say it). */

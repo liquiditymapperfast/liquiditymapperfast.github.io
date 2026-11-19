@@ -1,0 +1,30 @@
+/* The key form (plus/key.ts), in the app's Plus pop-up and presentation and on the Plus page: a field and Activate on one row, what the server
+   said under it, and that a key is entered once per browser and address. One file both the app and the Plus page load (the page has none of the
+   app's styles), its rules under .key-form so that the page's own rules for its buttons and fields do not reach them. */
+:root { --mark-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.5v5.5M12 16.5v.01'/%3E%3C/svg%3E"); }
+.key-form { display: flex; flex-direction: column; margin: 0; }
+/* Its field's name is read by a screen reader and not shown (.vh: the app's styles.css and the shared present.css both have it). */
+.key-form .key-row { display: flex; gap: 8px; }
+.key-form .key-in { flex: 1 1 auto; min-width: 0; height: 32px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--text); font: 13px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.key-form .key-in::placeholder { color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; }
+.key-form .key-in[aria-invalid="true"] { border-color: var(--warn); }
+.key-form .key-in:focus-visible { outline: 2px solid var(--ui); outline-offset: 1px; }
+.key-form .key-go { flex: none; min-height: 32px; padding: 0 14px; border-color: var(--ui); background: var(--ui); color: var(--on-ui, #fff); font-weight: 600; white-space: nowrap; }
+.key-form .key-go:hover:not(:disabled) { border-color: color-mix(in srgb, var(--ui) 86%, var(--text)); background: color-mix(in srgb, var(--ui) 86%, var(--text)); }
+.key-form .key-go:disabled { opacity: .5; cursor: default; }
+/* Reveal / Hide: the key is masked as it is typed or pasted, and shown only when asked (Sol, review 2026-11-19). */
+.key-form .key-show { flex: none; min-height: 32px; padding: 0 10px; white-space: nowrap; }
+.key-form .key-msg { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 8px; margin: 8px 0 0; font-size: 12.5px; line-height: 1.4; }
+.key-form .key-msg:empty { display: none; }
+.key-form .key-msg.err { color: var(--warn); }
+.key-form .key-msg > span:not([class]) { flex: 1 1 0; min-width: 0; }
+.key-form .key-mark { flex: none; width: 15px; height: 15px; margin-top: 2px; background: currentColor; -webkit-mask: var(--mark-check) center / contain no-repeat; mask: var(--mark-check) center / contain no-repeat; }
+.key-form .key-msg.ok .key-mark { color: var(--bid); }
+.key-form .key-msg.err .key-mark { -webkit-mask-image: var(--mark-alert); mask-image: var(--mark-alert); }
+.key-form .key-more { flex-basis: 100%; color: var(--warn); }
+.key-form .key-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+@media (pointer: coarse) { .key-form .key-go, .key-form .key-show { min-height: 44px; } .key-form .key-in { height: 44px; } }
+/* What turns while the server is asked (the key form's status line and the pop-up's). */
+.spin { display: inline-block; flex: none; width: 13px; height: 13px; margin-top: 3px; box-sizing: border-box; border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; border-radius: 50%; animation: plus-spin .8s linear infinite; }
+@keyframes plus-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2.4s; } }
