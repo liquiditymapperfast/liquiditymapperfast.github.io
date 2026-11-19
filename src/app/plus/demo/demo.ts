@@ -30,8 +30,8 @@ export interface DemoHandle { destroy(): void; pause(): void }
 
 /** How long a change of choice takes on the chart. */
 const TWEEN_MS = 220;
-/** How long the history window takes to move to a scene chosen by hand. */
-const GLIDE_MS = 650;
+/** How long the history window takes to move to a scene chosen by hand (a transition: 180 to 240 ms, none with reduced motion). */
+const GLIDE_MS = 240;
 /** How much of the demo must be in view for the tour to play. */
 const IN_VIEW = 0.45;
 /** The scrubber's steps: a day each over the two Plus weeks before the free one. */
@@ -171,8 +171,10 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
       if ((i === cur) !== s.current) { s.current = i === cur; if (s.current) s.b.setAttribute('aria-current', 'step'); else s.b.removeAttribute('aria-current'); }
     });
   };
-  /** The person used the controls (`fromControls`, the caption goes back to its invitation) or the history: the tour stops. */
+  /** The person used the controls (`fromControls`, the caption goes back to its invitation) or the history: the tour stops, and one that
+   * has not played yet never starts by itself over their choice. */
   const interrupt = (fromControls: boolean): void => {
+    autoplayed = true;
     player.interrupt();
     if (fromControls) setCaption(idleCaption());
     syncPlay();
@@ -198,8 +200,11 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   }
 
   // ---- the store: the chart follows it; a change the tour did not make is the person's, and stops the tour
-  const unsubscribe = store.subscribe(s => { aim(weightsOf(s)); if (!applying) interrupt(true); });
+  let settingUp = true;
+  const unsubscribe = store.subscribe(s => { aim(weightsOf(s)); if (!applying && !settingUp) interrupt(true); });
+  // What a control does to the store while it is being set up is not the person's doing.
   const control = (opts.control ?? builtInControl)(ctlHost, store);
+  settingUp = false;
   ctlHost.addEventListener('pointerdown', () => interrupt(true));
   ctlHost.addEventListener('keydown', e => { if (e.key !== 'Tab' && e.key !== 'Shift' && e.key !== 'Escape') interrupt(true); });
 
@@ -258,7 +263,8 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   syncScrub(); syncPlay(); fit(); schedule();
 
   return {
-    pause() { autoplayed = true; player.pause('user'); syncPlay(); },
+    // As the person's own pause: also a tour paused for the view stays paused when the demo comes back into view.
+    pause() { autoplayed = true; player.interrupt(); syncPlay(); },
     destroy() {
       if (destroyed) return;
       destroyed = true;

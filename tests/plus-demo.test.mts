@@ -310,6 +310,9 @@ class FakePage {
   listenerCount(): number { let n = 0; for (const set of this.docListeners.values()) n += set.size; return n; }
 }
 
+/** The first element under `root` that carries the class `name`. */
+const byClass = (root: FakeElement, name: string): FakeElement => { const found = root.all().find(e => e.classList.contains(name)); assert.ok(found, `.${name}`); return found; };
+
 /** Mount the demo on a fake page with a control that hands its store out (the shape the app's control will have). */
 function mounted(opts: { width?: number; reduced?: boolean } = {}) {
   const page = new FakePage();
@@ -334,7 +337,7 @@ test('mounted: the tour plays once when the demo is 45 % in view, through the si
     m.page.run(33_000);
     assert.deepEqual(states.map(s => [+s.liq, +s.stops, +s.takes, s.traders]), [
       [1, 0, 0, 'everyone'], [1, 1, 0, 'everyone'], [1, 1, 1, 'everyone'], [0, 1, 0, 'everyone'], [0, 0, 1, 'everyone'], [1, 1, 1, 'everyone'], [1, 1, 1, 'profitable'], [1, 1, 1, 'everyone']]);
-    const caption = m.host.all().find(e => e.className === 'pd-caption' || e.className.startsWith('pd-caption '))!;
+    const caption = byClass(m.host, 'pd-caption');
     assert.equal(caption.textContent, 'Try the switches.', 'back to its invitation at the end');
     m.page.run(2000);
     assert.equal(m.page.frames.size, 0, 'nothing moves: no frame is asked for');
@@ -390,6 +393,19 @@ test('mounted: a press on the control or on the history stops the tour; under re
       if (target === 'history') assert.equal(track.getAttribute('aria-valuenow'), '0', 'the press moved the window to the oldest week');
     } finally { m.handle.destroy(); m.page.uninstall(); }
   }
+  {
+    // Used before it came into view: the tour never starts by itself over the person's choice.
+    const m = mounted();
+    try {
+      const states: DemoLevels[] = [];
+      m.store().subscribe(s => states.push(s));
+      m.controlHost().fire('pointerdown');
+      m.store().set({ takes: false });
+      m.page.view(1);
+      m.page.run(20_000);
+      assert.deepEqual(states.map(s => s.takes), [false], 'only the change the person made');
+    } finally { m.handle.destroy(); m.page.uninstall(); }
+  }
   const m = mounted({ reduced: true });
   try {
     const states: DemoLevels[] = [];
@@ -423,10 +439,13 @@ test('mounted: destroy() stops every frame, timer, observer and listener, and ta
       }
       assert.ok(page.frames.size > 0, 'frames while things move');
       assert.equal(page.resizes.size, 1); assert.equal(page.views.size, 1); assert.equal(page.listenerCount(), 1);
+      page.view(0);
       handle.pause();
-      const before = host.all().length;
-      page.run(5000);
-      assert.equal(host.all().length, before);
+      page.view(0.9);
+      const caption = byClass(host, 'pd-caption'), before = caption.textContent;
+      page.run(15_000);
+      assert.equal(caption.textContent, before, 'paused by the page: coming back into view does not resume it');
+      assert.equal(page.frames.size, 0, 'and nothing runs while it is paused');
       handle.destroy();
       assert.equal(page.frames.size, 0, 'no frame');
       assert.equal(page.timers.size, 0, 'no timer');
@@ -454,7 +473,7 @@ test('mounted: the built-in control keeps one kind on and says so; its note goes
     assert.equal(rows[2]!.getAttribute('aria-disabled'), 'true', 'the last kind on cannot be switched off');
     rows[2]!.fire('click');
     assert.equal(rows[2]!.getAttribute('aria-checked'), 'true');
-    const note = host.all().find(e => e.className === 'pd-lv-note')!;
+    const note = byClass(host, 'pd-lv-note');
     assert.equal(note.textContent, 'One kind stays on.');
     assert.equal(page.timers.size, 1);
     const radios = host.all().filter(e => e.getAttribute('role') === 'radio');
@@ -472,10 +491,10 @@ test('mounted: the chart stays within about 300 SVG elements and is 320 px tall 
     const m = mounted({ width });
     try {
       m.page.run(200);
-      const svg = m.host.all().find(e => e.tagName === 'svg' && e.className === 'pd-ch')!;
+      const svg = byClass(m.host, 'pd-ch');
       const count = 1 + svg.all().length;
       assert.ok(count > 60 && count <= 300, `${width} px: ${count} elements`);
-      const box = m.host.all().find(e => e.className === 'pd-chart')!;
+      const box = byClass(m.host, 'pd-chart');
       assert.equal(box.style.height, `${height}px`);
       assert.equal(svg.getAttribute('height'), String(height));
     } finally { m.handle.destroy(); m.page.uninstall(); }
@@ -492,7 +511,7 @@ test('the feature pictures: three still pictures, each labelled as illustrative,
       const svg = h.all().find(e => e.tagName === 'svg')!;
       assert.ok(svg, `${name}: a picture`);
       assert.ok(svg.all().length < 120, `${name}: ${svg.all().length} elements`);
-      assert.equal(h.all().find(e => e.className === 'pd-vis-tag')!.textContent, 'Illustrative data');
+      assert.equal(byClass(h, 'pd-vis-tag').textContent, 'Illustrative data');
     }
     assert.equal(page.frames.size + page.timers.size + page.resizes.size + page.views.size, 0, 'nothing timed or watched');
     v.destroy();
