@@ -189,7 +189,7 @@ test('the split\'s pieces are where the page draws them: the map\'s split painte
   const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8'), tab = fs.readFileSync('src/app/panes/liq-pane.ts', 'utf8'), depth = fs.readFileSync('src/app/panes/lower-panes.ts', 'utf8');
   assert.match(heat, /if \(pair && !strip && W === SPLIT_COLUMN_W\) \{ this\.#paintLiqSplit\(ctx, state, pw, ph, pair\); return; \}/);
   assert.match(heat, /const set: LiqSet = pair\?\.split === 'kinds' \? src\.setOf\(narrowView\(pair\)\) : src;/, 'too narrow: the sum, or everyone\'s');
-  assert.match(heat, /splitLanes\(x0, pw, !!takes\)/); assert.match(heat, /this\.#paintLaneCaptions\(ctx, \[/);
+  assert.match(fs.readFileSync('src/app/liq-stripe.ts', 'utf8'), /splitLanes\(x0, pw, !!takes\)/); assert.match(heat, /this\.#paintLaneCaptions\(ctx, painted\.captions, pw\)/);
   assert.match(heat, /splitScales\(\{ maxLevel: Math\.max\(profs\[0\]\?\.maxLevel \?\? 0, tprof\?\.maxLevel \?\? 0\), maxCum: profs\[0\]\?\.maxCum \?\? 0 \},\n\s+\{ maxLevel: profs\[1\]\?\.maxLevel \?\? 0, maxCum: profs\[1\]\?\.maxCum \?\? 0 \}, pair\.split === 'kinds'\)/);
   assert.match(tab, /halves = !!pair && ladderSplitFits\(W - AXIS\)/); assert.match(tab, /#paintHalves\(/);
   assert.match(depth, /Under a split the Depth pane draws its left column\./);

@@ -5,11 +5,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { LiqLevelsSource, laneRows, type LaneRows, type LiqRow, type LiqSet } from '../src/app/liq-levels.ts';
+import { LiqLevelsSource, type LiqRow, type LiqSet } from '../src/app/liq-levels.ts';
+import { paintStripe, type StripeHeld } from '../src/app/liq-stripe.ts';
+import { View } from '../src/app/view.ts';
 import type { LiqAnswer } from '../src/app/liq-history.ts';
 import { plusUrls, readLiqLevels, type LiqLevelSettings } from '../src/app/liq-url.ts';
 import { effectiveView, splitPair } from '../src/app/liq-view.ts';
-import { splitLanes, stripePlan, type StripePlan } from '../src/app/liq-split.ts';
+import { splitLanes, stripePlan } from '../src/app/liq-split.ts';
 import { dollars, setBoxLines, stripeBoxLines } from '../src/app/liq-box.ts';
 import { ordersAbsent } from '../src/app/liq-words.ts';
 import { initialState, type AppState } from '../src/app/store.ts';
@@ -65,25 +67,33 @@ async function show(src: LiqLevelsSource, s: LiqLevelSettings): Promise<void> {
 /** The map's prices in view and its height: a $10 bin is 100 px tall, so a row is a bin. */
 const SCREEN = { p0: 50, p1: 160 }, PH = 1_100;
 const rowAt = (rows: readonly LiqRow[], p: number): LiqRow => { const r = rows.find(x => x.p0 <= p && p < x.p1); assert.ok(r, `a row at ${p}`); return r; };
-/** Each lane's rows as the pane keeps them from frame to frame (`#liqRows`, `#liqTakeRows`, `#liqRightRows`). */
-interface Held { left: LaneRows | null; takes: LaneRows | null; right: LaneRows | null }
+/** Each lane's rows as the pane keeps them from frame to frame (`#liqHeld`). */
+type Held = StripeHeld;
+const VIEW = new View({ t0: 0, t1: 1, ...SCREEN }), COLORS = { candleUp: 'up', candleDown: 'down', text: 'text', muted: 'muted', bg: 'bg' };
+/** A 2D context that records the x span of everything painted on it (rectangles, strokes and fills), and no-ops the rest. */
+function recorder(): { ctx: CanvasRenderingContext2D; spans: { x0: number; x1: number }[] } {
+  const spans: { x0: number; x1: number }[] = [];
+  let path: number[] = [];
+  const own: Record<string | symbol, unknown> = {
+    fillRect: (x: number, _y: number, w: number) => { spans.push({ x0: x, x1: x + w }); },
+    beginPath: () => { path = []; }, moveTo: (x: number) => { path.push(x); }, lineTo: (x: number) => { path.push(x); },
+    stroke: () => { if (path.length) spans.push({ x0: Math.min(...path), x1: Math.max(...path) }); },
+    fill: () => { if (path.length) spans.push({ x0: Math.min(...path), x1: Math.max(...path) }); },
+    measureText: (s: string) => ({ width: s.length * 6 }), getLineDash: () => [],
+  };
+  const ctx = new Proxy(own, { get: (o, k) => k in o ? o[k] : () => {}, set: (o, k, v) => { o[k] = v; return true; } });
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, spans };
+}
 /**
- * One frame of the stripe as `HeatPane.#paintLiquidationLevels` draws it (its lines are pinned below): the plan for the split and the room,
- * the left lane from the source itself, the take profits' lane, and the right lane from the right set where the plan has two lanes, each
- * lane's rows kept by its memo while its key holds.
+ * One frame of the stripe painted by the map's own painter (`paintStripe`, which `HeatPane.#paintLiquidationLevels` calls) on a recording
+ * context, live edge at `x0` and plot edge at `pw`: the plan, what was painted (the pane's hover lanes and captions), where, and each lane's
+ * rows kept in `held` from frame to frame.
  */
-function frame(src: LiqLevelsSource, s: LiqLevelSettings, drawn: boolean, held: Held): { plan: StripePlan; right: LiqSet | null; drew: { left: boolean; takes: boolean; right: boolean } } {
-  const plan = stripePlan(splitPair(s, true), drawn), right = plan.two ? src.right : null;
-  const drew = { left: false, takes: false, right: false };
-  if (src.levels && src.state === 'ready') {
-    held.left = laneRows(src, 'levels', src.levels, SCREEN, PH, held.left); drew.left = true;
-    if (src.takesState === 'ready' && src.takes) { held.takes = laneRows(src, 'takes', src.takes, SCREEN, PH, held.takes); drew.takes = true; }
-  }
-  if (right?.levels && right.state === 'ready') {
-    held.right = laneRows({ key: () => right.key(), takesKey: () => '', taken: () => right.taken(), takesTaken: () => null }, 'levels', right.levels, SCREEN, PH, held.right);
-    drew.right = true;
-  }
-  return { plan, right, drew };
+function frame(src: LiqLevelsSource, s: LiqLevelSettings, drawn: boolean, held: Held, x0 = 100, pw = 400) {
+  const pair = splitPair(s, true), plan = stripePlan(pair, drawn), { ctx, spans } = recorder();
+  const painted = paintStripe(ctx, { src, plan, pair, x0, pw, ph: PH, view: VIEW, colors: COLORS, held });
+  const right: LiqSet | null = plan.two ? src.right : null;
+  return { plan, right, painted, spans, drew: { left: !!painted?.lanes, takes: !!painted?.lanes?.takes, right: !!painted?.right } };
 }
 const after = (lines: InfoLine[], label: string): string => { const l = lines.find(x => x.label === label); assert.ok(l, label); return l.text; };
 const titles = (lines: InfoLine[]): string[] => lines.filter(l => l.bold && l.rule).map(l => l.text);
@@ -112,24 +122,24 @@ test('the stripe\'s plan: Everyone | Profitable draws two lanes where the column
 test('the two group lanes\' keys name their group and order family, and each lane draws its own family\'s rows on its own scale', async () => {
   const src = familyService(), s = setting({ split: 'groups' });
   await show(src, s);
-  const held: Held = { left: null, takes: null, right: null }, f = frame(src, s, true, held), right = f.right!;
+  const held: Held = { levels: null, takes: null, right: null }, f = frame(src, s, true, held), right = f.right!;
   assert.equal(src.state, 'ready'); assert.equal(right.state, 'ready'); assert.deepEqual(f.drew, { left: true, takes: true, right: true });
   assert.match(src.key(), /^111\|all\|orders\|/, 'the left lane: everyone\'s view and everyone\'s orders');
   assert.match(src.takesKey(), /^111\|all\|orders\|takes\|/, 'their take profits');
   assert.match(right.key(), /^110\|profitable\|orderGroups\|/, 'the right lane: the profitable traders\' view and their own orders');
-  assert.ok(held.left!.key.startsWith(`${src.key()}|`) && held.right!.key.startsWith(`${right.key()}|`), 'each lane\'s memo is kept by its set\'s key');
-  assert.notEqual(held.left!.key, held.right!.key);
+  assert.ok(held.levels!.key.startsWith(`${src.key()}|`) && held.right!.key.startsWith(`${right.key()}|`), 'each lane\'s memo is kept by its set\'s key');
+  assert.notEqual(held.levels!.key, held.right!.key);
   // Everyone's liquidations and stops on the left, the profitable traders' on the right, each its own family's.
-  assert.equal(rowAt(held.left!.rows, 95).long, E); assert.equal(rowAt(held.left!.rows, 85).long, E); assert.equal(rowAt(held.left!.rows, 115).short, E);
+  assert.equal(rowAt(held.levels!.rows, 95).long, E); assert.equal(rowAt(held.levels!.rows, 85).long, E); assert.equal(rowAt(held.levels!.rows, 115).short, E);
   assert.equal(rowAt(held.right!.rows, 95).long, P); assert.equal(rowAt(held.right!.rows, 85).long, P); assert.equal(rowAt(held.right!.rows, 115).short, P);
   assert.equal(rowAt(held.takes!.rows, 145).short, E, 'the take profits are everyone\'s, with the left set');
   // Each lane's colour strength is its own: each lane's strongest rows at full strength, though the profitable traders' are ten times smaller.
-  assert.equal(held.left!.heat(E), held.right!.heat(P));
-  assert.ok(held.right!.heat(P) > 0 && held.left!.heat(P) < held.right!.heat(P) / 2, 'on everyone\'s scale theirs would be faint');
+  assert.equal(held.levels!.heat(E), held.right!.heat(P));
+  assert.ok(held.right!.heat(P) > 0 && held.levels!.heat(P) < held.right!.heat(P) / 2, 'on everyone\'s scale theirs would be faint');
 });
 
 test('a switch Everyone <-> Profitable both ways, through the split and out of it: each lane\'s rows and its reading follow the family, never the one before', async () => {
-  const src = familyService(), held: Held = { left: null, takes: null, right: null };
+  const src = familyService(), held: Held = { levels: null, takes: null, right: null };
   // [setting, the left lane's group and amount at [90, 100), the right lane's (null: one lane), the right lane's price row, its reading's group]
   const steps: [Partial<LiqLevelSettings>, string, number, number | null, number, string | null][] = [
     [{ group: 'all', split: 'none' }, 'all', E, null, 95, null],
@@ -152,7 +162,7 @@ test('a switch Everyone <-> Profitable both ways, through the split and out of i
     const f = frame(src, s, true, held);
     assert.equal(f.plan.two, rightAmount !== null, `${name}: lanes`);
     assert.equal(src.view.group, group, `${name}: the left lane's group`);
-    const left = rowAt(held.left!.rows, 95);
+    const left = rowAt(held.levels!.rows, 95);
     assert.equal(left.long, amount, `${name}: the left lane at [90, 100)`);
     const kind = src.levels!.kind, box = stripeBoxLines(left, kind, 100, src.standing(), kind === 'both' ? src.partStandings() : null, side => side === 'long', f.plan.whose[0]);
     assert.equal(after(box, 'At this level'), dollars(amount), `${name}: the left lane's reading`);
@@ -173,7 +183,7 @@ test('the profitable traders\' orders absent (404 or 503): their lane draws thei
   for (const answer of [{ status: 404, body: null }, { status: 503, body: null, retryAfter: 300 }] as LiqAnswer[]) {
     const src = familyService({ [U.triggersGroups]: answer }), s = setting({ split: 'groups' });
     await show(src, s);
-    const held: Held = { left: null, takes: null, right: null }, f = frame(src, s, true, held), right = f.right!;
+    const held: Held = { levels: null, takes: null, right: null }, f = frame(src, s, true, held), right = f.right!;
     assert.equal(right.state, 'ready', String(answer.status)); assert.equal(right.levels!.kind, 'liq'); assert.ok(right.ordersAbsent());
     assert.match(right.key(), /^110\|profitable\|orderGroups\|/);
     // Their liquidations only: nothing at everyone's stops' rows, and every dollar in the lane is theirs (10 + 10).
@@ -185,7 +195,7 @@ test('the profitable traders\' orders absent (404 or 503): their lane draws thei
     assert.equal(box.at(-1)!.text, ordersAbsent(), 'the reading says it');
     assert.equal(f.plan.captions[1], 'Liq + stops · Profitable', 'captioned as the sub-column is');
     // Everyone's lane is untouched: their liquidations and stops, their take profits, nothing said missing.
-    assert.equal(rowAt(held.left!.rows, 85).long, E); assert.ok(!src.ordersAbsent()); assert.equal(rowAt(held.takes!.rows, 145).short, E);
+    assert.equal(rowAt(held.levels!.rows, 85).long, E); assert.ok(!src.ordersAbsent()); assert.equal(rowAt(held.takes!.rows, 145).short, E);
     // Stops alone: their lane draws nothing, is still captioned (`standalone`) and the note says why; everyone's stops stand.
     const stops = setting({ liq: false, takes: false, split: 'groups' });
     await show(src, stops);
@@ -193,14 +203,14 @@ test('the profitable traders\' orders absent (404 or 503): their lane draws thei
     assert.equal(g.right!.state, 'missing'); assert.equal(g.right!.missing(), 'profitable-orders'); assert.equal(g.right!.levels, null);
     assert.deepEqual(g.drew, { left: true, takes: false, right: false }); assert.ok(g.plan.standalone);
     assert.deepEqual(g.plan.captions, ['Stops · Everyone', 'Stops · Profitable']);
-    assert.equal(rowAt(held.left!.rows, 85).long, E);
+    assert.equal(rowAt(held.levels!.rows, 85).long, E);
   }
 });
 
 test('the profitable traders\' lane stands on its own: everyone\'s orders not there yet never hide it', async () => {
   const src = familyService({ [U.triggers]: { status: 503, body: null, retryAfter: 60 } }), s = setting({ liq: false, takes: false, split: 'groups' });
   await show(src, s);
-  const held: Held = { left: null, takes: null, right: null }, f = frame(src, s, true, held);
+  const held: Held = { levels: null, takes: null, right: null }, f = frame(src, s, true, held);
   assert.notEqual(src.state, 'ready', 'everyone\'s stops not there');
   assert.deepEqual(f.drew, { left: false, takes: false, right: true });
   assert.equal(rowAt(held.right!.rows, 85).long, P, 'the profitable traders\' stops');
@@ -231,27 +241,24 @@ test('too narrow to split or on a compact map: the stripe keeps one lane, everyo
       assert.equal(roomAt(true, 400, off), false, 'a compact map with the column off: one lane, as the phone draws it');
     } finally { setCompactGutters(false, 2000); }
   });
-  const src = familyService(), s = setting({ split: 'groups' }), held: Held = { left: null, takes: null, right: null };
+  const src = familyService(), s = setting({ split: 'groups' }), held: Held = { levels: null, takes: null, right: null };
   await show(src, s);
   const f = frame(src, s, false, held);
   assert.equal(f.plan.two, false); assert.equal(f.right, null); assert.deepEqual(f.plan.captions, ['Liq + stops · Everyone']);
-  assert.equal(rowAt(held.left!.rows, 95).long, E, 'everyone\'s'); assert.equal(held.right, null, 'no right lane drawn');
-  assert.deepEqual(titles(stripeBoxLines(rowAt(held.left!.rows, 95), 'both', 100, src.standing(), src.partStandings(), side => side === 'long', f.plan.whose[0])), ['Long liquidations and stops']);
+  assert.equal(rowAt(held.levels!.rows, 95).long, E, 'everyone\'s'); assert.equal(held.right, null, 'no right lane drawn');
+  assert.deepEqual(titles(stripeBoxLines(rowAt(held.levels!.rows, 95), 'both', 100, src.standing(), src.partStandings(), side => side === 'long', f.plan.whose[0])), ['Long liquidations and stops']);
 });
 
-test('the map\'s stripe draws what the plan says: the plan from the room for two lanes, the right lane from the right set by its key, its reading routed first, the missing orders said under the legend', () => {
-  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
-  assert.match(heat, /plan = stripePlan\(pair, stripeSplitRoom\(state\)\);/);
+test('the map draws the stripe through its painter and takes only what it painted: the plan from the room for two lanes, the reading routed to the painted right lane first', () => {
+  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8'), stripe = fs.readFileSync('src/app/liq-stripe.ts', 'utf8');
+  assert.match(heat, /plan = stripePlan\(pair, stripeSplitRoom\(state\)\);\n    let note = stripeNote\(src, view, pair, plan\);/);
   assert.match(heat, /export const stripeSplitRoom = \(state: AppState\): boolean => liqSplitDrawn\(state\) \|\| \(!COMPACT && !state\.liqLevels\.column\);/);
   assert.match(heat, /this\.#liqLanes = null; this\.#liqRightLane = null;\n    const ask = liveAsk/, 'neither lane answers the pointer before this frame draws it (another coin, a replay)');
-  assert.match(heat, /const right = plan\.two \? src\.right : null, rightReady = !!right\?\.levels && right\.state === 'ready';/);
-  assert.match(heat, /if \(plan\.standalone && right\?\.ordersAbsent\(\)\) note = `\$\{note\} · \$\{ordersAbsent\(\)\}`;/);
-  assert.match(heat, /if \(\(levels && src\.state === 'ready'\) \|\| \(plan\.standalone && rightReady\)\) \{/, 'the right lane stands on its own');
-  assert.match(heat, /const rr = this\.#liqRightRows = laneRows\(\{ key: \(\) => right\.key\(\), takesKey: \(\) => '', taken: \(\) => right\.taken\(\), takesTaken: \(\) => null \}, 'levels', right\.levels,/);
-  assert.match(heat, /this\.#liqRightLane = \{ lane: lanes\.right, set: right, whose: plan\.whose\[1\] \};/);
-  assert.match(heat, /this\.#liqLanes = \{ levels: lanes\.levels, takes: lanes\.takes, whose: plan\.whose\[0\], takesWhose: plan\.takesWhose \};/);
-  assert.match(heat, /if \(replaying\(\)\) return \[\];\n    if \(right && this\.#liqRightRows && x >= right\.lane\.x0 && x < right\.lane\.x1\) return this\.#laneLines\(state, right\.set, this\.#liqRightRows, y, ph, touch, right\.whose\);\n    if \(!lanes \|\| src\.state !== 'ready'\) return \[\];/);
+  assert.match(heat, /const painted = paintStripe\(ctx, \{ src, plan, pair, x0: this\.#liqStripeLeft\(pw\), pw, ph, view: v, colors: p, held: this\.#liqHeld \}\);/);
+  assert.match(heat, /this\.#liqLanes = painted\.lanes; this\.#liqRightLane = painted\.right;\n        if \(painted\.captions\) this\.#paintLaneCaptions\(ctx, painted\.captions, pw\);\n        else if \(painted\.takesLane\) this\.#paintTakesCaption\(ctx, painted\.takesLane, pw\);/);
+  assert.match(heat, /if \(replaying\(\)\) return \[\];\n    const held = this\.#liqHeld\.right;\n    if \(right && held && x >= right\.lane\.x0 && x < right\.lane\.x1\) return this\.#laneLines\(state, right\.set, held, y, ph, touch, right\.whose\);\n    if \(!lanes \|\| src\.state !== 'ready'\) return \[\];/);
   assert.match(heat, /inTakes \? lanes\.takesWhose : lanes\.whose\);/);
   assert.match(heat, /return setBoxLines\(found, set, at > 0 \? at : this\.hub\.liqLevels\.lastPriceOf\(levels\), side => shown\(found, side\), whose\);/);
-  assert.match(heat, /\.\.\.\(lanes\.right && rightWords && \(plan\.standalone \|\| this\.#liqRightLane\) \? \[\{ lane: lanes\.right, words: rightWords, dashed: false \}\] : \[\]\),/);
+  // The painter's right lane: from the right set, its rows kept by that set's key.
+  assert.match(stripe, /const rr = held\.right = laneRows\(\{ key: \(\) => right\.key\(\), takesKey: \(\) => '', taken: \(\) => right\.taken\(\), takesTaken: \(\) => null \}, 'levels', right\.levels,/);
 });
