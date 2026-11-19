@@ -420,6 +420,51 @@ test('mounted: a press on the control or on the history stops the tour; under re
   } finally { m.handle.destroy(); m.page.uninstall(); }
 });
 
+/** The element under `root` whose accessible name is `label`. */
+const byLabel = (root: FakeElement, label: string): FakeElement => { const found = root.all().find(e => e.getAttribute('aria-label') === label); assert.ok(found, label); return found; };
+/** Where the history window's left edge is, in per cent of the scrubber. */
+const windowLeft = (root: FakeElement): number => parseFloat(byClass(root, 'pd-win').style.left!);
+
+test('mounted: while the tour is paused its history scroll holds still (Pause, pause(), out of view) and goes on with it; the person taking over ends it', () => {
+  // The History scene scrolls the window back from 25.9 s to 30.5 s of the tour; 28.5 s is in the middle of it.
+  for (const how of ['Pause', 'pause()', 'out of view'] as const) {
+    const m = mounted();
+    try {
+      m.page.view(0.6);
+      m.page.run(28_500);
+      const mid = windowLeft(m.host);
+      assert.ok(mid > 20 && mid < 60, `${how}: in the middle of the scroll (${mid})`);
+      if (how === 'Pause') byLabel(m.host, 'Pause').fire('click');
+      else if (how === 'pause()') m.handle.pause();
+      else m.page.view(0.1);
+      const held = windowLeft(m.host);
+      m.page.run(3000);
+      assert.equal(windowLeft(m.host), held, `${how}: the window holds still`);
+      assert.equal(m.page.frames.size, 0, `${how}: and no frame is asked for while paused`);
+      if (how === 'out of view') m.page.view(0.6); else byLabel(m.host, 'Play').fire('click');
+      m.page.run(400);
+      assert.ok(windowLeft(m.host) < held - 0.5, `${how}: it goes on from where it stopped`);
+      m.page.run(4000);
+      assert.equal(windowLeft(m.host), 13.333, `${how}: and ends where the scene sends it`);
+    } finally { m.handle.destroy(); m.page.uninstall(); }
+  }
+  for (const how of ['control', 'scrubber key'] as const) {
+    const m = mounted();
+    try {
+      m.page.view(0.6);
+      m.page.run(28_500);
+      if (how === 'control') m.controlHost().fire('pointerdown');
+      else byLabel(m.host, 'History').fire('keydown', { key: 'ArrowLeft' });
+      const left = windowLeft(m.host);
+      m.page.run(5000);
+      assert.equal(windowLeft(m.host), left, `${how}: the tour's scroll ends where the person took over`);
+      byLabel(m.host, 'Play').fire('click');
+      m.page.run(5000);
+      assert.equal(windowLeft(m.host), left, `${how}: and Play goes on with the tour, not with the scroll it dropped`);
+    } finally { m.handle.destroy(); m.page.uninstall(); }
+  }
+});
+
 test('mounted: destroy() stops every frame, timer, observer and listener, and takes the demo away; pause() holds it', () => {
   for (const builtIn of [false, true]) {
     const page = new FakePage();

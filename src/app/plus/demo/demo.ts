@@ -85,20 +85,24 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   root.setAttribute('aria-label', t('Interactive demo'));
   for (const b of [playBtn, replayBtn]) b.type = 'button';
 
-  // ---- what is drawn: the choice moving to the store's, the history window moving to where it was sent
+  // ---- what is drawn: the choice moving to the store's, the history window moving to where it was sent. A motion the tour started
+  // (`byTour`) is the tour's: it holds still while the tour is paused (`frozen`, the moment it stopped; its clock moves on by the pause when
+  // the tour goes on) and is dropped when the person takes over. A motion the person started (a choice, a scene's button) always runs.
+  interface Motion { t0: number; byTour: boolean; frozen: number | null }
   let target: Weights = weightsOf(store.get()), weights: Weights = { ...target };
-  let tween: { from: Weights; t0: number } | null = null;
-  let scrub = 1, glide: { from: number; to: number; t0: number; ms: number } | null = null;
+  let tween: (Motion & { from: Weights }) | null = null;
+  let scrub = 1, glide: (Motion & { from: number; to: number; ms: number }) | null = null;
   let raf = 0, dirty = true, destroyed = false;
+  const live = (m: Motion | null): boolean => m !== null && m.frozen === null;
   const schedule = (): void => { if (!raf && !destroyed) raf = requestAnimationFrame(frame); };
-  const aim = (to: Weights): void => {
+  const aim = (to: Weights, byTour: boolean): void => {
     if (sameWeights(target, to)) return;
     target = to;
-    if (reduced()) { weights = { ...to }; tween = null; dirty = true; } else tween = { from: { ...weights }, t0: now() };
+    if (reduced()) { weights = { ...to }; tween = null; dirty = true; } else tween = { from: { ...weights }, t0: now(), byTour, frozen: null };
     schedule();
   };
   const stepTween = (at: number): boolean => {
-    if (!tween) return false;
+    if (!tween || tween.frozen !== null) return false;
     const f = Math.min(1, (at - tween.t0) / TWEEN_MS), e = 1 - (1 - f) ** 3, from = tween.from;
     weights = { liq: from.liq + (target.liq - from.liq) * e, stop: from.stop + (target.stop - from.stop) * e, tp: from.tp + (target.tp - from.tp) * e,
       grp: from.grp + (target.grp - from.grp) * e, alone: from.alone + (target.alone - from.alone) * e };
@@ -111,19 +115,29 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
     track.setAttribute('aria-valuenow', String(Math.round(scrub * DAYS)));
     track.setAttribute('aria-valuetext', end >= HH - 1.01 ? t('The last 7 days, free') : t('{start} to {end}, Plus', { start: dayLabel(end - DEMO_WIN), end: dayLabel(end) }));
   };
-  const scrubTo = (v: number, ms: number): void => {
+  const scrubTo = (v: number, ms: number, byTour = false): void => {
     v = clamp(v, 0, 1);
     if (!ms || reduced()) { glide = null; scrub = v; syncScrub(); dirty = true; }
-    else glide = { from: scrub, to: v, t0: now(), ms };
+    else glide = { from: scrub, to: v, t0: now(), ms, byTour, frozen: null };
     schedule();
   };
   const stepGlide = (at: number): boolean => {
-    if (!glide) return false;
+    if (!glide || glide.frozen !== null) return false;
     const f = Math.min(1, (at - glide.t0) / glide.ms), e = f < 0.5 ? 4 * f * f * f : 1 - (-2 * f + 2) ** 3 / 2;
     scrub = glide.from + (glide.to - glide.from) * e;
     syncScrub();
     if (f >= 1) glide = null;
     return true;
+  };
+  const tourMotions = (): Motion[] => [tween, glide].filter((m): m is NonNullable<typeof m> => m !== null && m.byTour);
+  /** The tour paused: its motions hold still where they are. */
+  const hold = (): void => { const at = now(); for (const m of tourMotions()) if (m.frozen === null) m.frozen = at; };
+  /** The tour goes on: its motions go on from where they stopped, their clocks moved on by the pause. */
+  const release = (): void => { const at = now(); for (const m of tourMotions()) if (m.frozen !== null) { m.t0 += at - m.frozen; m.frozen = null; } schedule(); };
+  /** The person took over: the tour's motions end (the window stays where the tour had moved it; a choice is never left half drawn). */
+  const dropTourMotion = (): void => {
+    if (glide?.byTour) glide = null;
+    if (tween?.byTour) { weights = { ...target }; tween = null; dirty = true; }
   };
 
   // ---- the caption and the tour
@@ -134,12 +148,13 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
     void caption.offsetWidth;
     caption.classList.add('pd-swap');
   };
-  let applying = false;
+  // Whose store change is under way: the tour's while it plays (`animate`), the person's when a scene's button applies one at once.
+  let applying: '' | 'tour' | 'hand' = '';
   const player = new Player({
     apply(step: SceneStep, animate: boolean) {
-      if (step.set) { applying = true; try { store.set(step.set); } finally { applying = false; } }
-      if (step.scrub !== undefined) scrubTo(step.scrub, 0);
-      if (step.scrubTo !== undefined) scrubTo(step.scrubTo, animate ? step.over ?? GLIDE_MS : GLIDE_MS);
+      if (step.set) { applying = animate ? 'tour' : 'hand'; try { store.set(step.set); } finally { applying = ''; } }
+      if (step.scrub !== undefined) scrubTo(step.scrub, 0, animate);
+      if (step.scrubTo !== undefined) scrubTo(step.scrubTo, animate ? step.over ?? GLIDE_MS : GLIDE_MS, animate);
       if (step.caption) setCaption(step.caption());
     },
     idle() { setCaption(idleCaption()); },
@@ -150,13 +165,15 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
     const b = node('button', 'pd-scene', node('i', '', bar), node('span', '', s.label()));
     b.type = 'button';
     b.setAttribute('aria-label', t('Scene {n}: {name}', { n: i + 1, name: s.label() }));
-    b.addEventListener('click', () => { autoplayed = true; player.jump(i); syncPlay(); schedule(); });
+    b.addEventListener('click', () => { autoplayed = true; dropTourMotion(); player.jump(i); syncPlay(); schedule(); });
     scenesBox.append(b);
     return { b, bar, width: '', current: false };
   });
-  let shownRunning: boolean | null = null;
+  let shownRunning: boolean | null = null, tourRunning = false;
   const syncPlay = (): void => {
     const running = player.running;
+    // The tour's own motions follow it: still while it is paused (not at its end, where what is left may finish), on again with it.
+    if (running !== tourRunning) { tourRunning = running; if (running) release(); else if (player.pausedBy !== 'end') hold(); }
     if (running !== shownRunning) {
       shownRunning = running;
       playIcon.style.display = running ? 'none' : '';
@@ -177,8 +194,9 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   const interrupt = (fromControls: boolean): void => {
     autoplayed = true;
     player.interrupt();
+    dropTourMotion();
     if (fromControls) setCaption(idleCaption());
-    syncPlay();
+    syncPlay(); schedule();
   };
   playBtn.addEventListener('click', () => {
     autoplayed = true;
@@ -197,12 +215,12 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
     if (moved || glided) dirty = true;
     if (dirty && chart.layout) { chart.draw(weights, windowEnd(scrub)); dirty = false; }
     if (was || player.running) syncPlay();
-    if (tween || glide || player.running) schedule();
+    if (live(tween) || live(glide) || player.running) schedule();
   }
 
   // ---- the store: the chart follows it; a change the tour did not make is the person's, and stops the tour
   let settingUp = true;
-  const unsubscribe = store.subscribe(s => { aim(weightsOf(s)); if (!applying && !settingUp) interrupt(true); });
+  const unsubscribe = store.subscribe(s => { aim(weightsOf(s), applying === 'tour'); if (!applying && !settingUp) interrupt(true); });
   // What a control does to the store while it is being set up is not the person's doing.
   const control = (opts.control ?? builtInControl)(ctlHost, store);
   settingUp = false;
