@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { BANDS, HH, NOW_PRICE, ROWS, SEED, SNAPS, bandIndex, createData, demoData, mulberry32 } from '../src/app/plus/demo/data.ts';
+import { BANDS, HH, NOW_PRICE, ROWS, SEED, SNAPS, bandIndex, createData, demoData, forgetData, mulberry32, whenData, type DemoData } from '../src/app/plus/demo/data.ts';
 import { DEMO_START, createDemoStore, kindsOn, lastOn, type DemoLevels, type DemoStore } from '../src/app/plus/demo/store.ts';
 import { bucketsOf, depthColumns, depthTable, levelsAt, weightsOf, windowEnd } from '../src/app/plus/demo/model.ts';
 import { Player, SCENES, idleCaption, type SceneStep } from '../src/app/plus/demo/scenes.ts';
@@ -259,6 +259,7 @@ class FakePage {
   width = 700; reduced = false; hidden = false; clock = 1_000;
   frames = new Map<number, (t: number) => void>(); nextFrame = 1;
   timers = new Map<number, () => void>(); nextTimer = 1;
+  idles = new Map<number, (deadline: { didTimeout: boolean; timeRemaining(): number }) => void>(); nextIdle = 1;
   resizes = new Set<object>(); views = new Map<object, (entries: unknown[]) => void>();
   docListeners = new Map<string, Set<Listener>>();
   /** The media queries asked for, each one object (as a browser keeps it), and who listens to its changes. */
@@ -289,6 +290,8 @@ class FakePage {
       },
       setTimeout: (f: () => void) => { const id = page.nextTimer++; page.timers.set(id, f); return id; },
       clearTimeout: (id: number) => { page.timers.delete(id); },
+      requestIdleCallback: (f: (deadline: { didTimeout: boolean; timeRemaining(): number }) => void) => { const id = page.nextIdle++; page.idles.set(id, f); return id; },
+      cancelIdleCallback: (id: number) => { page.idles.delete(id); },
     };
     class ResizeObserver { constructor(readonly cb: () => void) {} observe() { page.resizes.add(this); } disconnect() { page.resizes.delete(this); } }
     class IntersectionObserver { constructor(readonly cb: (entries: unknown[]) => void) {} observe() { page.views.set(this, this.cb); } disconnect() { page.views.delete(this); } }
@@ -315,6 +318,18 @@ class FakePage {
       for (const [, f] of due) f(this.clock);
     }
   }
+  /** The page goes idle: idle callbacks run, each with room for about twenty snapshots, and those they ask for in turn, at most `turns`. */
+  idle(turns = 1_000): number {
+    let n = 0;
+    while (this.idles.size && n < turns) {
+      const [id, f] = [...this.idles][0]!;
+      this.idles.delete(id);
+      let asked = 0;
+      f({ didTimeout: false, timeRemaining: () => (asked++ < 20 ? 8 : 0) });
+      n++;
+    }
+    return n;
+  }
   /** The demo shows this share of itself (and the window this tall). */
   view(ratio: number): void { for (const cb of [...this.views.values()]) cb([{ isIntersecting: ratio > 0, intersectionRatio: ratio, intersectionRect: { height: 500 * ratio }, rootBounds: { height: 800 } }]); }
   setHidden(hidden: boolean): void { this.hidden = hidden; for (const l of [...this.docListeners.get('visibilitychange') ?? []]) l({ type: 'visibilitychange', preventDefault() {} }); }
@@ -328,6 +343,7 @@ const byClass = (root: FakeElement, name: string): FakeElement => { const found 
 
 /** Mount the demo on a fake page with a control that hands its store out (the shape the app's control will have). */
 function mounted(opts: { width?: number; reduced?: boolean } = {}) {
+  demoData();
   const page = new FakePage();
   page.width = opts.width ?? 700; page.reduced = opts.reduced ?? false;
   page.install();
@@ -536,6 +552,7 @@ test('mounted: reduced motion turned on stops a tour that plays by itself, and i
 });
 
 test('mounted: destroy() stops every frame, timer, observer and listener, and takes the demo away; pause() holds it', () => {
+  demoData();
   for (const builtIn of [false, true]) {
     const page = new FakePage();
     page.install();
@@ -564,6 +581,7 @@ test('mounted: destroy() stops every frame, timer, observer and listener, and ta
       handle.destroy();
       assert.equal(page.frames.size, 0, 'no frame');
       assert.equal(page.timers.size, 0, 'no timer');
+      assert.equal(page.idles.size, 0, 'no idle callback');
       assert.equal(page.resizes.size, 0, 'no resize observer');
       assert.equal(page.views.size, 0, 'no view observer');
       assert.equal(page.listenerCount(), 0, 'no listener on the document or the reduced-motion query');
@@ -576,6 +594,7 @@ test('mounted: destroy() stops every frame, timer, observer and listener, and ta
 });
 
 test('mounted: the built-in control keeps one kind on and says so; its note goes with a timer that destroy() clears', () => {
+  demoData();
   const page = new FakePage();
   page.install();
   try {
@@ -617,6 +636,7 @@ test('mounted: the chart stays within about 300 SVG elements and is 320 px tall 
 });
 
 test('the feature pictures: three still pictures, each labelled as illustrative, taken away by destroy()', () => {
+  demoData();
   const page = new FakePage();
   page.install();
   try {
@@ -633,6 +653,71 @@ test('the feature pictures: three still pictures, each labelled as illustrative,
     for (const h of Object.values(hosts)) assert.equal(h.children.length, 0);
     assert.deepEqual(page.network, []);
   } finally { page.uninstall(); }
+});
+
+test('cold: the demo paints its frame first and builds the numbers in idle turns; warm mounts have them at once; destroy() stops the build', () => {
+  const same = (a: DemoData, b: DemoData): boolean => (['price', 'liqL', 'liqS', 'stopL', 'stopS', 'tpL', 'tpS', 'pfLiq', 'pfStop', 'pfTp', 'band'] as const).every(k => Buffer.from(a[k].buffer).equals(Buffer.from(b[k].buffer)));
+  const reference = createData(SEED);
+  forgetData();
+  const page = new FakePage();
+  page.install();
+  try {
+    // A cold mount: the frame, the controls and the scrubber at once, the chart's room kept, nothing drawn and nothing played yet.
+    const host = new FakeElement('div', page);
+    const states: DemoLevels[] = [];
+    const handle = mountDemo(host as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states.push(x)); return { destroy() {} }; } });
+    const stage = byClass(host, 'pd-stage'), svg = byClass(host, 'pd-ch');
+    assert.equal(stage.getAttribute('aria-busy'), 'true', 'the stage says it is getting ready');
+    assert.equal(svg.children.length, 0, 'the chart waits for the numbers');
+    assert.equal(byClass(host, 'pd-chart').style.height, '372px', 'its room is kept');
+    byLabel(host, 'History'); byClass(host, 'pd-legend');
+    assert.equal(page.idles.size, 1, 'the build waits for the page to be idle');
+    page.view(0.9);
+    page.run(2000);
+    assert.equal(states.length, 0, 'the autoplay waits for the numbers too');
+    // A destroy in the middle of the build stops it; the steps done are kept for the next mount.
+    assert.equal(page.idle(3), 3);
+    handle.destroy();
+    assert.equal(page.idles.size + page.timers.size + page.frames.size, 0, 'destroy() stops the build with everything else');
+    // A second cold mount picks the build up and finishes it in further turns: then the chart is drawn and the tour plays.
+    const host2 = new FakeElement('div', page);
+    const states2: DemoLevels[] = [];
+    const handle2 = mountDemo(host2 as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states2.push(x)); return { destroy() {} }; } });
+    assert.ok(page.idle() > 0);
+    assert.ok(same(demoData(), reference), 'built in turns, the same numbers as all at once');
+    assert.equal(byClass(host2, 'pd-stage').getAttribute('aria-busy'), null, 'ready');
+    page.view(0.9);
+    page.run(500);
+    assert.ok(byClass(host2, 'pd-ch').all().length > 60, 'the chart is drawn');
+    assert.equal(states2.length, 1, 'and the tour plays');
+    handle2.destroy();
+    // A warm mount: drawn in its first frame, nothing left to build.
+    const host3 = new FakeElement('div', page);
+    const handle3 = mountDemo(host3 as unknown as HTMLElement);
+    page.run(20);
+    assert.equal(page.idles.size, 0, 'nothing to build');
+    assert.ok(byClass(host3, 'pd-ch').all().length > 60, 'drawn at once');
+    handle3.destroy();
+    // The pictures: frames at once (their room kept by their size), drawn when the numbers are here.
+    forgetData();
+    const hosts = { history: new FakeElement('div', page), layers: new FakeElement('div', page), groups: new FakeElement('div', page) };
+    const v = mountVisuals(hosts as unknown as { history: HTMLElement; layers: HTMLElement; groups: HTMLElement });
+    for (const h of Object.values(hosts)) {
+      const pic = byClass(h, 'pd-vis');
+      assert.equal(pic.children.length, 0, 'a frame, not yet drawn');
+      assert.ok(pic.getAttribute('viewBox'), 'its size keeps its room');
+      assert.equal(byClass(h, 'pd-vis-tag').textContent, 'Illustrative data');
+    }
+    page.idle();
+    for (const h of Object.values(hosts)) assert.ok(byClass(h, 'pd-vis').children.length > 5, 'drawn');
+    v.destroy();
+    // whenData: at once when the numbers are built, and nothing left to stop.
+    let got: DemoData | null = null;
+    whenData(d => { got = d; })();
+    assert.equal(got, demoData());
+    assert.equal(page.idles.size, 0);
+    assert.deepEqual(page.network, []);
+  } finally { page.uninstall(); demoData(); }
 });
 
 /* ==== no network, no app settings ======================================================================================================= */

@@ -2,7 +2,9 @@
  * The Plus demo's numbers, made up from one seeded generator: the same on every load and in every test, and nothing of them is market data
  * or fetched. A price trace over 21 days of half hours; in a snapshot every two hours, the liquidation, stop and take-profit levels of each
  * price row, and the profitable traders' share of each; and the Depth pane's totals within each distance of the price (everyone and the
- * profitable traders, per kind and side). Built once, on first use (`demoData`), never at import.
+ * profitable traders, per kind and side). Built once, never at import: the demo and its pictures ask for it with `whenData`, which builds it a
+ * few snapshots at a time when the page is idle (the demo's frame paints first: a slow phone took 140-180 ms in one go), and every later
+ * mount has it at once.
  */
 
 export const SEED = 20_261_118;
@@ -56,8 +58,8 @@ export interface DemoData {
   readonly band: Float32Array;
 }
 
-/** The demo's numbers for `seed` (the demo uses `SEED`). */
-export function createData(seed: number = SEED): DemoData {
+/** The demo's numbers for `seed`, a snapshot a step (each `next()` builds one; the last returns them all). */
+function* building(seed: number): Generator<void, DemoData, void> {
   const rnd = mulberry32(seed);
   const gauss = (): number => { let u = 0; while (u === 0) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rnd()); };
   // The trace's shape: a few turns, eased into one another, with a random walk over them that ends where it started.
@@ -92,6 +94,9 @@ export function createData(seed: number = SEED): DemoData {
   const pfLiq = new Float32Array(n), pfStop = new Float32Array(n), pfTp = new Float32Array(n);
   // (The prototype also added levels at a few round prices, but none of them fell inside a row: each sits on the edge between two rows, so
   // they added nothing. Left out; the numbers are the same.)
+  // The Depth pane's totals per snapshot: everyone (g 0) and the profitable traders (g 1), per kind, per side, within each distance.
+  const band = new Float32Array(SNAPS * 60);
+  const kinds: readonly (readonly [Float32Array, Float32Array, Float32Array])[] = [[liqS, liqL, pfLiq], [stopS, stopL, pfStop], [tpL, tpS, pfTp]];
   for (let c = 0; c < SNAPS; c++) {
     const P = price[c * SNAP_HH + 3]!;
     for (let r = 0; r < ROWS; r++) {
@@ -111,12 +116,7 @@ export function createData(seed: number = SEED): DemoData {
       pfStop[i] = 0.05 + 0.55 * q2 * q2;
       pfTp[i] = 0.06 + 0.6 * q3 * q3;
     }
-  }
-  // The Depth pane's totals per snapshot: everyone (g 0) and the profitable traders (g 1), per kind, per side, within each distance.
-  const band = new Float32Array(SNAPS * 60);
-  const kinds: readonly (readonly [Float32Array, Float32Array, Float32Array])[] = [[liqS, liqL, pfLiq], [stopS, stopL, pfStop], [tpL, tpS, pfTp]];
-  for (let c = 0; c < SNAPS; c++) {
-    const P = price[c * SNAP_HH + 3]!;
+    // Its Depth totals (each total adds its rows in the same order as when they were worked out after every snapshot: the same numbers).
     for (let kind = 0; kind < 3; kind++) {
       const [up, dn, pf] = kinds[kind]!;
       for (let r = 0; r < ROWS; r++) {
@@ -126,13 +126,78 @@ export function createData(seed: number = SEED): DemoData {
         for (let b = 0; b < BANDS.length; b++) if (ad <= BANDS[b]!) { band[bandIndex(c, 0, kind, side, b)] += v; band[bandIndex(c, 1, kind, side, b)] += v * pf[i]!; }
       }
     }
+    yield;
   }
   return { price, liqL, liqS, stopL, stopS, tpL, tpS, pfLiq, pfStop, pfTp, band };
 }
 
+/** The demo's numbers for `seed` (the demo uses `SEED`), all at once. */
+export function createData(seed: number = SEED): DemoData {
+  const run = building(seed);
+  for (;;) { const step = run.next(); if (step.done) return step.value; }
+}
+
+/** The numbers once built, and a build under way: its steps so far, who waits for it, its next turn (an idle callback, else a timeout). */
 let shared: DemoData | null = null;
-/** The demo's numbers, built on first use and shared by the demo and the feature pictures. */
-export const demoData = (): DemoData => shared ??= createData();
+interface Build { run: Generator<void, DemoData, void>; waiters: Set<(d: DemoData) => void>; job: number | null; idle: boolean }
+let build: Build | null = null;
+
+function done(b: Build, d: DemoData): void {
+  shared = d; build = null;
+  const waiters = [...b.waiters];
+  b.waiters.clear();
+  for (const ready of waiters) ready(d);
+}
+function unplan(b: Build): void {
+  if (b.job === null) return;
+  if (b.idle) window.cancelIdleCallback(b.job); else window.clearTimeout(b.job);
+  b.job = null;
+}
+function plan(b: Build): void {
+  if (b.job !== null) return;
+  b.idle = typeof window.requestIdleCallback === 'function';
+  b.job = b.idle ? window.requestIdleCallback(deadline => work(b, deadline), { timeout: 150 }) : window.setTimeout(() => work(b, null), 0);
+}
+/** One turn: snapshots while the page is idle (about 6 ms where it cannot say), at least one; then the next turn, while someone waits. */
+function work(b: Build, deadline: IdleDeadline | null): void {
+  b.job = null;
+  const t0 = performance.now();
+  const more = (): boolean => deadline && !deadline.didTimeout ? deadline.timeRemaining() > 2 : performance.now() - t0 < 6;
+  let step = b.run.next();
+  while (!step.done && more()) step = b.run.next();
+  if (step.done) done(b, step.value);
+  else if (b.waiters.size) plan(b);
+}
+
+/**
+ * Hand the numbers to `ready`: at once when they are built, else when the build in turns (shared by every caller, started by the first)
+ * gets there. Returns what stops waiting; when nobody waits any more the turns stop, and the steps done so far are kept for the next caller.
+ */
+export function whenData(ready: (d: DemoData) => void): () => void {
+  if (shared) { ready(shared); return () => {}; }
+  const b = build ??= { run: building(SEED), waiters: new Set(), job: null, idle: false };
+  b.waiters.add(ready);
+  plan(b);
+  return () => { b.waiters.delete(ready); if (!b.waiters.size) unplan(b); };
+}
+
+/** The demo's numbers now, built at once if need be (a build under way is finished, and whoever waits for it is given them). */
+export function demoData(): DemoData {
+  if (shared) return shared;
+  const b = build;
+  if (!b) return shared = createData();
+  unplan(b);
+  let step = b.run.next();
+  while (!step.done) step = b.run.next();
+  done(b, step.value);
+  return step.value;
+}
+
+/** Forget the numbers and any build under way (for tests: the next caller starts from nothing). */
+export function forgetData(): void {
+  if (build) unplan(build);
+  build = null; shared = null;
+}
 
 /** The price at half hour `hh` (between two half hours, on the line between them). */
 export function priceAt(d: DemoData, hh: number): number {

@@ -5,16 +5,15 @@
  */
 import { t } from '../../i18n.ts';
 import { PLUS_NAME } from '../name.ts';
-import { FREE_HH, HH, LIQ, ROW0, ROW_STEP, ROWS, SNAPS, STOP, bandIndex, demoData, type DemoData } from './data.ts';
+import { FREE_HH, HH, LIQ, ROW0, ROW_STEP, ROWS, SNAPS, STOP, bandIndex, whenData, type DemoData } from './data.ts';
 import { add, dayLabel, money, sv, text } from './svg.ts';
 
 export interface VisualHosts { history?: HTMLElement | null; layers?: HTMLElement | null; groups?: HTMLElement | null }
 
 const f1 = (v: number): string => v.toFixed(1);
 
-function historyPicture(d: DemoData): SVGSVGElement {
+function historyPicture(s: SVGSVGElement, d: DemoData): void {
   const Wv = 400, Hv = 150, x0 = 4, x1 = Wv - 4, ww = x1 - x0, mid = 52, half = 40;
-  const s = sv('svg', { viewBox: `0 0 ${Wv} ${Hv}`, class: 'pd-vis', role: 'img', 'aria-label': t('Timeline: the whole history with Plus, the last 7 days free') });
   const last = 4, up: number[] = [], dn: number[] = [];
   let max = 1;
   for (let c = 0; c < SNAPS; c += 2) {
@@ -38,7 +37,6 @@ function historyPicture(d: DemoData): SVGSVGElement {
   text(s, dayLabel(0), { x: x0, y: Hv - 4, 'text-anchor': 'start' });
   text(s, dayLabel(HH - FREE_HH), { x: xB, y: Hv - 4, 'text-anchor': 'middle' });
   text(s, t('Today'), { x: x1, y: Hv - 4, 'text-anchor': 'end' });
-  return s;
 }
 
 /** The rows within 9 % of the price at the last snapshot, two to a bucket, with their top and bottom on a picture of `top` to `bottom`. */
@@ -49,9 +47,8 @@ function bucketsNow(d: DemoData, top: number, bottom: number): { yP: number; row
   return { yP: yOf(P), rows };
 }
 
-function layersPicture(d: DemoData): SVGSVGElement {
-  const Wv = 400, Hv = 156, pw = 120, gap = 20, top = 24, bottom = 150, c = SNAPS - 1;
-  const s = sv('svg', { viewBox: `0 0 ${Wv} ${Hv}`, class: 'pd-vis pd-ch', role: 'img', 'aria-label': t('Liquidations, stops and take profits as three separate layers') });
+function layersPicture(s: SVGSVGElement, d: DemoData): void {
+  const pw = 120, gap = 20, top = 24, bottom = 150, c = SNAPS - 1;
   const { yP, rows } = bucketsNow(d, top, bottom);
   const specs = [
     { title: t('Liquidations'), up: d.liqS, dn: d.liqL, marker: 'dot', tp: false },
@@ -89,13 +86,11 @@ function layersPicture(d: DemoData): SVGSVGElement {
     add(s, 'path', { d: cU, class: `${curve} ${upCls}` }); add(s, 'path', { d: cD, class: `${curve} ${dnCls}` });
     add(s, 'line', { x1: ox, x2: ox + pw, y1: Math.round(yP) + 0.5, y2: Math.round(yP) + 0.5, class: 'pd-v-price' });
   });
-  return s;
 }
 
-function groupsPicture(d: DemoData): SVGSVGElement {
+function groupsPicture(s: SVGSVGElement, d: DemoData): void {
   // Two precise views of the same moment on one dollar scale: everyone's liquidations and stops, and the profitable traders' own.
-  const Wv = 400, Hv = 178, pw = 186, gap = 28, top = 34, bottom = 172, c = SNAPS - 1;
-  const s = sv('svg', { viewBox: `0 0 ${Wv} ${Hv}`, class: 'pd-vis pd-ch', role: 'img', 'aria-label': t('Everyone and profitable traders: liquidation and stop levels at each price, on one dollar scale') });
+  const pw = 186, gap = 28, top = 34, bottom = 172, c = SNAPS - 1;
   const { yP, rows } = bucketsNow(d, top, bottom);
   const groups = [{ title: t('Everyone'), g: 0 }, { title: t('Profitable'), g: 1 }].map(({ title, g }) => {
     const parts = rows.map(b => {
@@ -133,28 +128,36 @@ function groupsPicture(d: DemoData): SVGSVGElement {
     add(s, 'path', { d: cU, class: 'pd-cuml pd-b' }); add(s, 'path', { d: cD, class: 'pd-cuml pd-a' });
     add(s, 'line', { x1: ox, x2: ox + pw, y1: Math.round(yP) + 0.5, y2: Math.round(yP) + 0.5, class: 'pd-v-price' });
   });
-  return s;
 }
 
+/** Each picture's frame (its size, so its room is kept before it is drawn), its name for a screen reader, and its drawing. */
+const PICTURES = {
+  history: { h: 150, cls: 'pd-vis', name: () => t('Timeline: the whole history with Plus, the last 7 days free'), draw: historyPicture },
+  layers: { h: 156, cls: 'pd-vis pd-ch', name: () => t('Liquidations, stops and take profits as three separate layers'), draw: layersPicture },
+  groups: { h: 178, cls: 'pd-vis pd-ch', name: () => t('Everyone and profitable traders: liquidation and stop levels at each price, on one dollar scale'), draw: groupsPicture },
+} as const;
+
 /**
- * Draw the three pictures into the hosts given (each optional), each with its "Illustrative data" label under it. `destroy()` takes them
- * out again.
+ * Draw the three pictures into the hosts given (each optional), each with its "Illustrative data" label under it: their frames at once, what
+ * they show as soon as the made-up numbers are here (`whenData`). `destroy()` stops waiting and takes them out again.
  */
 export function mountVisuals(hosts: VisualHosts): { destroy(): void } {
-  const d = demoData(), placed: Element[] = [];
-  const place = (host: HTMLElement | null | undefined, picture: (d: DemoData) => SVGSVGElement): void => {
-    if (!host) return;
+  const placed: Element[] = [], pending: { svg: SVGSVGElement; draw: (s: SVGSVGElement, d: DemoData) => void }[] = [];
+  for (const key of ['history', 'layers', 'groups'] as const) {
+    const host = hosts[key];
+    if (!host) continue;
+    const p = PICTURES[key];
+    const svg = sv('svg', { viewBox: `0 0 400 ${p.h}`, class: p.cls, role: 'img', 'aria-label': p.name(), 'aria-busy': 'true' });
     const box = document.createElement('div');
     box.className = 'pd-visual';
     const label = document.createElement('p');
     label.className = 'pd-vis-tag';
     label.textContent = t('Illustrative data');
-    box.append(picture(d), label);
+    box.append(svg, label);
     host.append(box);
     placed.push(box);
-  };
-  place(hosts.history, historyPicture);
-  place(hosts.layers, layersPicture);
-  place(hosts.groups, groupsPicture);
-  return { destroy() { for (const box of placed.splice(0)) box.remove(); } };
+    pending.push({ svg, draw: p.draw });
+  }
+  const stop = pending.length ? whenData(d => { for (const { svg, draw } of pending) { draw(svg, d); svg.removeAttribute('aria-busy'); } }) : () => {};
+  return { destroy() { stop(); for (const box of placed.splice(0)) box.remove(); } };
 }

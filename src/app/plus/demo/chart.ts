@@ -44,13 +44,13 @@ export interface Chart {
   readonly layout: Layout | null;
   /** Lay the chart out for a width (nothing when it is the same); whether it changed. */
   resize(width: number): boolean;
-  /** Draw `w`'s layers for the window ending at half hour `end`. */
-  draw(w: Weights, end: number): void;
+  /** Draw `w`'s layers of `data` for the window ending at half hour `end`. */
+  draw(data: DemoData, w: Weights, end: number): void;
 }
 
 const f1 = (v: number): string => v.toFixed(1);
 
-export function createChart(data: DemoData): Chart {
+export function createChart(): Chart {
   const svg = sv('svg', { class: 'pd-ch', role: 'img', 'aria-label': t('Illustrative chart of the levels') });
   let laid: Layout | null = null, V: Levels = emptyLevels(0);
   // What a frame rewrites, kept from the last build.
@@ -143,7 +143,7 @@ export function createChart(data: DemoData): Chart {
     return fill ? `${d}L${x0},${f1(lastY)}Z` : d;
   }
 
-  function draw(w: Weights, end: number): void {
+  function draw(data: DemoData, w: Weights, end: number): void {
     const L = laid, E = built;
     if (!L || !E) return;
     const n = L.bk.length, start = end - DEMO_WIN;

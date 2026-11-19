@@ -17,8 +17,8 @@
  */
 import { t } from '../../i18n.ts';
 import { PLUS_NAME } from '../name.ts';
-import { FREE_HH, HH, demoData } from './data.ts';
-import { createChart } from './chart.ts';
+import { FREE_HH, HH, whenData, type DemoData } from './data.ts';
+import { chartHeight, createChart } from './chart.ts';
 import { builtInControl } from './control.ts';
 import { DEMO_WIN, sameWeights, weightsOf, windowEnd, type Weights } from './model.ts';
 import { Player, idleCaption, type SceneStep } from './scenes.ts';
@@ -54,7 +54,9 @@ function icon(name: keyof typeof ICONS): SVGSVGElement {
 }
 
 export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle {
-  const data = demoData(), store = createDemoStore(), chart = createChart(data);
+  const store = createDemoStore(), chart = createChart();
+  /** The made-up numbers: here at once when an earlier mount built them, else a moment after the demo's frame has painted (`whenData`). */
+  let data: DemoData | null = null;
   // One query, watched: reduced motion turned on while the demo plays stops what plays by itself (`onMotion`).
   const motionQuery = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   const reduced = (): boolean => motionQuery?.matches ?? false;
@@ -224,7 +226,7 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
     const was = player.running;
     player.tick(at);
     if (moved || glided) dirty = true;
-    if (dirty && chart.layout) { chart.draw(weights, windowEnd(scrub)); dirty = false; }
+    if (dirty && data && chart.layout) { chart.draw(data, weights, windowEnd(scrub)); dirty = false; }
     if (was || player.running) syncPlay();
     if (live(tween) || live(glide) || player.running) schedule();
   }
@@ -264,15 +266,20 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   });
 
   // ---- size, view and the tab
+  // The chart's room is kept from the first frame; the chart itself is laid out once the numbers are here (a quiet empty stage until then).
   const fit = (): void => {
-    if (chart.resize(chartBox.clientWidth)) { chartBox.style.height = `${chart.layout!.H}px`; dirty = true; schedule(); }
+    const w = chartBox.clientWidth;
+    if (w < 60) return;
+    chartBox.style.height = `${chartHeight(w)}px`;
+    if (data && chart.resize(w)) { dirty = true; schedule(); }
   };
   const sizes = new ResizeObserver(fit);
   sizes.observe(chartBox);
   /** In view and the tab shown: autoplay once, or go on after a pause that was the view's; else pause for the view. */
   const consider = (): void => {
     if (inView && !document.hidden) {
-      if (!autoplayed && !reduced()) { autoplayed = true; startedBy = 'auto'; player.start(now()); }
+      // The autoplay waits for the numbers: a tour over an empty stage would show nothing of its scenes.
+      if (!autoplayed && !reduced()) { if (data) { autoplayed = true; startedBy = 'auto'; player.start(now()); } }
       // A tour that started by itself goes on only while motion is welcome; one the person started goes on regardless.
       else if (player.pausedBy === 'view' && (startedBy === 'person' || !reduced())) player.resume(now());
     } else player.pause('view');
@@ -300,6 +307,13 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
 
   host.append(root);
   syncScrub(); syncPlay(); fit(); schedule();
+  stage.setAttribute('aria-busy', 'true');
+  const stopWaiting = whenData(d => {
+    data = d;
+    stage.removeAttribute('aria-busy');
+    fit(); dirty = true;
+    consider();
+  });
 
   return {
     // As the person's own pause: also a tour paused for the view stays paused when the demo comes back into view.
@@ -311,6 +325,7 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
       raf = 0;
       sizes.disconnect(); views.disconnect();
       document.removeEventListener('visibilitychange', onVisibility);
+      stopWaiting();
       if (motionQuery) { if (typeof motionQuery.removeEventListener === 'function') motionQuery.removeEventListener('change', onMotion); else motionQuery.removeListener(onMotion); }
       unsubscribe();
       control.destroy();
