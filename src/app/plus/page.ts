@@ -14,7 +14,7 @@ import { applyTheme } from '../theme.ts';
 import { FREE_DAYS, LEGAL, PADDLE, PLUS_CONTACT, PLUS_KEYS, plusApi, plusOnSale, type PlusPrice } from './config.ts';
 import { PLUS_NAME } from './name.ts';
 import { plus, readGrant, webPost, type Grant } from './pass.ts';
-import { ARRIVAL_SECONDS, Arrival, countsDown, stopOnActivity, type ArrivalVia } from './arrival.ts';
+import { ARRIVAL_SECONDS, Arrival, countsDown, placeOf, stopOnActivity, type ArrivalVia } from './arrival.ts';
 
 /** The part of Paddle's script this page uses (Paddle.js v2). */
 interface PaddleEvent { name?: string; data?: { transaction_id?: string } }
@@ -141,10 +141,8 @@ function drawArrival(): void {
 // A page the browser kept and shows again (Back from the map) does not count down a second time.
 window.addEventListener('pageshow', event => { if (event.persisted) arrival.stay(); });
 // Anything the visitor does on the page (Reveal, Copy, a field, the wheel, a scroll) stops the countdown, and so does a hidden tab; the
-// confirmation's own buttons and links do what they say.
-const activity = stopOnActivity(document, arrival,
-  target => !(target instanceof Node) || !arrivalHost.contains(target) ? 'page' : target instanceof Element && target.closest('a, button') ? 'control' : 'confirmation',
-  () => window.scrollY);
+// confirmation's own button and link do what they say (Space presses the button, but from the link it scrolls the page, and counts).
+const activity = stopOnActivity(document, arrival, target => placeOf(target, t => t instanceof Node && arrivalHost.contains(t)), () => window.scrollY);
 /**
  * Plus came on here by the visitor's own doing: the confirmation, counting down to the map only after a key typed into the key box (after a
  * checkout or a restore the page shows the new key, to be copied first; never where the browser would not keep Plus, nor in a hidden tab).
@@ -334,7 +332,10 @@ function deviceSection(): HTMLElement {
       el('p', { class: 'fine', textContent: t('What you type here is sent to this site\'s server to find your subscription; it asks Paddle, which sold it, about the invoice number.') })] : []));
 }
 
-function render(): void {
+/** The page drawn afresh, through the countdown (`redraw`), which tells a scroll the drawing makes from the visitor's. */
+function render(): void { activity.redraw(drawPage); }
+
+function drawPage(): void {
   const first = state.first, stands = member.state;
   // The page is drawn afresh: what had the focus (a field being typed in, a button just pressed) gets it back, the caret where it was.
   const active = document.activeElement instanceof HTMLElement && root.contains(document.activeElement) ? document.activeElement : null;
@@ -374,8 +375,6 @@ function render(): void {
       if (focus.at && again instanceof HTMLInputElement) { try { again.setSelectionRange(focus.at[0], focus.at[1]); } catch { /* an email field has no caret to set */ } }
     }
   }
-  // Where the view stands now that the page is drawn afresh: a scroll landing there is the page's own, not the visitor's.
-  activity.redrawn();
 }
 
 member.subscribe(render);

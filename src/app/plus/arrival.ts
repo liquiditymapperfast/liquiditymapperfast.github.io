@@ -91,8 +91,23 @@ export const STOPPING_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart',
 export const scrollingKey = (key: string): boolean =>
   key === 'PageDown' || key === 'PageUp' || key === 'Home' || key === 'End' || key === 'ArrowDown' || key === 'ArrowUp' || key === ' ' || key === 'Spacebar';
 
-/** Where an event happened: on the page, on the confirmation, or on one of its buttons or links (which do what they say). */
+/**
+ * Where an event happened: on the page, on the confirmation (its link included), or on one of its controls that Space presses (a button),
+ * where Space does what the control says instead of scrolling.
+ */
 export type ArrivalPlace = 'page' | 'confirmation' | 'control';
+
+/**
+ * Where `target` is, `inside` saying whether it is on the confirmation. A link is no control here (Sol's review, round 3): Space on "Open the
+ * map" scrolls the page rather than open the map, and at the page's foot does nothing at all, so letting it pass let the countdown run on.
+ * Only an element can say which control it is in.
+ */
+export function placeOf(target: unknown, inside: (target: unknown) => boolean): ArrivalPlace {
+  if (!inside(target)) return 'page';
+  const element = target as { closest?: (selectors: string) => unknown } | null;
+  return typeof element?.closest === 'function'
+    && element.closest('button, summary, input[type="button"], input[type="submit"], input[type="reset"], input[type="checkbox"], input[type="radio"]') ? 'control' : 'confirmation';
+}
 
 /** The part of the page's `document` the countdown listens to. */
 export interface ArrivalDocument {
@@ -100,31 +115,53 @@ export interface ArrivalDocument {
   addEventListener(type: string, listener: (event: { type: string; target: unknown; key?: string }) => void, options?: { capture?: boolean; passive?: boolean }): void;
 }
 
+/** What the page tells the countdown: every drawing of the page goes through `redraw`, so a scroll the drawing makes is told from the visitor's. */
+export interface ArrivalActivity { redraw(draw: () => void): void }
+
 /**
  * The countdown stops as soon as the visitor does anything on the page (Sol's review, 2026-11-18: a Reveal pressed in the five seconds showed
  * the key, and the page left anyway). Outside the confirmation (`place`): a press, a key, a touch. Anywhere, the confirmation included: the
- * wheel, a key that scrolls (Space only off its buttons, where it presses them), and a scroll, except the page's own (drawn afresh, it can
- * grow shorter and the browser moves the view: `redrawn` notes where the view stands right after each drawing, and a scroll that lands
- * exactly there is let pass). It stops too when the tab is hidden, and does not start again when it shows. Stopping is `stay`: the
- * confirmation stays, with the map a press away. Listened to once, for every confirmation.
+ * wheel, a key that scrolls (Space only on a control it presses), and a scroll, except the page's own: drawn afresh, the page can grow
+ * shorter and the browser moves the view. `redraw` reads the view before and after each drawing and lets pass, once, the scroll that lands
+ * where the drawing itself moved it. A movement already under way when a drawing starts (the view moved since the last scroll event, whose
+ * event is still to come: Sol's review, round 3, a swipe, then a server's answer drawn before the swipe's event) is the visitor's, wherever
+ * the view ends. It stops too when the tab is hidden, and does not start again when it shows. Stopping is `stay`: the confirmation stays,
+ * with the map a press away. Listened to once, for every confirmation.
  */
-export function stopOnActivity(doc: ArrivalDocument, arrival: Arrival, place: (target: unknown) => ArrivalPlace, scrollY: () => number): { redrawn(): void } {
+export function stopOnActivity(doc: ArrivalDocument, arrival: Arrival, place: (target: unknown) => ArrivalPlace, scrollY: () => number): ArrivalActivity {
   const stop = (): void => { if (arrival.state?.counting) arrival.stay(); };
-  let own = NaN;
+  // Where the view stood at the document's last scroll event, and where the last drawing moved it while that move's event is still to come
+  // (NaN: nowhere). Both are kept whether a countdown runs or not, so one that starts later reads the view right.
+  let seen = scrollY(), own = NaN;
   const stops = (event: { type: string; target: unknown; key?: string }): boolean => {
     const where = place(event.target);
     switch (event.type) {
       case 'wheel': return true;
-      case 'scroll': {
-        // The view where the last drawing left it: that scroll is the page's own, once.
-        if (event.target === doc && scrollY() === own) { own = NaN; return false; }
-        return true;
-      }
       case 'keydown': return where === 'page' || (scrollingKey(event.key ?? '') && !(where === 'control' && (event.key === ' ' || event.key === 'Spacebar')));
       default: return where === 'page';
     }
   };
-  for (const type of STOPPING_EVENTS) doc.addEventListener(type, event => { if (arrival.state?.counting && stops(event)) stop(); }, { capture: true, passive: true });
+  for (const type of STOPPING_EVENTS) {
+    if (type !== 'scroll') doc.addEventListener(type, event => { if (arrival.state?.counting && stops(event)) stop(); }, { capture: true, passive: true });
+  }
+  doc.addEventListener('scroll', event => {
+    // A box inside the page scrolled: the visitor's doing.
+    if (event.target !== doc) { stop(); return; }
+    // The view where the last drawing moved it: the page's own scroll, once. Anywhere else, the visitor moved it.
+    const y = scrollY(), ours = y === own;
+    seen = y; own = NaN;
+    if (!ours) stop();
+  }, { capture: true, passive: true });
   doc.addEventListener('visibilitychange', () => { if (doc.hidden) stop(); });
-  return { redrawn: () => { own = scrollY(); } };
+  return {
+    redraw(draw) {
+      const before = scrollY(), pending = before !== seen && before !== own;
+      try { draw(); } finally {
+        const after = scrollY();
+        // Moved before this drawing and not by an earlier one: the visitor's movement, whose event counts whatever this drawing does.
+        if (pending) own = NaN;
+        else if (after !== before) own = after;
+      }
+    },
+  };
 }

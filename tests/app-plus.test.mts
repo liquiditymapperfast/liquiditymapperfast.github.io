@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DAY_MS, FREE_DAYS, freeFrom, plusApi, PLUS_API } from '../src/app/plus/config.ts';
 import { PLUS_STORE, Plus, parsePass, readGrant, readHeld, type Post } from '../src/app/plus/pass.ts';
-import { ARRIVAL_SECONDS, Arrival, countsDown, stopOnActivity, type ArrivalDocument, type ArrivalPlace, type ArrivalState } from '../src/app/plus/arrival.ts';
+import { ARRIVAL_SECONDS, Arrival, countsDown, placeOf, stopOnActivity, type ArrivalDocument, type ArrivalPlace, type ArrivalState } from '../src/app/plus/arrival.ts';
 
 const b64url = (text: string): string => Buffer.from(text, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 /** A pass as the server writes one (the signature is the server's business: the page reads only the middle part). */
@@ -466,8 +466,15 @@ function fakeDocument() {
   const fire = (type: string, target: unknown = 'page', key?: string): void => { for (const l of listeners.get(type) ?? []) l({ type, target, ...(key === undefined ? {} : { key }) }); };
   return { doc, types: () => [...listeners.keys()].sort(), fire };
 }
-const BANNER = 'the confirmation', STAY = 'Stay here', OPEN = 'Open the map';
-const place = (target: unknown): ArrivalPlace => target === BANNER ? 'confirmation' : target === STAY || target === OPEN ? 'control' : 'page';
+/** An element as the countdown reads it: `closest` finds it for a list of selectors that names its tag (all these tests' elements need). */
+const element = (tag: string): { tag: string; closest(selectors: string): unknown } => ({
+  tag, closest(selectors: string) { return selectors.split(',').some(s => s.trim() === tag) ? this : null; },
+});
+/** The confirmation: its region, its Stay here button and its Open the map link. */
+const BANNER = element('section'), STAY = element('button'), OPEN = element('a');
+const ON_BANNER = new Set<unknown>([BANNER, STAY, OPEN]);
+const place = (target: unknown): ArrivalPlace => placeOf(target, t => ON_BANNER.has(t));
+const named = (target: unknown): string => typeof target === 'string' ? target : target === BANNER ? 'the confirmation' : target === STAY ? 'Stay here' : target === OPEN ? 'Open the map' : String(target);
 
 test('on the page: a key accepted, then Reveal pressed within the five seconds: the key shows and the page stays', () => {
   const c = fakeClock(5_000_000), went: number[] = [];
@@ -494,18 +501,70 @@ test('on the page: a key, a touch, the wheel or a scroll stops the countdown at 
   for (const [type, target, key] of [['keydown', 'the key field', 'a'], ['touchstart', 'Copy', undefined], ['wheel', 'page', undefined], ['wheel', BANNER, undefined],
     ['keydown', BANNER, 'PageDown'], ['keydown', OPEN, 'ArrowDown'], ['keydown', BANNER, ' '], ['keydown', OPEN, 'End']] as const) {
     fresh(); page.fire(type, target, key);
-    assert.equal(a.state!.counting, false, type + ' ' + target + ' ' + (key ?? ''));
+    assert.equal(a.state!.counting, false, `${type} ${named(target)} ${key ?? ''}`);
   }
   // The drawing's own scroll (the page grew shorter and the browser moved the view) lands where the drawing left the view: let pass, once.
-  fresh(); page.doc.scrollY = 380; activity.redrawn(); page.fire('scroll', page.doc);
+  fresh(); activity.redraw(() => { page.doc.scrollY = 380; }); page.fire('scroll', page.doc);
   assert.equal(a.state!.counting, true, 'the page\'s own scroll');
   page.doc.scrollY = 420; page.fire('scroll', page.doc);
   assert.equal(a.state!.counting, false, 'a scroll anywhere else is the visitor\'s, however early');
-  fresh(); activity.redrawn(); page.doc.scrollY += 40; page.fire('scroll', page.doc);
+  fresh(); activity.redraw(() => {}); page.doc.scrollY += 40; page.fire('scroll', page.doc);
   assert.equal(a.state!.counting, false, 'a scroll right after the confirmation came, not the drawing\'s: stops it');
   fresh(); page.fire('scroll', 'a scrolling box');
   assert.equal(a.state!.counting, false, 'a box scrolled inside the page');
   c.advance(30_000);
+  assert.deepEqual(went, []);
+});
+
+test('on the page: a drawing that comes between the visitor\'s swipe and its scroll event does not swallow the swipe', () => {
+  const c = fakeClock(7_000_000), went: number[] = [];
+  const a = new Arrival(c.clock, () => { went.push(c.clock.now()); }, () => {});
+  const page = fakeDocument(), activity = stopOnActivity(page.doc, a, place, () => page.doc.scrollY);
+  const fresh = (): void => { a.start(null, true); c.advance(100); assert.equal(a.state!.counting, true); };
+  // A swipe moves the view and its scroll event waits for the next frame; a server's answer draws the page first, leaving the view where it is.
+  fresh(); page.doc.scrollY = 300; activity.redraw(() => {}); page.fire('scroll', page.doc);
+  assert.equal(a.state!.counting, false, 'the swipe stops the countdown');
+  // The same, the drawing moving the view too (the page grew shorter): the swipe was under way first, so the one scroll event counts.
+  fresh(); page.doc.scrollY = 900; activity.redraw(() => { page.doc.scrollY = 850; }); page.fire('scroll', page.doc);
+  assert.equal(a.state!.counting, false, 'a movement under way before the drawing counts, wherever the view ends');
+  // Nothing under way: the drawing's own move is let pass, once, and a second drawing that leaves the view alone keeps it so.
+  fresh(); activity.redraw(() => { page.doc.scrollY = 700; }); activity.redraw(() => {}); page.fire('scroll', page.doc);
+  assert.equal(a.state!.counting, true, 'the drawing\'s own scroll');
+  page.doc.scrollY = 690; page.fire('scroll', page.doc);
+  assert.equal(a.state!.counting, false, 'once only');
+  // Scrolls made while no countdown runs are followed too: a countdown started afterwards does not take them for a movement under way.
+  page.doc.scrollY = 1_200; page.fire('scroll', page.doc);
+  fresh(); activity.redraw(() => { page.doc.scrollY = 1_100; }); page.fire('scroll', page.doc);
+  assert.equal(a.state!.counting, true, 'the drawing\'s own scroll after the visitor scrolled with no countdown');
+  assert.deepEqual(went, []);
+  c.advance(ARRIVAL_SECONDS * 1_000 + 300);
+  assert.equal(went.length, 1, 'that countdown, left alone, takes the page to the map');
+});
+
+test('on the confirmation: Space presses its button but scrolls from its link, so on the link it stops the countdown, at the page\'s foot too', () => {
+  const c = fakeClock(8_000_000), went: number[] = [];
+  const a = new Arrival(c.clock, () => { went.push(c.clock.now()); }, () => {});
+  const page = fakeDocument();
+  stopOnActivity(page.doc, a, place, () => page.doc.scrollY);
+  assert.deepEqual([place(STAY), place(OPEN), place(BANNER), place(element('button')), place('page')], ['control', 'confirmation', 'confirmation', 'page', 'page'],
+    'its button is a control Space presses; its link is not (Space scrolls from a link); a button of the page is the page');
+  // Its button: Space presses it (Stay here, whose own press decides), so the key alone does not stop the countdown.
+  a.start(null, true); c.advance(100);
+  page.fire('keydown', STAY, ' ');
+  assert.equal(a.state!.counting, true, 'Space on the button');
+  // Its link, the page free to scroll: Space scrolls it, and the key stops the countdown before the scroll comes.
+  page.fire('keydown', OPEN, ' ');
+  assert.equal(a.state!.counting, false, 'Space on the link');
+  page.doc.scrollY += 600; page.fire('scroll', page.doc);
+  assert.equal(a.state!.counting, false);
+  // Its link, the page already at its foot: Space moves nothing and no scroll follows; the key alone stops the countdown.
+  a.start(null, true); c.advance(100);
+  page.fire('keydown', OPEN, ' ');
+  assert.equal(a.state!.counting, false, 'Space on the link at the page\'s foot, no scroll after it');
+  // Enter on the link opens the map: that is the link's own press, not something else done on the page.
+  a.start(null, true); c.advance(100);
+  page.fire('keydown', OPEN, 'Enter');
+  assert.equal(a.state!.counting, true, 'Enter on the link');
   assert.deepEqual(went, []);
 });
 
