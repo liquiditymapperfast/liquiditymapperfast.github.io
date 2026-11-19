@@ -10,7 +10,7 @@ const KEY = 'gift_k'.padEnd(43, 'x');
 const HOUR = 3_600_000, NOW = Date.UTC(2026, 10, 19, 6), UNTIL = Date.UTC(2027, 1, 19);
 const flush = async (): Promise<void> => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 const memory = (): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> => { const data = new Map<string, string>(); return { getItem: k => data.get(k) ?? null, setItem: (k, v) => { data.set(k, v); }, removeItem: k => { data.delete(k); } }; };
-const IDLE: PopUi = { mode: 'idle', revealed: false, removed: false };
+const IDLE: PopUi = { mode: 'idle', revealed: null, removed: false };
 
 test('the toolbar\'s Plus button: a browser without a key gets the presentation; one with a key, on, ended or being checked, its status', () => {
   assert.equal(plusButtonAction('none'), 'sheet');
@@ -22,7 +22,7 @@ test('the status pop-up for each state: on with the key masked, ended with a key
   assert.deepEqual(on.status, { tone: 'ok', text: `Plus is on in this browser, until ${plusDate(UNTIL)}.` });
   assert.equal(on.key, maskKey(KEY)); assert.ok(!on.key!.includes(KEY.slice(6, 30)), 'the key masked until Reveal');
   assert.deepEqual(on.actions, ['replace', 'remove']); assert.equal(on.entry, false); assert.equal(on.confirm, null);
-  assert.equal(popView({ state: 'on', until: UNTIL, key: KEY, unverified: false }, { ...IDLE, revealed: true }).key, KEY, 'revealed');
+  assert.equal(popView({ state: 'on', until: UNTIL, key: KEY, unverified: false }, { ...IDLE, revealed: KEY }).key, KEY, 'revealed');
   assert.equal(popView({ state: 'on', until: null, key: KEY, unverified: false }, IDLE).status!.text, 'Plus is on in this browser.', 'no date said: none written');
   const ended = popView({ state: 'ended', until: UNTIL, key: KEY, unverified: false }, IDLE);
   assert.deepEqual(ended.status, { tone: 'plain', text: `Plus ended on ${plusDate(UNTIL)}. Everything free stays.` });
@@ -43,12 +43,12 @@ test('Remove asks first, saying it does not cancel a subscription; Keep and Canc
   assert.deepEqual(asking.actions, ['remove-yes', 'remove-no']);
   assert.deepEqual(popPress(ui, 'remove-no'), { ui: IDLE, effect: null }, 'Keep: nothing removed');
   const yes = popPress(ui, 'remove-yes');
-  assert.equal(yes.effect, 'forget'); assert.deepEqual(yes.ui, { mode: 'idle', revealed: false, removed: true });
+  assert.equal(yes.effect, 'forget'); assert.deepEqual(yes.ui, { mode: 'idle', revealed: null, removed: true });
   ui = popPress(IDLE, 'replace').ui;
   const replacing = popView({ state: 'on', until: UNTIL, key: KEY, unverified: false }, ui);
   assert.equal(replacing.entry, true); assert.deepEqual(replacing.actions, ['cancel']);
   assert.deepEqual(popPress(ui, 'cancel').ui, IDLE);
-  assert.equal(popPress(IDLE, 'reveal').ui.revealed, true); assert.equal(popPress({ ...IDLE, revealed: true }, 'reveal').ui.revealed, false);
+  assert.equal(popPress(IDLE, 'reveal', KEY).ui.revealed, KEY); assert.equal(popPress({ ...IDLE, revealed: KEY }, 'reveal', KEY).ui.revealed, null);
   assert.equal(popPress(IDLE, 'retry').effect, 'retry');
 });
 

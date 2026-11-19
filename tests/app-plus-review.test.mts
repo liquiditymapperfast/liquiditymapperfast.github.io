@@ -2,7 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PLUS_STORE, Plus, type Post } from '../src/app/plus/pass.ts';
-import { activateKey } from '../src/app/plus/key.ts';
+import { activateKey, keyEntry, maskKey, type KeyOutcome } from '../src/app/plus/key.ts';
+import { createStatusPop, popPress, popView, type PopUi } from '../src/app/plus/panel.ts';
+import { FakeElement, FakeEvent, FakePage } from './fake-dom.mts';
 
 const b64url = (text: string): string => Buffer.from(text, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const passFor = (sub: string, exp: number): string => `v1.${b64url(JSON.stringify({ sub, exp }))}.c2lnbmF0dXJl`;
@@ -64,4 +66,90 @@ test('Sol 2 (P1): Try again never brings back a key another tab removed or repla
     assert.ok(!sent.includes(KEY_A), `${other}: the old key is not asked about again`);
     assert.equal(here.key, other === 'removed' ? null : KEY_C, `${other}: this tab follows`);
   }
+});
+
+test('Sol 3 (P2): the key form masks what is typed or pasted; Reveal shows it, Hide masks it, and a key taken leaves it masked and empty', async () => {
+  const page = new FakePage(), done = page.install();
+  try {
+    let answer: (o: KeyOutcome) => void = () => {};
+    const form = keyEntry({ activate: () => new Promise(resolve => { answer = resolve; }) });
+    page.body.append(form.root as unknown as FakeElement);
+    const input = form.input as unknown as FakeElement, show = (form.root as unknown as FakeElement).querySelector('.key-show')!;
+    assert.equal(input.type, 'password', 'masked from the start');
+    input.value = KEY_A; input.dispatchEvent(new FakeEvent('input'));
+    assert.equal(input.type, 'password', 'a pasted key stays masked');
+    show.click(); assert.equal(input.type, 'text'); assert.equal(show.getAttribute('aria-pressed'), 'true'); assert.equal(show.textContent, 'Hide');
+    show.click(); assert.equal(input.type, 'password'); assert.equal(show.textContent, 'Reveal');
+    show.click();
+    (form.root as unknown as FakeElement).requestSubmit();
+    answer({ kind: 'ok', grant: { pass: passFor('gift_a', NOW + HOUR), until: UNTIL }, kept: true }); await flush();
+    assert.equal(input.value, ''); assert.equal(input.type, 'password', 'masked again once taken');
+  } finally { done(); }
+});
+
+/** A membership for the pop-up's tests: a key, a state, listeners, and what was done to it. */
+function membership(key: string | null, state: 'on' | 'ended' | 'checking' | 'none' = 'on') {
+  const listeners = new Set<() => void>();
+  const m = {
+    key, state, until: UNTIL as number | null, unverified: false, forgot: 0, retried: 0,
+    forget() { m.forgot++; m.key = null; m.state = 'none'; for (const l of [...listeners]) l(); },
+    retry() { m.retried++; },
+    subscribe(fn: () => void) { listeners.add(fn); return () => { listeners.delete(fn); }; },
+    change(next: Partial<{ key: string | null; state: 'on' | 'ended' | 'checking' | 'none' }>) { Object.assign(m, next); for (const l of [...listeners]) l(); },
+    get listening() { return listeners.size; },
+  };
+  return m;
+}
+/** The pop-up in a body on the fake page, drawn again as a panel draws (emptied, built, the focused control's `data-focus` given back). */
+function mounted(page: FakePage, m: ReturnType<typeof membership>, more: Partial<Parameters<typeof createStatusPop>[0]> = {}) {
+  const body = new FakeElement('DIV');
+  page.body.append(body);
+  let closed = 0;
+  const render = (): void => {
+    const active = page.activeElement, keep = active && body.contains(active) ? active.dataset.focus : undefined;
+    body.replaceChildren();
+    pop.build(body as unknown as HTMLElement);
+    if (keep) body.all().find(x => x.dataset.focus === keep)?.focus();
+  };
+  const pop = createStatusPop({ member: m as never, redraw: render, close: () => { closed++; }, see: () => {}, ...more });
+  render();
+  const press = (focus: string): void => { const b = body.querySelector(`[data-focus="${focus}"]`); assert.ok(b, `no ${focus}`); b!.focus(); b!.click(); };
+  return { body, pop, press, render, closed: () => closed, keyShown: () => (body.querySelector('.pp-key') as FakeElement | null)?.value ?? null };
+}
+
+test('Sol 4 (P2): Reveal holds for the key it was pressed for: another key coming in is masked again', () => {
+  const ui: PopUi = { mode: 'idle', revealed: KEY_A, removed: false };
+  assert.equal(popView({ state: 'on', until: UNTIL, key: KEY_B, unverified: false }, ui).key, maskKey(KEY_B), 'B was never revealed');
+  assert.equal(popView({ state: 'on', until: UNTIL, key: KEY_A, unverified: false }, ui).key, KEY_A);
+  assert.equal(popPress({ ...ui, revealed: null }, 'reveal', KEY_B).ui.revealed, KEY_B);
+  const page = new FakePage(), done = page.install();
+  try {
+    const m = membership(KEY_A), p = mounted(page, m);
+    p.press('reveal'); assert.equal(p.keyShown(), KEY_A);
+    m.change({ key: KEY_B });
+    assert.equal(p.keyShown(), maskKey(KEY_B), 'another tab\'s key is not shown unasked');
+  } finally { done(); }
+});
+
+test('Sol 4 (P2): a clipboard refusal that comes after Hide, another key or the pop-up\'s closing shows nothing', async () => {
+  const page = new FakePage(), done = page.install();
+  try {
+    for (const then of ['hide', 'key', 'close'] as const) {
+      const m = membership(KEY_A);
+      let refuse: (r: 'copied' | 'select') => void = () => {};
+      const p = mounted(page, m, { copy: () => new Promise(resolve => { refuse = resolve; }) });
+      p.press('reveal'); p.press('copy');
+      if (then === 'hide') p.press('reveal'); else if (then === 'key') m.change({ key: KEY_B }); else p.pop.destroy();
+      refuse('select'); await flush();
+      if (then !== 'close') assert.equal(p.keyShown(), maskKey(m.key!), `${then}: still masked`);
+      assert.ok(!p.body.textContent.includes('Key selected'), `${then}: nothing said`);
+      p.pop.destroy(); p.body.remove();
+    }
+    // Not given up: the key shown and selected, for copying by hand.
+    const m = membership(KEY_A);
+    let refuse: (r: 'copied' | 'select') => void = () => {};
+    const p = mounted(page, m, { copy: () => new Promise(resolve => { refuse = resolve; }) });
+    p.press('copy'); refuse('select'); await flush();
+    assert.equal(p.keyShown(), KEY_A); assert.ok(p.body.textContent.includes('Key selected. Copy it now.'));
+  } finally { done(); }
 });

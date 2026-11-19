@@ -2,8 +2,9 @@
  * A Plus key entered in the app (the toolbar's Plus pop-up, the presentation sheet): sent to the Plus server's renewal, the request the Plus
  * page's key box makes, which answers with a pass when the key opens Plus (`pass.ts`). Nothing else is sent and nothing navigates away.
  * What the form says: checking, Plus on (until when), a key the server does not know, a key that no longer opens Plus, the server not
- * reached, too many tries, or a refusal that is not the server's own (a firewall's page). An answer that comes after the form was given up,
- * or after the membership changed meanwhile (another tab's key, a key removed), is dropped (Sol, review 2026-11-19).
+ * reached, too many tries, or a refusal that is not the server's own (a firewall's page). The key is masked as it is typed or pasted;
+ * Reveal shows it. An answer that comes after the form was given up, or after the membership changed meanwhile (another tab's key, a key
+ * removed), is dropped (Sol, review 2026-11-19).
  */
 import { el } from '../dom.ts';
 import { language, t } from '../i18n.ts';
@@ -83,23 +84,27 @@ export interface KeyEntry {
   destroy(): void;
 }
 /**
- * The key form: a field, Activate, a status line (checking, on, not recognized, not reached ...) and the
+ * The key form: a field (masked; Reveal shows what is in it), Activate, a status line (checking, on, not recognized, not reached ...) and the
  * line that a key is entered once per browser and address. `onSuccess` runs once Plus is on (the membership's own listeners have been told by
  * then). Its controls carry `data-focus` keys, so a panel drawn again around the same form gives the keyboard back to the same control.
  */
 export function keyEntry(o: { onSuccess?: (outcome: Extract<KeyOutcome, { kind: 'ok' }>) => void; activate?: (text: string, deps: { signal: AbortSignal }) => Promise<KeyOutcome> } = {}): KeyEntry {
   const id = `plus-key-${++uid}`;
-  const input = el('input', { type: 'text', id, class: 'key-in', autocomplete: 'off', spellcheck: false, placeholder: t('Paste your key') });
+  const input = el('input', { type: 'password', id, class: 'key-in', autocomplete: 'off', spellcheck: false, placeholder: t('Paste your key') });
   input.setAttribute('autocapitalize', 'off'); input.setAttribute('aria-describedby', `${id}m ${id}n`);
   input.dataset.focus = 'key-in';
+  const show = el('button', { type: 'button', class: 'key-show', textContent: t('Reveal') });
+  show.setAttribute('aria-pressed', 'false'); show.setAttribute('aria-controls', id); show.dataset.focus = 'key-show';
   const go = el('button', { type: 'submit', class: 'key-go', textContent: t('Activate') });
   go.dataset.focus = 'key-go';
   const msg = el('p', { class: 'key-msg', id: `${id}m`, role: 'status' });
   const label = el('label', { class: 'vh', htmlFor: id, textContent: t('Your key') });
-  const form = el('form', { class: 'key-form' }, label, el('div', { class: 'key-row' }, input, go), msg,
+  const form = el('form', { class: 'key-form' }, label, el('div', { class: 'key-row' }, input, show, go), msg,
     el('p', { class: 'key-note', id: `${id}n`, textContent: t('Enter your key once on each browser and address you use.') }));
   form.noValidate = true;
   let busy = false, gone = false, pending: AbortController | null = null;
+  const mask = (shown: boolean): void => { input.type = shown ? 'text' : 'password'; show.textContent = shown ? t('Hide') : t('Reveal'); show.setAttribute('aria-pressed', String(shown)); };
+  show.addEventListener('click', () => { mask(input.type === 'password'); });
   const sync = (): void => { go.disabled = busy || !input.value.trim(); };
   const say = (tone: '' | 'checking' | 'ok' | 'err', text: string, more = ''): void => {
     msg.className = `key-msg${tone ? ` ${tone}` : ''}`;
@@ -118,7 +123,7 @@ export function keyEntry(o: { onSuccess?: (outcome: Extract<KeyOutcome, { kind: 
       pending = null; busy = false; input.readOnly = false;
       if (outcome.kind === 'stale') { say('', ''); sync(); return; }
       if (outcome.kind === 'ok') {
-        input.value = '';
+        input.value = ''; mask(false);
         say('ok', onText(outcome.grant.until), outcome.kept ? '' : t('This browser would not keep Plus: it lasts until this tab closes. Copy the key now and enter it again next time.'));
         sync(); o.onSuccess?.(outcome);
         return;

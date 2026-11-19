@@ -32,7 +32,7 @@
 .px-status { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 15px; }
 .px-status .px-check { margin-top: 4px; }
 .px-key .key-in { height: 36px; font-size: 14px; }
-.px-key .key-go { min-height: 36px; }
+.px-key .key-go, .px-key .key-show { min-height: 36px; }
 @container px-sheet (max-width: 600px) {
   .px-feat { grid-template-columns: minmax(0, 1fr); margin-top: 44px; }
   .px-access { grid-template-columns: minmax(0, 1fr); margin-top: 44px; padding: 20px 16px; }
@@ -47,7 +47,7 @@
   .px-hero { padding-top: 20px; }
   .px-hero h1 { font-size: 30px; line-height: 1.15; }
   .px-sub { font-size: 16px; }
-  .px-cta, .px-subscribe, .px-key .key-go { min-height: 44px; }
+  .px-cta, .px-subscribe, .px-key .key-go, .px-key .key-show { min-height: 44px; }
   .px-key .key-in { height: 44px; }
   .px-legal a { display: inline-flex; align-items: center; min-height: 44px; }
   .px-feat h2, .px-access h2 { font-size: 20px; }

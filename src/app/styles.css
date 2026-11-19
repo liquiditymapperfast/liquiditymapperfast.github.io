@@ -867,13 +867,15 @@ button.author-link.plus-tile { align-items: flex-start; height: auto; background
 .key-go { flex: none; min-height: 32px; padding: 0 14px; border-color: var(--ui); background: var(--ui); color: var(--on-ui, #fff); font-weight: 600; white-space: nowrap; }
 .key-go:hover:not(:disabled) { border-color: color-mix(in srgb, var(--ui) 86%, var(--text)); background: color-mix(in srgb, var(--ui) 86%, var(--text)); }
 .key-go:disabled { opacity: .5; cursor: default; }
+/* Reveal / Hide: the key is masked as it is typed or pasted, and shown only when asked (Sol, review 2026-11-19). */
+.key-show { flex: none; min-height: 32px; padding: 0 10px; white-space: nowrap; }
 .key-msg { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 8px; margin: 8px 0 0; font-size: 12.5px; line-height: 1.4; }
 .key-msg:empty { display: none; }
 .key-msg.err { color: var(--warn); }
 .key-msg > span:not([class]) { flex: 1 1 0; min-width: 0; }
 .key-more { flex-basis: 100%; color: var(--warn); }
 .key-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
-@media (pointer: coarse) { .pp-small, .pp-see, .key-go { min-height: 44px; } .pp-key, .key-in { height: 44px; } }
+@media (pointer: coarse) { .pp-small, .pp-see, .key-go, .key-show { min-height: 44px; } .pp-key, .key-in { height: 44px; } }
 /* The invitation to the tour (tour/invite.ts), a notice: its text takes the room, the buttons wrap under it on a narrow screen. */
 .toolbar .tour-invite { flex-wrap: wrap; row-gap: 6px; }
 .tour-invite-text { flex: 1 1 220px; min-width: 0; }
