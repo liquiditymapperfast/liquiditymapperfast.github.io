@@ -6,14 +6,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { LANE_MIN_W, LiqLevelsSource, stripeLanes, type Lane, type LiqRow, type LiqSet } from '../src/app/liq-levels.ts';
-import { paintStripe, type StripeHeld } from '../src/app/liq-stripe.ts';
+import { noteLines, paintStripe, stripeNote, type StripeHeld } from '../src/app/liq-stripe.ts';
+import { clock } from '../src/app/format.ts';
 import { View } from '../src/app/view.ts';
 import type { LiqAnswer } from '../src/app/liq-history.ts';
 import { plusUrls, readLiqLevels, type LiqLevelSettings } from '../src/app/liq-url.ts';
-import { effectiveView, splitPair } from '../src/app/liq-view.ts';
+import { effectiveView, narrowView, splitPair, type LiqPair, type LiqView } from '../src/app/liq-view.ts';
 import { splitLanes, stripePlan } from '../src/app/liq-split.ts';
 import { dollars, setBoxLines, stripeBoxLines } from '../src/app/liq-box.ts';
-import { ordersAbsent } from '../src/app/liq-words.ts';
+import { liqNote, liqWhy, ordersAbsent } from '../src/app/liq-words.ts';
 import { initialState, type AppState } from '../src/app/store.ts';
 import { liqSplitDrawn, setCompactGutters, stripeSplitRoom } from '../src/app/panes/heat-pane.ts';
 import { plus } from '../src/app/plus/pass.ts';
@@ -253,7 +254,7 @@ test('the map draws the stripe through its painter and takes only what it painte
   const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8'), stripe = fs.readFileSync('src/app/liq-stripe.ts', 'utf8');
   assert.match(heat, /plan = stripePlan\(pair, stripeSplitRoom\(state\)\);\n    let note = stripeNote\(src, view, pair, plan\);/);
   assert.match(heat, /export const stripeSplitRoom = \(state: AppState\): boolean => liqSplitDrawn\(state\) \|\| \(!COMPACT && !state\.liqLevels\.column\);/);
-  assert.match(heat, /this\.#liqLanes = null; this\.#liqRightLane = null;\n    const ask = liveAsk/, 'neither lane answers the pointer before this frame draws it (another coin, a replay)');
+  assert.match(heat, /this\.#liqLanes = null; this\.#liqRightLane = null; this\.#liqNoteBox = null;\n    const ask = liveAsk/, 'neither lane answers the pointer before this frame draws it (another coin, a replay)');
   assert.match(heat, /const painted = paintStripe\(ctx, \{ src, plan, pair, x0: this\.#liqStripeLeft\(pw\), pw, ph, view: v, colors: p, held: this\.#liqHeld \}\);/);
   assert.match(heat, /this\.#liqLanes = painted\.lanes; this\.#liqRightLane = painted\.right;\n        if \(painted\.captions\) this\.#paintLaneCaptions\(ctx, painted\.captions, pw\);\n        else if \(painted\.takesLane\) this\.#paintTakesCaption\(ctx, painted\.takesLane, pw\);/);
   assert.match(heat, /if \(replaying\(\)\) return \[\];\n    const held = this\.#liqHeld\.right;\n    if \(right && held && x >= right\.lane\.x0 && x < right\.lane\.x1\) return this\.#laneLines\(state, right\.set, held, y, ph, touch, right\.whose\);\n    if \(!lanes \|\| src\.state !== 'ready'\) return \[\];/);
@@ -314,4 +315,96 @@ test('a lane with nothing to paint has no caption and answers no pointer: the pr
   const b = frame(busy, stops, true, { levels: null, takes: null, right: null });
   assert.ok(b.painted && !b.painted.lanes && b.painted.right, 'only the profitable traders\' stops painted');
   assert.deepEqual(b.painted.captions!.map(c => c.words), ['Stops · Profitable']);
+});
+
+// Sol's review of af817444..62a84ce3, round 1 (P2): the profitable traders' orders hours old drew with no word of their age (the note was
+// everyone's alone). Each family's file aged on its own: snapshot times moved together, as the parsers require.
+const HOUR = 3_600_000;
+const aged = <T extends Record<string, unknown>>(body: T, ms: number): T => {
+  const s = body.snapshot as Record<string, number>;
+  return { ...body, snapshot: { ...s, asOf: s.asOf! - ms, createdAt: s.createdAt! - ms, fetchedAt: s.fetchedAt! - ms, ...(s.ordersAt !== undefined ? { ordersAt: s.ordersAt - ms } : {}) } };
+};
+const ordersOf = (ms: number): LiqAnswer => ({ status: 200, body: aged(triggerGroups(FAM.profitable.stops, FAM.profitable.takes), ms) });
+/** The note as 62a84ce3 composed it: the left set's (or the sum's) note or why nothing stands, then the absent profitable orders beside their lane. */
+function noteBefore(src: LiqLevelsSource, view: LiqView, pair: LiqPair | null, two: boolean): string {
+  const both = pair?.split === 'kinds' ? narrowView(pair) : null, said = both ? { ...src.setOf(both), takesState: src.takesState } : src;
+  const note = src.levels && src.state === 'ready' ? liqNote(said, both ?? view, src.levels.asOf) : liqWhy(src, src.asOfs().liq) || 'Liquidation levels are loading.';
+  return two && pair?.split === 'groups' && src.right?.ordersAbsent() ? `${note} · ${ordersAbsent()}` : note;
+}
+const noteOf = (src: LiqLevelsSource, s: LiqLevelSettings, drawn = true): string => stripeNote(src, effectiveView(s, true), splitPair(s, true), stripePlan(splitPair(s, true), drawn));
+
+test('beside the two group lanes the note says the profitable traders\' own times, named, wherever they are not what everyone\'s part says', async () => {
+  // Their orders four hours old, everyone's current: their stops still drawn, and their age said.
+  const old = familyService({ [U.triggersGroups]: ordersOf(4 * HOUR) }), s = setting({ split: 'groups' });
+  await show(old, s);
+  assert.ok(frame(old, s, true, { levels: null, takes: null, right: null }).painted?.right, 'their lane still draws');
+  assert.equal(noteOf(old, s), `${liqNote(old, effectiveView(s, true), AS_OF)} · Profitable traders: stops as of ${clock(AS_OF - 4 * HOUR)}`);
+  // Stops alone, theirs an hour behind (not old by the three-hour rule, but not the time everyone's part says).
+  const behind = familyService({ [U.triggersGroups]: ordersOf(HOUR) }), stops = setting({ liq: false, takes: false, split: 'groups' });
+  await show(behind, stops);
+  assert.equal(noteOf(behind, stops), `Hyperliquid stop orders at ${clock(AS_OF)} · Powered by HyperTracker · Profitable traders: stops as of ${clock(AS_OF - HOUR)}`);
+  // Their positions an hour behind everyone's (the groups file lagging the levels file).
+  const lag = familyService({ [U.groups]: { status: 200, body: aged(groups(FAM.profitable.liq), HOUR) } }), liq = setting({ stops: false, takes: false, split: 'groups' });
+  await show(lag, liq);
+  assert.equal(noteOf(lag, liq), `Hyperliquid liquidation levels at ${clock(AS_OF)} · Powered by HyperTracker · Profitable traders: positions as of ${clock(AS_OF - HOUR)}`);
+  // Both families' orders four hours old: each group's "as of" named.
+  const both = familyService({ [U.triggers]: { status: 200, body: aged(triggers(FAM.all.stops, FAM.all.takes), 4 * HOUR) }, [U.triggersGroups]: ordersOf(4 * HOUR) });
+  await show(both, s);
+  const t4 = clock(AS_OF - 4 * HOUR);
+  assert.equal(noteOf(both, s), `Hyperliquid liquidations and stops at ${clock(AS_OF)} · Powered by HyperTracker · All traders: stops and take profits as of ${t4} · Profitable traders: stops as of ${t4}`);
+});
+
+test('beside the two group lanes a lane with nothing names its group\'s reason; everyone\'s and the profitable traders\' status each said', async () => {
+  const stops = setting({ liq: false, takes: false, split: 'groups' });
+  // Everyone's orders not there yet: their reason named, the profitable traders' stops and their time.
+  const busy = familyService({ [U.triggers]: { status: 503, body: null, retryAfter: 60 } });
+  await show(busy, stops);
+  assert.equal(noteOf(busy, stops), `All traders: Stop levels are not ready yet. · Profitable traders: stops as of ${clock(AS_OF)}`);
+  // No groups for this snapshot: the profitable traders' reason, named.
+  const none = familyService({ [U.groups]: { status: 503, body: null, retryAfter: 60 } }), liq = setting({ stops: false, takes: false, split: 'groups' });
+  await show(none, liq);
+  assert.equal(noteOf(none, liq), `${liqNote(none, effectiveView(liq, true), AS_OF)} · Profitable traders: No trader groups for this snapshot yet.`);
+  // Their orders absent: said once (it names them), their liquidations drawn alone.
+  const absent = familyService({ [U.triggersGroups]: { status: 404, body: null } }), s = setting({ split: 'groups' });
+  await show(absent, s);
+  assert.equal(noteOf(absent, s), `${liqNote(absent, effectiveView(s, true), AS_OF)} · ${ordersAbsent()}`);
+});
+
+test('the note is what it was wherever both groups\' times agree and in every other mode, aged files included', async () => {
+  const views: Partial<LiqLevelSettings>[] = [{}, { takes: false }, { stops: false }, { liq: false, takes: false }, { stops: false, takes: false }];
+  const services = [familyService(), familyService({ [U.triggersGroups]: ordersOf(4 * HOUR) }), familyService({ [U.triggersGroups]: { status: 404, body: null } }),
+    familyService({ [U.triggers]: { status: 200, body: aged(triggers(FAM.all.stops, FAM.all.takes), 4 * HOUR) } })];
+  const modes = [[{ split: 'none', group: 'all' }, true], [{ split: 'none', group: 'profitable' }, true], [{ split: 'kinds', group: 'all' }, true],
+    [{ split: 'kinds', group: 'profitable' }, false], [{ split: 'groups' }, false]] as const;
+  for (const [n, src] of services.entries()) for (const v of views) for (const [lv, drawn] of modes) {
+    const s = setting({ ...v, ...lv }), pair = splitPair(s, true), name = `${n} ${JSON.stringify(s)} ${drawn}`;
+    await show(src, s);
+    assert.equal(noteOf(src, s, drawn), noteBefore(src, effectiveView(s, true), pair, stripePlan(pair, drawn).two), name);
+  }
+  // Two group lanes, both families on the same snapshot and nothing missing: the same words as before.
+  const same = familyService();
+  for (const v of views) {
+    const s = setting({ ...v, split: 'groups' });
+    await show(same, s);
+    assert.equal(noteOf(same, s), noteBefore(same, effectiveView(s, true), splitPair(s, true), true), JSON.stringify(v));
+  }
+});
+
+test('the note\'s lines: whole parts as far as each line goes, the old two lines wherever they held it, more where two groups\' times need them', () => {
+  const measure = (s: string): number => s.length * 6;
+  const old = (note: string, room: number): string[] => {
+    const parts = note.split(' · ');
+    let first = parts[0] ?? '', i = 1;
+    while (i < parts.length && measure(`${first} · ${parts[i]}`) <= room) { first = `${first} · ${parts[i]}`; i++; }
+    return [first, parts.slice(i).join(' · ')].filter(Boolean);
+  };
+  const note = 'Hyperliquid liquidations and stops at 11:25 · Powered by HyperTracker · All traders: stops and take profits as of 07:25 · Profitable traders: stops as of 07:25';
+  for (const room of [2000, 700, 400, 300, 290]) {
+    const lines = noteLines(measure, note, room), parts = note.split(' · ');
+    assert.ok(lines.every(l => measure(l) <= room), `${room}: every line fits`);
+    assert.deepEqual(lines.join(' · ').split(' · '), parts, `${room}: every part whole`);
+    if (old(note, room).every(l => measure(l) <= room)) assert.deepEqual(lines, old(note, room), `${room}: as before where the old two lines held it`);
+  }
+  assert.equal(noteLines(measure, note, 290).length, 4, 'four lines where needed');
+  assert.ok(noteLines(measure, note, 60).at(-1)!.endsWith('…'), 'a part wider than the room alone is cut');
 });

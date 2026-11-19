@@ -3271,6 +3271,7 @@
  "Profitable traders' liquidation levels at {time} · Powered by HyperTracker": "Уровни ликвидаций прибыльных трейдеров на {time} · Powered by HyperTracker",
  "stops and take profits as of {time}": "стопы и тейк-профиты на {time}",
  "stops as of {time}": "стопы на {time}",
+ "{who}: {what}": "{who}: {what}",
  "take profits as of {time}": "тейк-профиты на {time}",
  "with take profits": "с тейк-профитами",
  "take profits could not be read": "тейк-профиты не удалось прочитать",

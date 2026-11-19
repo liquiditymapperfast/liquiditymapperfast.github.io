@@ -60,7 +60,12 @@ which comes back with Plus (`effectiveView` in `src/app/liq-view.ts`).
   own colour scale, their captions say kind and group ("Liq + stops · Profitable") and the stripe's box names the group. The profitable
   traders' lane draws the source's right set alone, its rows kept by that set's key (view, group and order family), and stands on its own
   readiness as their sub-column does; with their orders absent it draws their liquidations alone and the note under the legend says they
-  are not available yet. The stripe is painted by `paintStripe` (`liq-stripe.ts`), which reports what it painted: a lane is given only where
+  are not available yet. Beside the two group lanes the note is composed from both sets (`stripeNote`, `groupNoteParts`): everyone's note
+  with its "as of" named ("All traders: stops as of 14:00"), or everyone's reason, named, where their lane draws nothing; then the profitable
+  traders' positions and stops times wherever they differ from what everyone's part says or their stops are old, or the reason their lane
+  draws nothing, each named ("Profitable traders: stops as of 11:00", `ofGroup`). Where both groups' times agree it reads as before. The note
+  takes up to four lines of whole phrases (`noteLines`), and the stripe's captions keep clear of it. The stripe is painted by `paintStripe`
+  (`liq-stripe.ts`), which reports what it painted: a lane is given only where
   it can be painted (`LANE_MIN_W`, 2 px: on a thin stripe the take profits' lane narrows, then goes), and only painted lanes are captioned or
   answer the pointer. Every sub-column is captioned; the take profits stay with the left set. The phone's Liq tab splits into halves at
   2 x 120 px. The Depth pane, and everything else that draws one series, draws the left column's set (`effectiveView`).

@@ -3018,6 +3018,7 @@
  "Profitable traders' liquidation levels at {time} · Powered by HyperTracker": "盈利交易者的强平价位，{time} · Powered by HyperTracker",
  "stops and take profits as of {time}": "{time} 时的止损和止盈",
  "stops as of {time}": "{time} 时的止损",
+ "{who}: {what}": "{who}：{what}",
  "take profits as of {time}": "{time} 时的止盈",
  "with take profits": "含止盈",
  "take profits could not be read": "无法读取止盈",

@@ -6,8 +6,9 @@
  */
 import { laneRows, paintLiqStripe, stripeLanes, type Lane, type LaneRows, type LiqLevelsSource, type LiqSet } from './liq-levels.ts';
 import { splitLanes, type StripePlan } from './liq-split.ts';
-import { narrowView, type LiqPair, type LiqView } from './liq-view.ts';
-import { liqNote, liqWhy, ordersAbsent } from './liq-words.ts';
+import { groupTitle, narrowView, type LiqPair, type LiqView } from './liq-view.ts';
+import { groupNoteParts, liqNote, liqWhy, ofGroup } from './liq-words.ts';
+import { fitText } from './text-fit.ts';
 import { t } from './i18n.ts';
 import type { View } from './view.ts';
 
@@ -83,13 +84,35 @@ export function paintStripe(ctx: CanvasRenderingContext2D, o: { src: LiqLevelsSo
 
 /**
  * The note under the legend while the levels are on (before the candles' warning): what they are, whose, when they stood and what is missing
- * (`liqNote`), or why nothing stands (`liqWhy`). Under a split of liquidations beside stops it says both, and when their orders stood; beside
- * the profitable traders' lane, that their stops and take profits are not on the server, as the sub-column says it under its button.
+ * (`liqNote`), or why nothing stands (`liqWhy`). Under a split of liquidations beside stops it says both, and when their orders stood.
+ * Beside the profitable traders' lane (Sol, review 2026-11-19) it is composed from both sets drawn: everyone's note, its "as of" and, where
+ * their lane has nothing, its reason named by group; then the profitable traders' own times and status (`groupNoteParts`), named too. Where
+ * both groups' times agree and nothing is missing, it says what it said before.
  */
 export function stripeNote(src: LiqLevelsSource, view: LiqView, pair: LiqPair | null, plan: StripePlan): string {
-  const levels = src.levels, both = pair?.split === 'kinds' ? narrowView(pair) : null;
+  const levels = src.levels, both = pair?.split === 'kinds' ? narrowView(pair) : null, ready = !!levels && src.state === 'ready', right = plan.two ? src.right : null;
+  const why = (): string => liqWhy(src, src.asOfs().liq) || t('Liquidation levels are loading.');
+  if (plan.standalone && right) {
+    const all = groupTitle(view.group), head = levels && ready ? liqNote(src, view, levels.asOf, all) : ofGroup(all, why());
+    return [head, ...groupNoteParts(right, ready ? src.asOfs() : { liq: null, orders: null })].join(' · ');
+  }
   const said = both ? { ...src.setOf(both), takesState: src.takesState } : src;
-  const note = levels && src.state === 'ready' ? liqNote(said, both ?? view, levels.asOf) : liqWhy(src, src.asOfs().liq) || t('Liquidation levels are loading.');
-  const right = plan.two ? src.right : null;
-  return plan.standalone && right?.ordersAbsent() ? `${note} · ${ordersAbsent()}` : note;
+  return levels && ready ? liqNote(said, both ?? view, levels.asOf) : why();
+}
+
+/**
+ * The note's lines in `room` px (`measure` the width of words): whole parts (" · " between them) on each line as far as they go, then the
+ * next line, at most `most` lines (the last holding the rest); a part wider than the room alone ends in "…". Two groups' times can need
+ * more than the two lines the note used to have (the second line was cut short).
+ */
+export function noteLines(measure: (words: string) => number, note: string, room: number, most = 4): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const part of note.split(' · ')) {
+    const next = line ? `${line} · ${part}` : part;
+    if (!line || measure(next) <= room) line = next; else { lines.push(line); line = part; }
+  }
+  if (line) lines.push(line);
+  if (lines.length > most) lines.splice(most - 1, lines.length, lines.slice(most - 1).join(' · '));
+  return lines.map(l => fitText(measure, l, room));
 }

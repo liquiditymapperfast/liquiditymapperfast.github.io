@@ -3175,6 +3175,7 @@
  "Profitable traders' liquidation levels at {time} · Powered by HyperTracker": "Liquidationsniveaus profitabler Trader um {time} · Powered by HyperTracker",
  "stops and take profits as of {time}": "Stops und Take-Profits von {time}",
  "stops as of {time}": "Stops von {time}",
+ "{who}: {what}": "{who}: {what}",
  "take profits as of {time}": "Take-Profits von {time}",
  "with take profits": "mit Take-Profits",
  "take profits could not be read": "Take-Profits konnten nicht gelesen werden",

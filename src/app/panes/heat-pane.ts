@@ -58,7 +58,7 @@ import { liqLevelsUrl } from '../liq-url.ts';
 import { curveOf, groupName, groupTitle, heldBack, kindName, kindTitle, levelsDescription, liveAsk, liveSplit, liveView, narrowView, pairKey, plusOn, viewKey, viewParts, type LiqPair, type LiqView } from '../liq-view.ts';
 import { columnNotes, liqWhy, narrowNote, ordersAbsent, pairDescription, sideTitle, splitName, subNames, takesLeftOut } from '../liq-words.ts';
 import { mirrorSplits, readingTexts, setBoxLines, stripeBoxLines } from '../liq-box.ts';
-import { paintStripe, stripeNote, stripeStands, type StripeHeld, type StripePainted } from '../liq-stripe.ts';
+import { noteLines, paintStripe, stripeNote, stripeStands, type StripeHeld, type StripePainted } from '../liq-stripe.ts';
 import { toggleLevels } from '../levels-control.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
@@ -381,6 +381,8 @@ export class HeatPane {
   #profileHover: { y: number; x?: number; column: 'liq' | 'book' | 'seam' } | null = null;
   /** Where this frame's "depth recorded from" note was printed, so the liquidation levels' note can keep clear of it. */
   #historyNote: { x0: number; x1: number; top: number } | null = null;
+  /** Where this frame's note under the legend (Liquidation levels') stands, laid out before the stripe's captions so they keep clear of it. */
+  #liqNoteBox: { x0: number; x1: number; top: number; bottom: number } | null = null;
   /** Each lane of the stripe's rows in view as last painted (the levels', the take profits', a split's right set's), kept by their keys (liq-stripe.ts). */
   readonly #liqHeld: StripeHeld = { levels: null, takes: null, right: null };
   /** The wide liquidation column as last drawn with its curves (its left and width, the curves' width, their dollars at full width), for `#paintLiqReadout`. */
@@ -2222,7 +2224,7 @@ export class HeatPane {
   #paintLiquidationLevels(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     const src = this.hub.liqLevels, p = this.#palette, v = this.view, view = liveView(state.liqLevels);
     // Nothing drawn answers the pointer until this frame draws it again (another coin, a replay: neither lane stands).
-    this.#liqLanes = null; this.#liqRightLane = null;
+    this.#liqLanes = null; this.#liqRightLane = null; this.#liqNoteBox = null;
     const ask = liveAsk(state.liqLevels);
     src.ensure(currentCoin(), () => this.invalidate(), ask.view, ask.right);
     // They are on unless switched off, so where they cannot be (no address, another coin, a replay) the map says nothing: the button's panel
@@ -2233,7 +2235,18 @@ export class HeatPane {
     // Everyone beside the profitable traders draws a lane each where the stripe has room for them (`stripeSplitRoom`), else everyone's alone.
     const pair = liveSplit(state.liqLevels), plan = stripePlan(pair, stripeSplitRoom(state));
     let note = stripeNote(src, view, pair, plan);
-    if (stripeStands(src, plan)) {
+    const stands = stripeStands(src, plan);
+    if (stands && src.candlesLate()) note = `${note} · ${t('Hyperliquid\'s candles could not be read, so a level price has passed may still show.')}`;
+    // The note's lines first, so the captions keep clear of them: on a narrow map what it says last (stops as of, the take profits, the other
+    // group's times) goes to the next line, never cut: the parts are whole phrases (`noteLines`).
+    ctx.save();
+    ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+    const measure = (words: string): number => ctx.measureText(words).width, lines = noteLines(measure, note, Math.max(40, pw - 24)), w = measure(lines[0] ?? '');
+    // Under the legend, a line lower where the "depth recorded from" note already stands there.
+    const h = this.#historyNote, under = this.#legendBox.bottom + 6, below = h && Math.abs(h.top - under) < 12 && h.x0 < 8 + w + 6 && h.x1 > 2, top = below ? under + 13 : under;
+    ctx.restore();
+    this.#liqNoteBox = { x0: 8, x1: 8 + Math.max(0, ...lines.map(measure)), top, bottom: top + 13 * lines.length };
+    if (stands) {
       // What was painted is all that answers the pointer and all that is captioned (liq-stripe.ts `paintStripe`).
       const painted = paintStripe(ctx, { src, plan, pair, x0: this.#liqStripeLeft(pw), pw, ph, view: v, colors: p, held: this.#liqHeld });
       if (painted) {
@@ -2241,20 +2254,18 @@ export class HeatPane {
         if (painted.captions) this.#paintLaneCaptions(ctx, painted.captions, pw);
         else if (painted.takesLane) this.#paintTakesCaption(ctx, painted.takesLane, pw);
       }
-      if (src.candlesLate()) note = `${note} · ${t('Hyperliquid\'s candles could not be read, so a level price has passed may still show.')}`;
     }
     ctx.save();
     ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
-    // On a narrow map what it says last (stops as of, the take profits) goes to a second line, never cut: the parts are whole phrases.
-    const measure = (words: string): number => ctx.measureText(words).width, room = Math.max(40, pw - 24), parts = note.split(' · ');
-    let first = parts[0] ?? '', i = 1;
-    while (i < parts.length && measure(`${first} · ${parts[i]}`) <= room) { first = `${first} · ${parts[i]}`; i++; }
-    const lines = [first, parts.slice(i).join(' · ')].filter(Boolean).map(line => fitText(measure, line, room)), w = measure(lines[0] ?? '');
-    // Under the legend, a line lower where the "depth recorded from" note already stands there.
-    const h = this.#historyNote, top = this.#legendBox.bottom + 6, below = h && Math.abs(h.top - top) < 12 && h.x0 < 8 + w + 6 && h.x1 > 2;
     ctx.fillStyle = p.muted; ctx.globalAlpha = 0.9;
-    lines.forEach((line, n) => ctx.fillText(line, 8, (below ? top + 13 : top) + n * 13));
+    lines.forEach((line, n) => ctx.fillText(line, 8, top + n * 13));
     ctx.restore();
+  }
+
+  /** The highest a caption plate (`x`, `w`, 15 px tall) at `y` may stand: below the note under the legend wherever it would lie over it. */
+  #clearOfLiqNote(x: number, w: number, y: number): number {
+    const n = this.#liqNoteBox;
+    return n && y + 15 > n.top && y < n.bottom + 2 && x < n.x1 + 4 && x + w > n.x0 - 4 ? n.bottom + 3 : y;
   }
 
   /**
@@ -2277,6 +2288,8 @@ export class HeatPane {
     // And under the "depth recorded from" note, which stands under the corner tools too.
     const note = this.#historyNote;
     if (note && note.top + 12 > y && note.top < y + 15 && x < note.x1 + 4 && x + w > note.x0 - 4) y = note.top + 15;
+    // And never over the note under the legend, however many lines it has.
+    y = this.#clearOfLiqNote(x, w, y);
     ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x, y, w, 15);
     ctx.globalAlpha = 1; ctx.strokeStyle = p.line; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 14);
     ctx.strokeStyle = p.text; ctx.lineWidth = 3; ctx.setLineDash(TAKE_DASH as number[]); ctx.lineDashOffset = 0;
@@ -2303,13 +2316,15 @@ export class HeatPane {
       if (tools && x + w > tools.x0) y = Math.max(y, tools.bottom);
       if (x < box.right + 8) y = Math.max(y, box.bottom + 36);
       if (note && note.top + 12 > y && note.top < y + 15 && x < note.x1 + 4 && x + w > note.x0 - 4) y = note.top + 15;
-      return y;
+      return this.#clearOfLiqNote(x, w, y);
     });
     const top = Math.min(...floor), stacked = stackCaptions(placed.map(({ x, w }) => ({ x, w })), top, 15);
+    const ys: number[] = [];
     placed.forEach(({ x, w, words, dashed }, i) => {
-      let y = Math.max(floor[i]!, stacked[i]!);
-      // Clear of the ones above it, at the height the floor moved it to.
-      while (placed.slice(0, i).some((o, j) => Math.abs(Math.max(floor[j]!, stacked[j]!) - y) < 15 && x < o.x + o.w + 2 && x + w > o.x - 2)) y += 17;
+      let y = this.#clearOfLiqNote(x, w, Math.max(floor[i]!, stacked[i]!));
+      // Clear of the ones above it, where they were finally placed, and of the note under the legend.
+      while (placed.slice(0, i).some((o, j) => Math.abs(ys[j]! - y) < 15 && x < o.x + o.w + 2 && x + w > o.x - 2)) y = this.#clearOfLiqNote(x, w, y + 17);
+      ys.push(y);
       ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x, y, w, 15);
       ctx.globalAlpha = 1; ctx.strokeStyle = p.line; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 14);
       ctx.strokeStyle = p.text; ctx.lineWidth = 3; ctx.setLineDash(dashed ? TAKE_DASH as number[] : []); ctx.lineDashOffset = 0;

@@ -3018,6 +3018,7 @@
  "Profitable traders' liquidation levels at {time} · Powered by HyperTracker": "黒字のトレーダーの清算レベル {time} 時点 · Powered by HyperTracker",
  "stops and take profits as of {time}": "{time} 時点のストップと利益確定",
  "stops as of {time}": "{time} 時点のストップ",
+ "{who}: {what}": "{who}：{what}",
  "take profits as of {time}": "{time} 時点の利益確定",
  "with take profits": "利益確定を含む",
  "take profits could not be read": "利益確定を読み込めませんでした",

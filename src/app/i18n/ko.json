@@ -3018,6 +3018,7 @@
  "Profitable traders' liquidation levels at {time} · Powered by HyperTracker": "수익을 내는 트레이더의 청산 레벨 {time} 기준 · Powered by HyperTracker",
  "stops and take profits as of {time}": "{time} 기준 손절과 익절",
  "stops as of {time}": "{time} 기준 손절",
+ "{who}: {what}": "{who}: {what}",
  "take profits as of {time}": "{time} 기준 익절",
  "with take profits": "익절 포함",
  "take profits could not be read": "익절을 읽지 못함",

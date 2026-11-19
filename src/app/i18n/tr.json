@@ -3169,6 +3169,7 @@
  "Profitable traders' liquidation levels at {time} · Powered by HyperTracker": "Kârlı trader'ların tasfiye seviyeleri, {time} itibarıyla · Powered by HyperTracker",
  "stops and take profits as of {time}": "{time} itibarıyla stoplar ve kâr al emirleri",
  "stops as of {time}": "{time} itibarıyla stoplar",
+ "{who}: {what}": "{who}: {what}",
  "take profits as of {time}": "{time} itibarıyla kâr al emirleri",
  "with take profits": "kâr al emirleriyle",
  "take profits could not be read": "kâr al emirleri okunamadı",

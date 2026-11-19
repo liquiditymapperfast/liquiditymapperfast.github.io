@@ -5,7 +5,7 @@
  */
 import { t } from './i18n.ts';
 import { clock, usd } from './format.ts';
-import type { LevelsKind, LiqLevelsSource } from './liq-levels.ts';
+import type { LevelsKind, LiqLevelsSource, LiqSet } from './liq-levels.ts';
 import type { LiqFamily } from './liq-history.ts';
 import { curveOf, groupName, groupTitle, kindName, kindTitle, takesBeside, type LiqPair, type LiqView } from './liq-view.ts';
 import type { LiqSplit } from './liq-url.ts';
@@ -110,11 +110,16 @@ export function liqWhy(src: Pick<LiqLevelsSource, 'state' | 'view' | 'levels' | 
   }
 }
 
+/** A part of the note said of one group ("Profitable traders: stops as of 14:00"), where two groups' lanes stand side by side. */
+export const ofGroup = (who: string, what: string): string => t('{who}: {what}', { who, what });
+
 /**
  * The line under the map's legend (and the Liq tab's foot) while levels are drawn: what they are, whose, when the positions or orders
- * stood, the take profits' state (beside the curve), and whose data it is.
+ * stood, the take profits' state (beside the curve), and whose data it is. `who` names whose orders an "as of" is (`ofGroup`), where
+ * another group's lane stands beside these (everyone beside the profitable traders); without it the note is as it always was.
  */
-export function liqNote(src: Pick<LiqLevelsSource, 'view' | 'takesState' | 'asOfs' | 'ordersOld' | 'ordersAbsent'>, view: LiqView, at: number): string {
+export function liqNote(src: Pick<LiqLevelsSource, 'view' | 'takesState' | 'asOfs' | 'ordersOld' | 'ordersAbsent'>, view: LiqView, at: number, who?: string): string {
+  const named = (part: string): string => who ? ofGroup(who, part) : part;
   const time = clock(at), group = view.group, curve = curveOf(view), beside = takesBeside(view);
   const mine = group === 'profitable';
   const head = curve === 'takes' ? mine ? t('Profitable traders\' take-profit orders at {time} · Powered by HyperTracker', { time }) : t('Hyperliquid take-profit orders at {time} · Powered by HyperTracker', { time })
@@ -129,14 +134,30 @@ export function liqNote(src: Pick<LiqLevelsSource, 'view' | 'takesState' | 'asOf
   if (absent) parts.push(ordersAbsent());
   // The orders come from the newest snapshot an order file was read with: said when that is well behind the liquidations (or old).
   const old = orders !== null && view.liq && src.ordersOld();
-  if (old && curve === 'both') parts.push(beside ? t('stops and take profits as of {time}', { time: clock(orders) }) : t('stops as of {time}', { time: clock(orders) }));
+  if (old && curve === 'both') parts.push(named(beside ? t('stops and take profits as of {time}', { time: clock(orders) }) : t('stops as of {time}', { time: clock(orders) })));
   if (beside && !absent) {
     const state = src.takesState;
     // Both with old orders has said when the take profits are from already ("stops and take profits as of").
-    if (state === 'ready') { if (!(old && curve === 'both')) parts.push(old && curve === 'liq' ? t('take profits as of {time}', { time: clock(orders) }) : t('with take profits')); }
+    if (state === 'ready') { if (!(old && curve === 'both')) parts.push(old && curve === 'liq' ? named(t('take profits as of {time}', { time: clock(orders) })) : t('with take profits')); }
     else parts.push(state === 'unavailable' ? t('take profits could not be read') : state === 'missing' ? t('take profits are not ready yet') : t('take profits are loading'));
   }
   return parts.join(' · ');
+}
+
+/**
+ * What the note says of a split's right set beside the left set's note (the profitable traders' lane beside everyone's), each part named by
+ * its group (`ofGroup`): their stops and take profits not on the server (`ordersAbsent`, which names them); why their lane draws nothing;
+ * and, where it draws, when their positions and their stops stood wherever that is not what the left part says (`left`, the left set's
+ * times as its note states them, null where it states none) or their stops are old (Sol, review 2026-11-19: their orders hours old drew with
+ * no word of it). Nothing where both groups' times agree: the left part says them.
+ */
+export function groupNoteParts(right: Pick<LiqSet, 'state' | 'view' | 'levels' | 'missing' | 'blame' | 'asOfs' | 'ordersOld' | 'ordersAbsent'>, left: { liq: number | null; orders: number | null }): string[] {
+  const named = (what: string): string => ofGroup(groupTitle(right.view.group), what), absent = right.ordersAbsent(), parts = absent ? [ordersAbsent()] : [];
+  if (!right.levels || right.state !== 'ready') return absent ? parts : [...parts, named(liqWhy(right, right.asOfs().liq) || t('Liquidation levels are loading.'))];
+  const at = right.asOfs();
+  if (at.liq !== null && at.liq !== left.liq) parts.push(named(t('positions as of {time}', { time: clock(at.liq) })));
+  if (at.orders !== null && (right.ordersOld() || at.orders !== left.orders)) parts.push(named(t('stops as of {time}', { time: clock(at.orders) })));
+  return parts;
 }
 
 /** A split's name on the column's button and the Liq tab's title: its left column | its right one. */
