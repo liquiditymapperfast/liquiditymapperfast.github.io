@@ -2,11 +2,10 @@
  * The presentation of Plus in the app (the prototype Karl approved, 2026-11-19): a sheet over the page, 880 px wide at most and 90 % of the
  * window's height, the whole screen on a phone. It holds the hero, the demo (the levels control on the demo's own store, never the page's
  * settings), the three feature sections, the access card (a key, or once Plus is on sale the subscription on the site's Plus page) and what
- * stays free. Fetched only when it first opens (plus/panel.ts), with its styles. A modal dialog: the page behind it can be neither reached
- * nor read, the keyboard stays inside, Escape and Close give the focus back to what opened it.
+ * stays free. Fetched only when it first opens, with its styles and the demo (plus/sheet-entry.ts, which plus/panel.ts imports on demand).
+ * A modal dialog: the page behind it can be neither reached nor read, the keyboard stays inside, Escape and Close give the focus back to
+ * what opened it.
  */
-import './present.css';
-import './sheet.css';
 import { el } from '../dom.ts';
 import { t } from '../i18n.ts';
 import { historyUrls, readIndex } from '../liq-history.ts';
@@ -14,7 +13,7 @@ import { liqLevelsUrl } from '../liq-url.ts';
 import { sheetKey } from './modal.ts';
 import { plusOnSale } from './config.ts';
 import { PLUS_NAME } from './name.ts';
-import { plus } from './pass.ts';
+import { plus, type Plus } from './pass.ts';
 import { keyEntry, onText, plusDate, type KeyEntry } from './key.ts';
 import { SITE_PLUS, availability, features, hero, legal, trust } from './present.ts';
 
@@ -30,7 +29,7 @@ let first: number | null | undefined;
 
 /**
  * Where a demo goes: the sheet calls `mount` once its opening has started (the demo builds its numbers when it mounts), with the card that
- * hosts it and the three feature pictures' hosts; it returns what stops it. Until the demo module is part of the app it is empty.
+ * hosts it and the three feature pictures' hosts; it returns what stops it. Set by plus/sheet-entry.ts (tests give their own).
  */
 export interface DemoMount { (stage: HTMLElement, visuals: { history: HTMLElement; layers: HTMLElement; groups: HTMLElement }): { destroy(): void } }
 let mountDemo: DemoMount | null = null;
@@ -38,9 +37,8 @@ let mountDemo: DemoMount | null = null;
 export function demoWith(mount: DemoMount | null): void { mountDemo = mount; }
 
 /** Open the presentation sheet from `opener` (the Plus button, a lock, the pop-up's See what Plus adds): its focus comes back there. */
-export function openSheet(opener: HTMLElement): void {
+export function openSheet(opener: HTMLElement, member: Pick<Plus, 'state' | 'until' | 'subscribe'> = plus()): void {
   open?.close(false);
-  const member = plus();
   const titleId = 'px-title';
   const close = el('button', { type: 'button', class: 'px-x', ariaLabel: t('Close') }, el('span', { class: 'px-x-mark', ariaHidden: 'true' }), el('span', { class: 'px-x-text', textContent: t('Close') }));
   const onPill = el('span', { class: 'px-pill on', hidden: true }, el('span', { class: 'px-check', ariaHidden: 'true' }), el('span', { textContent: t('Plus is on in this browser') }));

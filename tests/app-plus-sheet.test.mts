@@ -21,11 +21,11 @@ test('the sheet keeps the keyboard inside it and Escape closes it: Tab from the 
 
 test('the presentation is fetched only when it first opens: the pop-up and the locks import it on demand, never with the page', () => {
   const panel = src('panel.ts');
-  assert.ok(!/import[^;]*from '\.\/sheet\.ts'/.test(panel), 'no static import of the sheet');
-  assert.match(panel, /import\('\.\/sheet\.ts'\)/, 'a dynamic import');
-  assert.match(src('sheet.ts'), /import '\.\/sheet\.css';/, 'its styles come with it');
+  assert.ok(!/import[^;]*from '\.\/sheet(-entry)?\.ts'/.test(panel), 'no static import of the sheet');
+  assert.match(panel, /import\('\.\/sheet-entry\.ts'\)/, 'a dynamic import');
+  assert.match(src('sheet-entry.ts'), /import '\.\/sheet\.css';/, 'its styles come with it');
   for (const file of fs.readdirSync(path.join(process.cwd(), 'src/app')).filter(f => f.endsWith('.ts'))) {
-    assert.ok(!/from '\.\/plus\/sheet\.ts'/.test(fs.readFileSync(path.join(process.cwd(), 'src/app', file), 'utf8')), `${file} imports the sheet statically`);
+    assert.ok(!/from '\.\/plus\/(sheet|sheet-entry|demo\/index)\.ts'/.test(fs.readFileSync(path.join(process.cwd(), 'src/app', file), 'utf8')), `${file} imports the sheet statically`);
   }
 });
 

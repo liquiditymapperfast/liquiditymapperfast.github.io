@@ -78,11 +78,11 @@ export async function copyKey(key: string, clipboard: Pick<Clipboard, 'writeText
 }
 
 /**
- * Show what Plus adds: the presentation sheet (plus/sheet.ts), fetched with its styles the first time it opens, never with the page; the
+ * Show what Plus adds: the presentation sheet (plus/sheet-entry.ts: the sheet, its styles and the demo), fetched the first time it opens, never with the page; the
  * focus goes back to `opener` when it closes. A file that cannot be fetched (a deploy since the tab opened) is said by `lazy`.
  */
 export function seePlus(opener: HTMLElement): void {
-  void lazy(() => import('./sheet.ts')).then(sheet => { sheet?.openSheet(opener); });
+  void lazy(() => import('./sheet-entry.ts')).then(sheet => { sheet?.openSheet(opener); });
 }
 
 const LABELS: Record<PopAction, () => string> = {
