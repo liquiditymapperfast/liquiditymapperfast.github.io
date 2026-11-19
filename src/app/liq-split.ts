@@ -60,16 +60,17 @@ export function splitLanes(x0: number, right: number, takes: boolean): { takes: 
 }
 
 /**
- * What the stripe draws for a split (`pair`, null for none), where `drawn` says the split column itself is drawn this frame (`liqSplitDrawn`):
- * one lane of levels or two, each lane's caption, the group its reading names, and the take profits' caption.
+ * What the stripe draws for a split (`pair`, null for none), where `drawn` says the stripe has room for two lanes of Everyone | Profitable
+ * this frame (`stripeSplitRoom` in panes/heat-pane.ts: the column drawn split, or a desktop map with the column off): one lane of levels or
+ * two, each lane's caption, the group its reading names, and the take profits' caption.
  * - Liquidations beside stops: two lanes wherever the split is chosen (liquidations, then stops, of the chosen traders), captioned by kind
  *   and, where they are not everyone's, whose; the stops' lane is captioned once it draws, and only beside a drawn left lane.
- * - Everyone beside the profitable traders, where the column is drawn split (owner, 2026-11-19: one lane there read as a bug): everyone's
- *   chosen kinds, then the profitable traders' from their own files alone, each lane on its own scale (its own rows' colour strength),
- *   captioned by what it adds up and whose ("Liq + stops · Profitable"), each reading naming its group. As the sub-columns do, each stands
- *   on its own: the right lane draws when its set is ready though the left's is not, and both are captioned whatever they draw (`standalone`).
- * - Everyone beside the profitable traders where the column is not drawn split (too narrow, a compact map, the column off): everyone's in
- *   one lane, as the column falls back to.
+ * - Everyone beside the profitable traders, with that room (owner, 2026-11-19: one lane there read as a bug): everyone's chosen kinds, then
+ *   the profitable traders' from their own files alone, each lane on its own scale (its own rows' colour strength), captioned by what it adds
+ *   up and whose ("Liq + stops · Profitable"), each reading naming its group. As the sub-columns do, each stands on its own: the right lane
+ *   draws when its set is ready though the left's is not, and both are captioned whatever they draw (`standalone`).
+ * - Everyone beside the profitable traders without it (a column too narrow to split, a compact map): everyone's in one lane, as the column
+ *   falls back to.
  * The take profits stay with the left set: their lane by the live edge, captioned with whose under a split. No split: one lane, and no
  * captions but the take profits' own (`HeatPane.#paintTakesCaption`).
  */

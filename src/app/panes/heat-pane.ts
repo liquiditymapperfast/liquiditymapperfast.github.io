@@ -312,6 +312,12 @@ const liqColumnW = (state: AppState): number => liqColumnWidth({ shown: liqColum
   plotUnsplit: PANE_W - (AXIS_W + PROFILE_W + profileColumnW(state) + (sideColumns(state).right.length + sideColumns(state).left.length) * TRADED_W), floor: MAP_PLOT_FLOOR });
 /** Whether the liquidation column is drawn split this frame (two sub-columns): a split chosen and drawn, and room for it. */
 export const liqSplitDrawn = (state: AppState): boolean => !COMPACT && liqColumnW(state) === SPLIT_COLUMN_W;
+/**
+ * Whether the stripe has room for a split's two lanes of Everyone | Profitable (`stripePlan`): where the column is drawn split, and on a
+ * desktop map whose liquidation column is switched off (no column falls back there, and Liquidations | Stops draws its two lanes too). Too
+ * narrow to split and on a compact map: one lane, everyone's, as the column falls back to.
+ */
+export const stripeSplitRoom = (state: AppState): boolean => liqSplitDrawn(state) || (!COMPACT && !state.liqLevels.column);
 /** The width the book profile takes: its column, the strip in a compact map beside the liquidation column (`PROFILE_STRIP_W`), or 0. */
 export function profileColumnW(state: AppState): number { return !state.show.profile ? 0 : COMPACT && liqColumnShown(state) ? PROFILE_STRIP_W : PROFILE_W; }
 export function gutter(state: AppState): number { return AXIS_W + liqColumnW(state) + profileColumnW(state) + sideColumns(state).right.length * TRADED_W; }
@@ -2227,8 +2233,8 @@ export class HeatPane {
     const levels = src.levels;
     src.observe(this.#dollarPrice(state));
     // Under a split of liquidations beside stops the stripe draws both (a lane each), so the note says both, and when their orders stood.
-    // Everyone beside the profitable traders draws a lane each where the column is drawn split, else everyone's alone (`stripePlan`).
-    const pair = liveSplit(state.liqLevels), both = pair?.split === 'kinds' ? narrowView(pair) : null, plan = stripePlan(pair, liqSplitDrawn(state));
+    // Everyone beside the profitable traders draws a lane each where the stripe has room for them (`stripeSplitRoom`), else everyone's alone.
+    const pair = liveSplit(state.liqLevels), both = pair?.split === 'kinds' ? narrowView(pair) : null, plan = stripePlan(pair, stripeSplitRoom(state));
     const said = both ? { ...src.setOf(both), takesState: src.takesState } : src;
     let note = levels && src.state === 'ready' ? liqNote(said, both ?? view, levels.asOf) : liqWhy(src, src.asOfs().liq) || t('Liquidation levels are loading.');
     // The right lane's set: the stops of the chosen traders, or the profitable traders' own levels (their files alone: never everyone's in

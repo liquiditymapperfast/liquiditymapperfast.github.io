@@ -13,7 +13,7 @@ import { splitLanes, stripePlan, type StripePlan } from '../src/app/liq-split.ts
 import { dollars, setBoxLines, stripeBoxLines } from '../src/app/liq-box.ts';
 import { ordersAbsent } from '../src/app/liq-words.ts';
 import { initialState, type AppState } from '../src/app/store.ts';
-import { liqSplitDrawn, setCompactGutters } from '../src/app/panes/heat-pane.ts';
+import { liqSplitDrawn, setCompactGutters, stripeSplitRoom } from '../src/app/panes/heat-pane.ts';
 import { plus } from '../src/app/plus/pass.ts';
 import type { InfoLine } from '../src/app/infobox.ts';
 import { BTC } from '../src/shared/coins.ts';
@@ -96,7 +96,7 @@ test('the stripe\'s plan: Everyone | Profitable draws two lanes where the column
   assert.deepEqual(stripePlan(groupsPair({ liq: false, takes: false }), true).captions, ['Stops · Everyone', 'Stops · Profitable']);
   // The saved Traders value is not drawn: profitable or not, the left lane is everyone's.
   assert.deepEqual(stripePlan(groupsPair({ group: 'profitable' }), true).captions, ['Liq + stops · Everyone', 'Liq + stops · Profitable']);
-  // Too narrow to split (or a compact map, or the column off): one lane, everyone's, as before.
+  // Too narrow to split (or a compact map): one lane, everyone's, as before.
   assert.deepEqual(stripePlan(groupsPair({}), false), { two: false, captions: ['Liq + stops · Everyone'], takes: 'Take profits · Everyone', whose: [null, null], takesWhose: null, standalone: false });
   // Liquidations | Stops is unchanged: two lanes wherever chosen, captioned by kind (and whose, where not everyone's), nothing named in the box.
   for (const drawn of [true, false]) {
@@ -214,15 +214,21 @@ function withPlus<T>(run: () => T): T {
   try { return run(); } finally { plus().forget(); }
 }
 
-test('too narrow to split, on a compact map or with the column off: the stripe keeps one lane, everyone\'s, beside the column\'s note', async () => {
+test('too narrow to split or on a compact map: the stripe keeps one lane, everyone\'s, beside the column\'s note; with the column off a desktop map keeps both lanes', async () => {
   const state = { ...initialState(), show: { ...initialState().show, traded: false, profile: true }, liqLevels: setting({ split: 'groups' }) } as AppState;
-  const drawnAt = (compact: boolean, paneW: number, st: AppState = state): boolean => { setCompactGutters(compact, paneW); return liqSplitDrawn(st); };
+  const off = { ...state, liqLevels: { ...state.liqLevels, column: false } } as AppState;
+  const roomAt = (compact: boolean, paneW: number, st: AppState = state): boolean => { setCompactGutters(compact, paneW); return stripeSplitRoom(st); };
   withPlus(() => {
     try {
-      assert.equal(drawnAt(false, 1400), true, 'a wide desktop: two lanes');
-      assert.equal(drawnAt(false, 600), false, 'too narrow');
-      assert.equal(drawnAt(true, 400), false, 'a compact map');
-      assert.equal(drawnAt(false, 1400, { ...state, liqLevels: { ...state.liqLevels, column: false } }), false, 'the column off');
+      assert.equal(roomAt(false, 1400), true, 'a wide desktop: two lanes');
+      assert.equal(liqSplitDrawn(state), true, 'beside the split column');
+      assert.equal(roomAt(false, 600), false, 'too narrow');
+      assert.equal(roomAt(true, 400), false, 'a compact map');
+      // The column off: nothing falls back to one series there, and Liquidations | Stops draws its two lanes too.
+      assert.equal(roomAt(false, 1400, off), true, 'the column off, wide');
+      assert.equal(liqSplitDrawn(off), false, 'though no split column is drawn');
+      assert.equal(roomAt(false, 600, off), true, 'the column off, narrow: no column needs the room');
+      assert.equal(roomAt(true, 400, off), false, 'a compact map with the column off: one lane, as the phone draws it');
     } finally { setCompactGutters(false, 2000); }
   });
   const src = familyService(), s = setting({ split: 'groups' }), held: Held = { left: null, takes: null, right: null };
@@ -233,9 +239,10 @@ test('too narrow to split, on a compact map or with the column off: the stripe k
   assert.deepEqual(titles(stripeBoxLines(rowAt(held.left!.rows, 95), 'both', 100, src.standing(), src.partStandings(), side => side === 'long', f.plan.whose[0])), ['Long liquidations and stops']);
 });
 
-test('the map\'s stripe draws what the plan says: the plan from the split drawn, the right lane from the right set by its key, its reading routed first, the missing orders said under the legend', () => {
+test('the map\'s stripe draws what the plan says: the plan from the room for two lanes, the right lane from the right set by its key, its reading routed first, the missing orders said under the legend', () => {
   const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
-  assert.match(heat, /plan = stripePlan\(pair, liqSplitDrawn\(state\)\);/);
+  assert.match(heat, /plan = stripePlan\(pair, stripeSplitRoom\(state\)\);/);
+  assert.match(heat, /export const stripeSplitRoom = \(state: AppState\): boolean => liqSplitDrawn\(state\) \|\| \(!COMPACT && !state\.liqLevels\.column\);/);
   assert.match(heat, /this\.#liqLanes = null; this\.#liqRightLane = null;\n    const ask = liveAsk/, 'neither lane answers the pointer before this frame draws it (another coin, a replay)');
   assert.match(heat, /const right = plan\.two \? src\.right : null, rightReady = !!right\?\.levels && right\.state === 'ready';/);
   assert.match(heat, /if \(plan\.standalone && right\?\.ordersAbsent\(\)\) note = `\$\{note\} · \$\{ordersAbsent\(\)\}`;/);
