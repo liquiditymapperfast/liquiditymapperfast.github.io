@@ -136,7 +136,7 @@ export class Player {
     this.#host.apply(step, false);
   }
 
-  /** The person used the demo's controls or its history: the tour stops (and stays stopped) until Play, Replay or a scene. */
+  /** The person used the demo's controls or its history: the tour stops (and stays stopped) until Play, Play again or a scene. */
   interrupt(): void {
     if (this.#running) this.pause('user');
     else if (this.#pausedBy !== 'end') this.#pausedBy = 'user';

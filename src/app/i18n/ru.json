@@ -3499,7 +3499,7 @@
  "Take profits alone get a dashed curve.": "Тейк-профиты отдельно получают пунктирную кривую.",
  "Profitable traders, at each price.": "Прибыльные трейдеры, на каждой цене.",
  "Scroll back through the whole history.": "Прокрутите назад всю историю.",
- "Each alone": "По отдельности",
+ "Each alone": "Отдельно",
  "Illustrative data": "Иллюстративные данные",
  "Illustrative chart of the levels": "Иллюстративный график уровней",
  "Interactive demo": "Интерактивное демо",
@@ -3514,5 +3514,6 @@
  "Profitable only": "Только прибыльные",
  "Timeline: the whole history with Plus, the last 7 days free": "Шкала времени: вся история с Plus, последние 7 дней бесплатно",
  "Liquidations, stops and take profits as three separate layers": "Ликвидации, стопы и тейк-профиты тремя отдельными слоями",
- "Everyone and profitable traders: liquidation and stop levels at each price, on one dollar scale": "Все и прибыльные трейдеры: уровни ликвидаций и стопов на каждой цене, в одной долларовой шкале"
+ "Everyone and profitable traders: liquidation and stop levels at each price, on one dollar scale": "Все и прибыльные трейдеры: уровни ликвидаций и стопов на каждой цене, в одной долларовой шкале",
+ "Play again": "Повторить"
 }

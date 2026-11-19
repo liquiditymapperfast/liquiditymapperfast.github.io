@@ -7,8 +7,8 @@
  *
  * Playing: the tour starts once, the first time the demo is at least 45 % in view, unless the browser asks for reduced motion. It pauses
  * while the demo is out of view or the tab is hidden and goes on when it is back. Any use of the levels control or the history scrubber
- * stops it (a store change the tour did not make, or a press or key on the control); Play, Replay and the scene buttons drive it by hand.
- * The returned `pause()` stops it as the person's own pause would: it stays stopped until Play, Replay or a scene, and the first autoplay
+ * stops it (a store change the tour did not make, or a press or key on the control); Play, Play again and the scene buttons drive it by hand.
+ * The returned `pause()` stops it as the person's own pause would: it stays stopped until Play, Play again or a scene, and the first autoplay
  * is used up. `destroy()` stops every frame, observer and listener and takes the demo out of `host`.
  *
  * The chart is drawn again only when something it shows changed (a choice moving over 220 ms, none with reduced motion; the history
@@ -74,8 +74,9 @@ export function mountDemo(host: HTMLElement, opts: DemoOptions = {}): DemoHandle
   const playLabel = node('span', 'pd-lab');
   const playIcon = icon('play'), pauseIcon = icon('pause');
   const playBtn = node('button', 'pd-btn', playIcon, pauseIcon, playLabel);
-  const replayBtn = node('button', 'pd-btn', icon('replay'), node('span', 'pd-lab', t('Replay')));
-  replayBtn.setAttribute('aria-label', t('Replay'));
+  // Not the app's "Replay": that word names its market replay, which several languages translate as a mode (German "Wiedergabe").
+  const replayBtn = node('button', 'pd-btn', icon('replay'), node('span', 'pd-lab', t('Play again')));
+  replayBtn.setAttribute('aria-label', t('Play again'));
   const scenesBox = node('div', 'pd-scenes');
   scenesBox.setAttribute('role', 'group'); scenesBox.setAttribute('aria-label', t('Scenes'));
   const ctlHost = node('div', 'pd-ctl');
