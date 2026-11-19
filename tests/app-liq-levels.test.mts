@@ -182,9 +182,9 @@ test('only a local service may stand in for the configured address, and a save f
   assert.equal(liqLevelsUrl('?levels=http://localhost:8790/x.json'), 'http://localhost:8790/x.json');
   assert.equal(liqLevelsUrl('?levels=https://evil.example/x.json'), LIQ_LEVELS_URL);
   assert.equal(liqLevelsUrl('?levels=javascript:alert(1)'), LIQ_LEVELS_URL);
-  assert.deepEqual(readLiqLevels(undefined), { on: true, column: true, kind: 'liq', takes: false, group: 'all' });
-  assert.deepEqual(readLiqLevels({ on: false }), { on: false, column: true, kind: 'liq', takes: false, group: 'all' });
-  assert.deepEqual(readLiqLevels({ on: 'yes', column: false }), { on: true, column: false, kind: 'liq', takes: false, group: 'all' });
+  assert.deepEqual(readLiqLevels(undefined), { on: true, column: true, liq: true, stops: false, takes: false, group: 'all' });
+  assert.deepEqual(readLiqLevels({ on: false }), { on: false, column: true, liq: true, stops: false, takes: false, group: 'all' });
+  assert.deepEqual(readLiqLevels({ on: 'yes', column: false }), { on: true, column: false, liq: true, stops: false, takes: false, group: 'all' });
 });
 
 test('the source asks for the file, says when it cannot, retries sooner, keeps the newest snapshot and stays away from other coins', async () => {

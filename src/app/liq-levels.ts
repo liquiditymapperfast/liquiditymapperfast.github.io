@@ -13,7 +13,7 @@ import { KeyLevelHistory, type HistoryTarget } from './keylevels/history.ts';
 import { MAX_LEAD_MS, ON_TIME_MS, clockSetBack, nextAskAt, pageHidden, placeSnapshot } from './liq-schedule.ts';
 import { liqLevelsUrl, plusUrls } from './liq-url.ts';
 import { isRefusal, webFetch, type LiqFetch } from './liq-history.ts';
-import { FREE_VIEW, viewKey, type LiqView } from './liq-view.ts';
+import { FREE_VIEW, curveOf, ordersShown, takesBeside, viewKey, type LiqView } from './liq-view.ts';
 import { plus } from './plus/pass.ts';
 import type { AppState, CandleRow } from './store.ts';
 import type { View } from './view.ts';
@@ -650,7 +650,8 @@ export type LiqState = 'idle' | 'loading' | 'ready' | 'stale' | 'unavailable' | 
  * Loads the files and the candles that take levels away, and keeps them fresh while the levels are on. The free file (liquidation levels of
  * every position) is asked for when the next snapshot can be there (`liq-schedule.ts`); a Plus file the view needs (the groups', the stops'
  * and take profits') is asked for, with the pass, when the free file brings a snapshot it does not have yet. `levels` is what the view draws:
- * the free file's levels, a group's, the stops, or liquidations and stops added together; `takes` the take profits, a layer of their own.
+ * the free file's levels, a group's, the stops, liquidations and stops added together, or the take profits on alone; `takes` the take profits
+ * beside liquidations or stops, a layer of their own.
  */
 export class LiqLevelsSource {
   state: LiqState = 'idle';
@@ -695,12 +696,13 @@ export class LiqLevelsSource {
     const g = this.#groups.held;
     return g ? g.profitable : null;
   }
-  /** What the view draws as its levels (the take profits apart). */
+  /** What the view draws as its levels, its curve's (the take profits beside it apart). */
   #main(): Layer | SumLayer | null {
-    const v = this.#view;
-    if (v.kind === 'stops') return this.#triggers.held?.stops ?? null;
+    const curve = curveOf(this.#view);
+    if (curve === 'stops') return this.#triggers.held?.stops ?? null;
+    if (curve === 'takes') return this.#triggers.held?.takes ?? null;
     const liq = this.#liqLayer();
-    if (v.kind === 'liq' || !liq) return v.kind === 'liq' ? liq : null;
+    if (curve === 'liq' || !liq) return curve === 'liq' ? liq : null;
     const stops = this.#triggers.held?.stops;
     if (!stops) return null;
     // Added up only on one grid (both files bin on the coin's $10 today): another would put the stops in the wrong rows.
@@ -711,17 +713,17 @@ export class LiqLevelsSource {
 
   /** The levels the view draws, or null. */
   get levels(): LiqLevels | null { return this.#main()?.levels ?? null; }
-  /** The take profits (sides swapped: see `LevelsKind`) while the view shows them and they are held, else null. */
-  get takes(): LiqLevels | null { return this.#view.takes ? this.#triggers.held?.takes.levels ?? null : null; }
-  /** Where the take profits stand: drawn, loading, not read, not there yet (`missing`), or off (the view has none). */
+  /** The take profits beside the curve (sides swapped: see `LevelsKind`) while the view shows them so and they are held, else null. */
+  get takes(): LiqLevels | null { return takesBeside(this.#view) ? this.#triggers.held?.takes.levels ?? null : null; }
+  /** Where the take profits beside the curve stand: drawn, loading, not read, not there yet (`missing`), or off (none beside it). */
   get takesState(): LiqState {
-    if (!this.#view.takes) return 'off';
+    if (!takesBeside(this.#view)) return 'off';
     return this.#triggers.held ? 'ready' : this.#partState(this.#triggers);
   }
   /** When the positions of the liquidations drawn stood, and the stop and take-profit orders (null: not part of the view or not held). */
   asOfs(): { liq: number | null; orders: number | null } {
-    const v = this.#view, orders = v.kind !== 'liq' || v.takes ? this.#triggers.held?.data.asOf ?? null : null;
-    return { liq: v.kind === 'stops' ? null : this.#liqLayer()?.levels.asOf ?? null, orders };
+    const v = this.#view, orders = ordersShown(v) ? this.#triggers.held?.data.asOf ?? null : null;
+    return { liq: v.liq ? this.#liqLayer()?.levels.asOf ?? null : null, orders };
   }
   /**
    * Whether the stop and take-profit orders drawn are old enough to say so: older than the levels go stale, or more than about two hours
@@ -735,7 +737,7 @@ export class LiqLevelsSource {
   missing(): 'groups' | 'orders' | null {
     if (this.state !== 'missing') return null;
     const v = this.#view;
-    return v.kind !== 'stops' && v.group !== 'all' && !this.#groups.held ? 'groups' : 'orders';
+    return v.liq && v.group !== 'all' && !this.#groups.held ? 'groups' : 'orders';
   }
 
   /** Which part of the view the state is about (a view of both: the first part that is not ready). */
@@ -787,7 +789,7 @@ export class LiqLevelsSource {
     this.#askPlus(onChange);
     this.#settle();
     // The candles from the earliest snapshot drawn (the stops' is often older than the liquidations').
-    const from = [this.#main(), this.#view.takes ? this.#triggers.held?.takes ?? null : null, this.#view.kind === 'both' ? this.#triggers.held?.stops ?? null : null]
+    const from = [this.#main(), takesBeside(this.#view) ? this.#triggers.held?.takes ?? null : null, curveOf(this.#view) === 'both' ? this.#triggers.held?.stops ?? null : null]
       .reduce((m, layer) => layer ? Math.min(m, layer instanceof SumLayer ? Math.min(layer.a.levels.asOf, layer.b.levels.asOf) : layer.levels.asOf) : m, Infinity);
     if (Number.isFinite(from)) {
       const id = instrumentIdFor('hyperliquid', BTC), listing = BTC.markets.hyperliquid;
@@ -804,8 +806,8 @@ export class LiqLevelsSource {
    */
   #askPlus(onChange: () => void): void {
     const v = this.#view;
-    this.#askPart(this.#groups, v.kind !== 'stops' && v.group !== 'all', 'groups', onChange);
-    this.#askPart(this.#triggers, v.kind !== 'liq' || v.takes, 'triggers', onChange);
+    this.#askPart(this.#groups, v.liq && v.group !== 'all', 'groups', onChange);
+    this.#askPart(this.#triggers, ordersShown(v), 'triggers', onChange);
   }
 
   #askPart(part: PlusPart<unknown>, want: boolean, which: 'groups' | 'triggers', onChange: () => void): void {
@@ -900,8 +902,10 @@ export class LiqLevelsSource {
     const stops = (): LiqState => this.#triggers.held ? 'ready' : freeState !== 'ready' ? freeState : this.#partState(this.#triggers);
     // Both on two grids cannot be added up (`#main`): said as orders that could not be read.
     const grids = (): boolean => { const liq = this.#liqLayer(), o = this.#triggers.held; return !liq || !o || liq.levels.step === o.stops.levels.step; };
-    if (v.kind === 'liq') { this.state = fresh(liqState()); this.#blame = 'liq'; return; }
-    if (v.kind === 'stops') { this.state = stops(); this.#blame = 'orders'; return; }
+    const curve = curveOf(v);
+    if (curve === 'liq') { this.state = fresh(liqState()); this.#blame = 'liq'; return; }
+    // Stops or take profits alone: the order file's state.
+    if (curve === 'stops' || curve === 'takes') { this.state = stops(); this.#blame = 'orders'; return; }
     // Both: the first part not ready says why nothing is drawn.
     const a = fresh(liqState()), b = stops();
     this.state = a !== 'ready' ? a : b !== 'ready' ? b : grids() ? 'ready' : 'unavailable'; this.#blame = a !== 'ready' ? 'liq' : 'orders';
@@ -933,7 +937,7 @@ export class LiqLevelsSource {
   /** Changes whenever what is drawn from the levels can change, for the pane's caches. */
   key(): string { const main = this.#main(); return main ? `${viewKey(this.#view)}|${main.key(this.candles)}` : ''; }
   /** The same for the take profits. */
-  takesKey(): string { const t = this.#view.takes ? this.#triggers.held?.takes : null; return t ? t.key(this.candles) : ''; }
+  takesKey(): string { const t = takesBeside(this.#view) ? this.#triggers.held?.takes : null; return t ? t.key(this.candles) : ''; }
 
   /** How far price has traded through each bin, worked out again only when the levels, the candles or the prices seen changed. */
   taken(): { long: Taken; short: Taken } | null { return this.#main()?.derive(this.candles).taken ?? null; }
@@ -945,8 +949,8 @@ export class LiqLevelsSource {
     return main instanceof SumLayer ? { liq: main.a.derive(this.candles).standing, stops: main.b.derive(this.candles).standing } : null;
   }
   /** The same two for the take profits. */
-  takesTaken(): { long: Taken; short: Taken } | null { const t = this.#view.takes ? this.#triggers.held?.takes : null; return t ? t.derive(this.candles).taken : null; }
-  takesStanding(): LiqStanding | null { const t = this.#view.takes ? this.#triggers.held?.takes : null; return t ? t.derive(this.candles).standing : null; }
+  takesTaken(): { long: Taken; short: Taken } | null { const t = takesBeside(this.#view) ? this.#triggers.held?.takes : null; return t ? t.derive(this.candles).taken : null; }
+  takesStanding(): LiqStanding | null { const t = takesBeside(this.#view) ? this.#triggers.held?.takes : null; return t ? t.derive(this.candles).standing : null; }
 }
 
 /** One side of what the seam between the liquidation column and the profile column weighs: the book against the liquidations. */

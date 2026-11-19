@@ -4,32 +4,43 @@
  */
 
 /**
- * What the levels show (one choice for the whole page: the map's stripe and column, the phone's Liq tab, the Depth pane's history): the
- * liquidation levels, the stop orders, or both added together; the take profits as a layer of their own beside them; and whose liquidations
- * (every position, or HyperTracker's profitable traders'). Everything but liquidations of all traders without take profits is Plus.
+ * What the levels show (one choice for the whole page: the map's stripe and column, the phone's Liq tab, the Depth pane's history): three
+ * kinds, each a switch of its own (the liquidation levels, the stop orders, the take-profit orders), at least one of them on, and whose
+ * liquidations (every position, or HyperTracker's profitable traders'). The curve adds up the liquidations and the stops that are on; take
+ * profits are drawn beside it, or, on alone, as a curve of their own. Everything but liquidations of all traders is Plus.
  */
-export type LiqKind = 'liq' | 'stops' | 'both';
+export type LiqPart = 'liq' | 'stops' | 'takes';
 export type LiqGroup = 'all' | 'profitable';
-export const LIQ_KINDS: readonly LiqKind[] = ['liq', 'stops', 'both'];
+export const LIQ_PARTS: readonly LiqPart[] = ['liq', 'stops', 'takes'];
 export const LIQ_GROUPS: readonly LiqGroup[] = ['all', 'profitable'];
 
 /**
  * The Chart deck's Liquidation levels: whether they are drawn on the map, whether their own column stands beside the profile column, and what
- * they show (`kind`, `takes`, `group`).
+ * they show (`liq`, `stops`, `takes`: at least one on; `group`).
  */
-export interface LiqLevelSettings { on: boolean; column: boolean; kind: LiqKind; takes: boolean; group: LiqGroup }
+export interface LiqLevelSettings { on: boolean; column: boolean; liq: boolean; stops: boolean; takes: boolean; group: LiqGroup }
+
 /**
- * A saved setting, checked; what a save from before the feature lacks reads as on (new features start on), and a save from before the
- * Plus choices reads as the free view: liquidations of all traders, no take profits. Any other group value reads as everyone's (`all`).
+ * A saved setting, checked, whichever form it was saved in (settings, a layout or a layouts file, a backup, the old address's hand-over: all
+ * go through here). What a save from before the feature lacks reads as on (new features start on). The three switches as saved, where at
+ * least one is on; a save of one kind and a take-profit switch (before 2026-11-19) as that kind: `liq` liquidations, `stops` stops, `both`
+ * the two, its take profits kept. Anything else, a save from before the Plus choices included, reads as the free view: liquidations of
+ * everyone, no take profits. Any other group value reads as everyone's (`all`).
  */
 export function readLiqLevels(saved: unknown): LiqLevelSettings {
-  const s = saved && typeof saved === 'object' ? saved as { on?: unknown; column?: unknown; kind?: unknown; takes?: unknown; group?: unknown } : {};
-  return {
-    on: typeof s.on === 'boolean' ? s.on : true, column: typeof s.column === 'boolean' ? s.column : true,
-    kind: (LIQ_KINDS as readonly unknown[]).includes(s.kind) ? s.kind as LiqKind : 'liq',
-    takes: s.takes === true,
-    group: (LIQ_GROUPS as readonly unknown[]).includes(s.group) ? s.group as LiqGroup : 'all',
-  };
+  const s = saved && typeof saved === 'object' ? saved as Record<string, unknown> : {};
+  const shown = { on: typeof s.on === 'boolean' ? s.on : true, column: typeof s.column === 'boolean' ? s.column : true };
+  const group: LiqGroup = (LIQ_GROUPS as readonly unknown[]).includes(s.group) ? s.group as LiqGroup : 'all';
+  const free: LiqLevelSettings = { ...shown, liq: true, stops: false, takes: false, group: 'all' };
+  if ('liq' in s || 'stops' in s) {
+    const liq = s.liq === true, stops = s.stops === true, takes = s.takes === true;
+    return liq || stops || takes ? { ...shown, liq, stops, takes, group } : free;
+  }
+  const takes = s.takes === true;
+  if (s.kind === 'liq') return { ...shown, liq: true, stops: false, takes, group };
+  if (s.kind === 'stops') return { ...shown, liq: false, stops: true, takes, group };
+  if (s.kind === 'both') return { ...shown, liq: true, stops: true, takes, group };
+  return free;
 }
 
 /**

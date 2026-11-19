@@ -24,7 +24,8 @@ import type { InfoLine } from '../infobox.ts';
 import { barAt, columnAt, depthCardLines, depthColumns, depthKey, liqCardLines, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
 import { LiqHistory, bandIndex, bandOnEdge, type LiqRow } from '../liq-history.ts';
 import { TAKE_DASH } from '../liq-levels.ts';
-import { groupApplies, groupTitle, liveView, viewKey, type LiqView } from '../liq-view.ts';
+import { curveOf, groupTitle, kindName, levelsDescription, liveView, viewKey, type LiqView } from '../liq-view.ts';
+import { toggleLevels } from '../levels-control.ts';
 import { FREE_DAYS, freeFrom, plusOnSale } from '../plus/config.ts';
 import { plus } from '../plus/pass.ts';
 import { togglePlus } from '../plus/panel.ts';
@@ -453,6 +454,8 @@ export class DepthPane extends TimePane {
   readonly #units = document.createElement('select');
   readonly #tableBox = document.createElement('input');
   readonly #source = document.createElement('select');
+  /** With the levels as the source, what they show, named as the curve is, and pressed to choose it (the levels control). */
+  readonly #levelsButton = el('button', { type: 'button', class: 'levels-btn', hidden: true });
   #bellLabel: HTMLElement | null = null;
   /** Whose books the bands add up (book-markets.ts), one choice with the Liquidity Tracker's. */
   readonly #venues: BookVenues;
@@ -476,9 +479,11 @@ export class DepthPane extends TimePane {
     this.head.querySelector('strong')!.after(helpButton('depthPane'));
     // What the bands add up: the order book's resting orders, or the liquidation levels of Hyperliquid's BTC positions.
     const source = el('label', { class: 'ctl', tip: t('What the bands add up: the order book\'s resting bids and asks, or the liquidation levels of Hyperliquid\'s BTC positions (longs below the price, shorts above), from HyperTracker about every 30 minutes.') }, t('Source'));
-    this.#source.append(new Option(t('Order book'), 'book'), new Option(t('Liquidation levels'), 'liq'));
+    this.#source.append(new Option(t('Order book'), 'book'), new Option(t('Levels'), 'liq'));
     this.#source.onchange = () => this.store.set({ depthSource: this.#source.value === 'liq' ? 'liq' : 'book' });
     source.append(this.#source);
+    this.#levelsButton.setAttribute('aria-haspopup', 'dialog'); this.#levelsButton.setAttribute('aria-expanded', 'false');
+    this.#levelsButton.onclick = () => { toggleLevels(this.#levelsButton, this.store); };
     // Whose books: the venues switched on, the chart market's, or the markets chosen (shared with the Liquidity Tracker).
     this.#venues = new BookVenues(store);
     // The bands: a preset, or the person's own (Edit… opens them in a panel).
@@ -511,7 +516,7 @@ export class DepthPane extends TimePane {
     bell.append(this.#bell, t('Sound')); setTip(bell, panelSwitchTip('depthPane'));
     this.#bellLabel = bell;
     // The switches last, the table's at the right end (as on every pane).
-    this.head.append(source, this.#venues.root, group, scale, units, bell, table);
+    this.head.append(source, this.#levelsButton, this.#venues.root, group, scale, units, bell, table);
     this.syncSound(); this.#sync();
     // On a phone the source stays in the row and the rest waits behind the key (pane-tune.ts); on a desktop the venues fold last.
     addTune(this.head, [this.#venues.root, group, scale, units, bell, table], t('Depth'), { fold: true });
@@ -546,9 +551,11 @@ export class DepthPane extends TimePane {
   #sync(): void {
     const liq = this.store.state.depthSource === 'liq', s = this.#settings();
     this.#source.value = liq ? 'liq' : 'book';
-    // The second source is what the levels show, as the page's one choice says (`liq-view.ts`): its name follows it.
-    const kind = liveView(this.store.state.liqLevels).kind, option = this.#source.options[1], name = kind === 'stops' ? t('Stop levels') : kind === 'both' ? t('Liquidation and stop levels') : t('Liquidation levels');
-    if (option && option.text !== name) option.text = name;
+    // The levels show what the page's one choice says (`liq-view.ts`): the button beside the Source names the curve and opens the choice.
+    const view = liveView(this.store.state.liqLevels), caption = kindName(curveOf(view));
+    this.#levelsButton.hidden = !liq;
+    if (this.#levelsButton.textContent !== caption) this.#levelsButton.textContent = caption;
+    setTip(this.#levelsButton, `${levelsDescription(view)} ${t('Press to choose what the levels show.')}`);
     // The depth sound and the venues are the order book's: they have nothing to say about liquidation levels.
     if (this.#bellLabel) this.#bellLabel.hidden = liq;
     this.#venues.root.hidden = liq; this.#venues.sync();
@@ -732,8 +739,8 @@ export class DepthPane extends TimePane {
     const closed = liqHeld?.closed ?? null, closedX = closed ? Math.min(pw, v.xOf(closed.to, pw)) : 0;
     if (liq && lastX < 0) {
       if (closed) { say(t('This stretch of the liquidation levels\' history is part of Plus.')); this.#lockAt = closedX; return; }
-      const kind = liqHeld?.view.kind;
-      say(kind === 'stops' ? t('No stop levels recorded for this stretch of time.') : kind === 'both' ? t('No snapshot with both liquidations and stops in this stretch of time.')
+      const kind = liqHeld ? curveOf(liqHeld.view) : 'liq';
+      say(kind === 'takes' ? t('No take-profit levels recorded for this stretch of time.') : kind === 'stops' ? t('No stop levels recorded for this stretch of time.') : kind === 'both' ? t('No snapshot with both liquidations and stops in this stretch of time.')
         : t('No liquidation levels recorded for this stretch of time.'));
       return;
     }
@@ -741,8 +748,10 @@ export class DepthPane extends TimePane {
     if (liq) {
       const b = bid[at(lastX, top)]!, a = ask[at(lastX, top)]!, row = rowOf(lastX), view = liqHeld!.view, r = sideRatio(b, a);
       // Whose levels (the Source names which), and the take profits beside them: the sells that close longs above, the buys that close shorts below.
-      const whose = groupApplies(view.kind) && view.group !== 'all' ? `${groupTitle(view.group)} · ` : '';
-      const larger = r?.lead ? ` <b class="${r.lead > 0 ? 'bid' : 'ask'}">${r.lead > 0 ? t('longs') : t('shorts')} ${ratioFigure(r.ratio)}</b>` : '';
+      const whose = view.liq && view.group !== 'all' ? `${groupTitle(view.group)} · ` : '';
+      // Take profits on alone are resting orders: the buys below the price are bids, the sells above asks.
+      const alone = curveOf(view) === 'takes', names = alone ? [t('bids'), t('asks')] : [t('longs'), t('shorts')];
+      const larger = r?.lead ? ` <b class="${r.lead > 0 ? 'bid' : 'ask'}">${r.lead > 0 ? names[0] : names[1]} ${ratioFigure(r.ratio)}</b>` : '';
       const tp = takeBid && takeAsk && takes!.rowAt[lastX]! >= 0 ? ` · ${t('take profits')} <b class="ask">▲${amountText(takeAsk[at(lastX, top)]!, coins)}</b> <b class="bid">▼${amountText(takeBid[at(lastX, top)]!, coins)}</b>` : '';
       setHtml(readout, `${whose}±${bandText(s.radii[top]!)}% L <b class="bid">${amountText(b, coins)}</b> S <b class="ask">${amountText(a, coins)}</b> Δ <b>${coins ? tableSigned(b - a) : signedText(b - a)}</b>${unit}${larger}${tp}${row ? ` · ${t('positions as of {time}', { time: clock(row.asOf) })}` : ''}`);
     } else if (lastX >= 0) {

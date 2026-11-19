@@ -15,7 +15,7 @@
  */
 import { DUE_EVERY_MS, MAX_LEAD_MS, ON_TIME_MS, clockSetBack, nextAskAt, placeSnapshot } from './liq-schedule.ts';
 import { liqLevelsUrl, plusUrls } from './liq-url.ts';
-import { FREE_VIEW, groupApplies, viewKey, type LiqView } from './liq-view.ts';
+import { FREE_VIEW, curveOf, ordersShown, takesBeside, viewKey, type LiqView } from './liq-view.ts';
 
 /**
  * Who may read which days (Plus, `plus/config.ts`): the days from `freeFrom` on are everyone's; an older one is asked for only with a
@@ -229,8 +229,8 @@ export function bandOnEdge(edges: readonly number[], radius: number): number {
 /** The families a view reads, the first being the one its levels come from: its liquidations' (all positions or groups), and the orders' for stops and take profits. */
 export function familiesFor(view: LiqView): LiqFamily[] {
   const out: LiqFamily[] = [];
-  if (view.kind !== 'stops') out.push(groupApplies(view.kind) && view.group !== 'all' ? 'groups' : 'free');
-  if (view.kind !== 'liq' || view.takes) out.push('orders');
+  if (view.liq) out.push(view.group !== 'all' ? 'groups' : 'free');
+  if (ordersShown(view)) out.push('orders');
   return out;
 }
 
@@ -507,18 +507,21 @@ export class LiqHistory {
   /**
    * A view's rows from one set of history rows of each family it reads (a day's, or a rollup's): its liquidations (all positions or the
    * profitable traders'; a row without that part has no row), its stops, or both added where the snapshot has both (joined by `createdAt`,
-   * or within a rollup by its four-hour block); and the take profits, sides swapped.
+   * or within a rollup by its four-hour block), or the take profits on alone; and the take profits beside the others. Take profits are held
+   * with their sides swapped.
    */
   #viewRows(view: LiqView, by: Partial<Record<LiqFamily, HistRow[]>>, edges: readonly number[], block: number | null): { rows: LiqRow[]; takes: LiqRow[] } {
     const liq: { row: HistRow; part: HistPart }[] = [];
-    if (view.kind !== 'stops') {
-      const fam = groupApplies(view.kind) && view.group !== 'all' ? 'groups' : 'free';
+    if (view.liq) {
+      const fam = view.group !== 'all' ? 'groups' : 'free';
       for (const row of by[fam] ?? []) { const part = row.parts[0]; if (part) liq.push({ row, part }); }
     }
-    const orders = by.orders ?? [];
+    const orders = by.orders ?? [], curve = curveOf(view);
+    const takes = (): LiqRow[] => orders.flatMap(row => row.parts[1] ? [cumulate(row, row.parts[1], edges, true)] : []);
+    if (curve === 'takes') return { rows: takes(), takes: [] };
     let main: { row: HistRow; part: HistPart }[];
-    if (view.kind === 'liq') main = liq;
-    else if (view.kind === 'stops') main = orders.flatMap(row => row.parts[0] ? [{ row, part: row.parts[0] }] : []);
+    if (curve === 'liq') main = liq;
+    else if (curve === 'stops') main = orders.flatMap(row => row.parts[0] ? [{ row, part: row.parts[0] }] : []);
     else {
       // Both: a snapshot with both parts. A rollup's rows are each part's state at its block's end, which may be two snapshots of one block.
       const join = (r: HistRow): number => block ? Math.floor(r.fetchedAt / block) : r.createdAt;
@@ -528,7 +531,7 @@ export class LiqHistory {
     }
     return {
       rows: main.map(({ row, part }) => cumulate(row, part, edges)),
-      takes: view.takes ? orders.flatMap(row => row.parts[1] ? [cumulate(row, row.parts[1], edges, true)] : []) : [],
+      takes: takesBeside(view) ? takes() : [],
     };
   }
 

@@ -53,10 +53,10 @@ import { openMenu, type MenuItem } from '../menu.ts';
 import { blockMsOf, editScope, withEdits } from '../tpo/settings.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
 import { liqLevelsUrl } from '../liq-url.ts';
-import { groupName, heldBack, kindName, liveView, plusOn, viewParts, type LiqView } from '../liq-view.ts';
-import { columnNotes, curveSentence, liqNote, liqWhy, sideTitle } from '../liq-words.ts';
+import { curveOf, groupName, heldBack, kindName, levelsDescription, liveView, plusOn, viewKey, viewParts, type LiqView } from '../liq-view.ts';
+import { columnNotes, liqNote, liqWhy, sideTitle } from '../liq-words.ts';
 import { mirrorSplits, readingTexts, stripeBoxLines } from '../liq-box.ts';
-import { openLiqMenu } from '../liq-menu.ts';
+import { toggleLevels } from '../levels-control.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
 import { ANCHOR_BAR_MS, PROFILE_ANCHOR_REACH_MS, PROFILE_FINE_REACH_MS, anchorAt, anchorSnapshot, anchorTag, answerFits, snapshotDue, type AnchorSnapshot, type ProfileAnchorStart } from '../traded/anchor.ts';
@@ -747,7 +747,8 @@ export class HeatPane {
     this.#liveButton.hidden = true;
     this.#liveButton.addEventListener('click', () => this.jumpToNow());
     this.#liqHistory.addEventListener('click', () => this.store.set({ show: { ...this.store.state.show, depth: true }, depthSource: 'liq' }));
-    this.#liqKind.addEventListener('click', () => { openLiqMenu(this.#liqKind, this.store); });
+    this.#liqKind.setAttribute('aria-haspopup', 'dialog'); this.#liqKind.setAttribute('aria-expanded', 'false');
+    this.#liqKind.addEventListener('click', () => { toggleLevels(this.#liqKind, this.store); });
     // The pointer's layer right after the overlay: over it and under what is stacked over it, as when it was drawn into the overlay.
     this.root.append(this.#glCanvas, this.#dustCanvas, this.#pulse, this.#drawEdit, this.overlay, this.#hoverCanvas, this.#liveButton, this.#liqHistory, this.#liqKind);
     host.append(this.root);
@@ -2193,7 +2194,10 @@ export class HeatPane {
         // price); the levels' lane is the one beside the liquidation column, whose curve sums them.
         const takes = src.takesState === 'ready' ? src.takes : null, lanes = stripeLanes(x0, pw, !!takes);
         const { rows, heat } = this.#liqRowsDrawn(levels, ph);
-        paintLiqStripe(ctx, v, lanes.levels.x0, lanes.levels.x1, ph, rows, heat, { long: p.candleDown, short: p.candleUp, text: p.text, muted: p.muted, bg: p.bg });
+        // Take profits on alone are the levels: drawn as they are beside the others (dashed, buys below in the rising colour), the full width.
+        const alone = levels.kind === 'takes';
+        paintLiqStripe(ctx, v, lanes.levels.x0, lanes.levels.x1, ph, rows, heat, alone ? { long: p.candleUp, short: p.candleDown, text: p.text, muted: p.muted, bg: p.bg }
+          : { long: p.candleDown, short: p.candleUp, text: p.text, muted: p.muted, bg: p.bg }, alone);
         if (takes && lanes.takes) {
           const tk = this.#liqTakeRowsDrawn(takes, ph);
           // By what the orders do: the take profits of shorts are buys (below the price, the rising colour), those of longs sells.
@@ -3992,16 +3996,15 @@ export class HeatPane {
     const s = state.liqLevels, view = liveView(s), held = heldBack(s, plusOn()), room = liqRoom(W), html = document.documentElement.dataset;
     // Fitted again for another frame or material too: their fonts differ (the Bevel frame's is Tahoma at 11 px), and what fits with one may
     // not with another, so the group is always on the button or under it, never cut.
-    const fit = `${view.kind}|${view.group}|${view.takes}|${held}|${room}|${html.frame ?? ''}|${html.material ?? ''}`;
+    const fit = `${viewKey(view)}|${held}|${room}|${html.frame ?? ''}|${html.material ?? ''}`;
     if (fit !== this.#liqKindFit) {
       this.#liqKindFit = fit;
       button.classList.toggle('locked', held);
       button.style.maxWidth = `${room}px`;
-      const kind = kindName(view.kind), group = view.kind !== 'stops' && view.group !== 'all' ? groupName(view.group) : '';
-      const shown = held ? t('Shown: {what}. Your choice is part of Plus and comes back with it. Press to choose what the levels show.', { what: viewParts(view).join(' · ') })
-        : t('Shown: {what}. Press to choose what the levels show: liquidations, stops or both, take profits, and whose.', { what: viewParts(view).join(' · ') });
-      // With take profits on, what the curve leaves out, for a newcomer.
-      const tip = view.takes ? `${shown} ${curveSentence()}` : shown;
+      const kind = kindName(curveOf(view)), group = view.liq && view.group !== 'all' ? groupName(view.group) : '';
+      // Everything drawn, for the tip and a screen reader: what the curve sums, the take-profit bars beside it, whose.
+      const tip = held ? t('Shown: {what}. Your choice is part of Plus and comes back with it. Press to choose what the levels show.', { what: viewParts(view).join(' · ') })
+        : `${levelsDescription(view)} ${t('Press to choose what the levels show.')}`;
       button.dataset.tip = tip; button.setAttribute('aria-label', tip);
       // The longest words that fit, measured once for these words and this width (a change of language rebuilds the page).
       if (button.hidden) button.hidden = false;
@@ -4066,8 +4069,10 @@ export class HeatPane {
     // The cumulative curves (the wide column only: the strip has no room for one), as CoinMarketCap's liquidation map draws them turned
     // upright: lightly filled behind the rows' bars, their edge drawn over them, so "this much goes if price gets here" reads at every price.
     const curves = strip ? null : liqCurves(prof, price), xOf = (q: CurvePoint): number => x0 + Math.min(1, q.usd / maxCum) * width;
-    const sides = curves ? ([[curves.long, p.candleDown], [curves.short, p.candleUp]] as const).filter(([pts]) => pts.length > 1) : [];
-    for (const [pts, color] of sides) {
+    // Take profits on alone are the curve: dashed, never filled, the buys below the price in the rising colour and the sells above in the falling one.
+    const alone = src.levels?.kind === 'takes', below = alone ? p.candleUp : p.candleDown, above = alone ? p.candleDown : p.candleUp;
+    const sides = curves ? ([[curves.long, below], [curves.short, above]] as const).filter(([pts]) => pts.length > 1) : [];
+    for (const [pts, color] of alone ? [] : sides) {
       ctx.beginPath(); ctx.moveTo(x0, v.yOf(pts[0]!.p, ph));
       for (const q of pts) ctx.lineTo(xOf(q), v.yOf(q.p, ph));
       ctx.lineTo(x0, v.yOf(pts[pts.length - 1]!.p, ph)); ctx.closePath();
@@ -4082,11 +4087,20 @@ export class HeatPane {
         // shorts above, in the candles' colours as in the column. By the logarithm, not the book's square root: the levels are a few spikes
         // (one of 24M made a 100K row 19 % strong, too faint to see), and this gives that row about 40 %.
         const level = Math.max(long, short);
-        if (level > 0) { ctx.globalAlpha = 0.22 + 0.78 * Math.log1p(level / (maxLevel / 1000)) / Math.log1p(1000); ctx.fillStyle = long >= short ? p.candleDown : p.candleUp; ctx.fillRect(x0 + 1, y0, W - 1, hgt); }
+        if (level > 0) { ctx.globalAlpha = 0.22 + 0.78 * Math.log1p(level / (maxLevel / 1000)) / Math.log1p(1000); ctx.fillStyle = long >= short ? below : above; ctx.fillRect(x0 + 1, y0, W - 1, hgt); }
         continue;
       }
-      if (long > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.candleDown; ctx.fillRect(x0, y0, Math.max(1, long / maxLevel * width), hgt); }
-      if (short > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.candleUp; ctx.fillRect(x0, y0, Math.max(1, short / maxLevel * width), hgt); }
+      if (alone) {
+        // Their bars dashed as beside the others, but from the left edge, where the levels' bars stand.
+        for (const [value, color] of [[long, below], [short, above]] as const) {
+          if (!(value > 0)) continue;
+          ctx.globalAlpha = 0.95; ctx.strokeStyle = color; ctx.lineWidth = hgt; ctx.setLineDash(TAKE_DASH as number[]); ctx.lineDashOffset = 0;
+          ctx.beginPath(); ctx.moveTo(x0, y0 + hgt / 2); ctx.lineTo(x0 + Math.max(3, value / maxLevel * width), y0 + hgt / 2); ctx.stroke(); ctx.setLineDash([]);
+        }
+      } else {
+        if (long > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.candleDown; ctx.fillRect(x0, y0, Math.max(1, long / maxLevel * width), hgt); }
+        if (short > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = p.candleUp; ctx.fillRect(x0, y0, Math.max(1, short / maxLevel * width), hgt); }
+      }
       if (tprof && r < tprof.long.length) {
         // From the right edge, dashed, the dashes on one pattern from that edge: the take profits of shorts are buys (the rising colour),
         // those of longs sells.
@@ -4099,12 +4113,13 @@ export class HeatPane {
       }
     }
     ctx.globalAlpha = 0.95; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
+    if (alone) ctx.setLineDash(TAKE_DASH as number[]);
     for (const [pts, color] of sides) {
       ctx.beginPath(); ctx.moveTo(xOf(pts[0]!), v.yOf(pts[0]!.p, ph));
       for (const q of pts) ctx.lineTo(xOf(q), v.yOf(q.p, ph));
       ctx.strokeStyle = color; ctx.stroke();
     }
-    ctx.globalAlpha = 1; ctx.lineWidth = 1; ctx.lineJoin = 'miter';
+    ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.lineWidth = 1; ctx.lineJoin = 'miter';
     // The pointer's layer reads the curve where the pointer is (`#paintLiqReadout`), on this scale.
     this.#liqScale = curves ? { x0, width, maxCum, W } : null;
     if (!strip) {

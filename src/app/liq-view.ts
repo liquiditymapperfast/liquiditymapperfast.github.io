@@ -1,41 +1,54 @@
 /**
- * What the levels show (Plus, 2026-11-17): one choice for the whole page, kept in `LiqLevelSettings` (`kind`, `takes`, `group`). The free view
- * is liquidations of all traders without take profits; every other choice is Plus. Without Plus the page draws the free view and keeps the
- * choice, which comes back with Plus (`effectiveView`). The stop and take-profit files have no trader groups, so the group is for
- * liquidations alone.
+ * What the levels show (Plus, 2026-11-17; three switches since 2026-11-19): one choice for the whole page, kept in `LiqLevelSettings`
+ * (`liq`, `stops`, `takes`, at least one on, and `group`). The free view is liquidations of all traders; every other choice is Plus.
+ * Without Plus the page draws the free view and keeps the choice, which comes back with Plus (`effectiveView`). The stop and take-profit
+ * files have no trader groups, so the group is for liquidations alone.
  */
 import { t } from './i18n.ts';
 import { plus } from './plus/pass.ts';
-import type { LiqGroup, LiqKind, LiqLevelSettings } from './liq-url.ts';
+import type { LiqGroup, LiqLevelSettings } from './liq-url.ts';
 
-export interface LiqView { kind: LiqKind; takes: boolean; group: LiqGroup }
+export interface LiqView { liq: boolean; stops: boolean; takes: boolean; group: LiqGroup }
+/** The parts of the setting a view is made of. */
+export type LiqChoice = Pick<LiqLevelSettings, 'liq' | 'stops' | 'takes' | 'group'>;
 /** What everyone sees without Plus. */
-export const FREE_VIEW: LiqView = Object.freeze({ kind: 'liq', takes: false, group: 'all' });
+export const FREE_VIEW: LiqView = Object.freeze({ liq: true, stops: false, takes: false, group: 'all' });
 
-/** Whether a choice is the free view (anything else is Plus). The group of a choice of stops alone counts for nothing. */
-export const isFreeChoice = (v: Pick<LiqView, 'kind' | 'takes' | 'group'>): boolean => v.kind === 'liq' && !v.takes && v.group === 'all';
-/** Whether the trader group applies to a kind: liquidations have groups, stops do not. */
-export const groupApplies = (kind: LiqKind): boolean => kind !== 'stops';
+/**
+ * What the curve adds up (the same names as `LevelsKind` in liq-levels.ts): the liquidations, the stops, both (Liq + stops), or the take
+ * profits, which have a curve only when they are on alone; with liquidations or stops they are bars of their own beside it (`takesBeside`).
+ */
+export type LiqCurve = 'liq' | 'stops' | 'both' | 'takes';
+export const curveOf = (v: Pick<LiqView, 'liq' | 'stops'>): LiqCurve => v.liq && v.stops ? 'both' : v.liq ? 'liq' : v.stops ? 'stops' : 'takes';
+/** Whether take profits are drawn beside the curve as bars of their own: on with liquidations or stops (alone they are the curve). */
+export const takesBeside = (v: Pick<LiqView, 'liq' | 'stops' | 'takes'>): boolean => v.takes && (v.liq || v.stops);
+/** Whether the view needs the stop and take-profit file: stops or take profits are on. */
+export const ordersShown = (v: Pick<LiqView, 'stops' | 'takes'>): boolean => v.stops || v.takes;
 
-/** What is drawn: the choice with Plus, the free view without it. A choice of stops alone has no group. */
-export function effectiveView(s: Pick<LiqLevelSettings, 'kind' | 'takes' | 'group'>, plusOn: boolean): LiqView {
+/** Whether a choice is the free view (anything else is Plus). Without liquidations the group counts for nothing. */
+export const isFreeChoice = (v: LiqChoice): boolean => v.liq && !v.stops && !v.takes && v.group === 'all';
+/** Whether the trader group applies: liquidations have groups, stops and take profits do not. */
+export const groupApplies = (v: Pick<LiqView, 'liq'>): boolean => v.liq;
+
+/** What is drawn: the choice with Plus, the free view without it. Without liquidations there is no group. */
+export function effectiveView(s: LiqChoice, plusOn: boolean): LiqView {
   if (!plusOn) return FREE_VIEW;
-  return { kind: s.kind, takes: s.takes, group: groupApplies(s.kind) ? s.group : 'all' };
+  return { liq: s.liq, stops: s.stops, takes: s.takes, group: s.liq ? s.group : 'all' };
 }
 
-/** A saved Plus choice that is not drawn (no Plus here): the controls show it with a lock. */
-export const heldBack = (s: Pick<LiqLevelSettings, 'kind' | 'takes' | 'group'>, plusOn: boolean): boolean => !plusOn && !isFreeChoice(effectiveView(s, true));
+/** A saved Plus choice that is not drawn (no Plus here): the controls say it is kept and comes back with Plus. */
+export const heldBack = (s: LiqChoice, plusOn: boolean): boolean => !plusOn && !isFreeChoice(effectiveView(s, true));
 
 /** The same view, the same key: caches and snapshots of what is drawn are made again under another. */
-export const viewKey = (v: LiqView): string => `${v.kind}|${groupApplies(v.kind) ? v.group : 'all'}|${v.takes ? 1 : 0}`;
+export const viewKey = (v: LiqView): string => `${v.liq ? 1 : 0}${v.stops ? 1 : 0}${v.takes ? 1 : 0}|${v.liq ? v.group : 'all'}`;
 
-/** A kind's short name, for a button and a menu. */
-export function kindName(kind: LiqKind): string {
-  return kind === 'stops' ? t('Stops') : kind === 'both' ? t('Liq + stops') : t('Liquidations');
+/** What the curve adds up, as the column's button and the levels control say it. */
+export function kindName(curve: LiqCurve): string {
+  return curve === 'stops' ? t('Stops') : curve === 'both' ? t('Liq + stops') : curve === 'takes' ? t('Take profits') : t('Liquidations');
 }
-/** A kind's name in a readout or a note. */
-export function kindTitle(kind: LiqKind): string {
-  return kind === 'stops' ? t('Stop levels') : kind === 'both' ? t('Liquidation and stop levels') : t('Liquidation levels');
+/** The same in a readout or a note. */
+export function kindTitle(curve: LiqCurve): string {
+  return curve === 'stops' ? t('Stop levels') : curve === 'both' ? t('Liquidation and stop levels') : curve === 'takes' ? t('Take-profit levels') : t('Liquidation levels');
 }
 /** A group's short name, for a button and a menu. */
 export function groupName(group: LiqGroup): string {
@@ -48,11 +61,20 @@ export function groupTitle(group: LiqGroup): string {
 }
 
 /**
- * What a view is called in a readout: its kind, then its group where one applies and is not everyone, then the take profits where they are
- * on ("Liquidation levels · Profitable traders · Take profits"), as parts joined by a middle dot.
+ * What a view is called in a readout: what its curve adds up, then its group where one applies and is not everyone, then the take profits
+ * where they are drawn beside the curve ("Liquidation levels · Profitable traders · Take profits"), as parts joined by a middle dot.
  */
 export function viewParts(v: LiqView): string[] {
-  return [kindTitle(v.kind), ...(groupApplies(v.kind) && v.group !== 'all' ? [groupTitle(v.group)] : []), ...(v.takes ? [t('Take profits')] : [])];
+  return [kindTitle(curveOf(v)), ...(v.liq && v.group !== 'all' ? [groupTitle(v.group)] : []), ...(takesBeside(v) ? [t('Take profits')] : [])];
+}
+
+/** The levels control's live line: what the curve adds up, the take-profit bars beside it, whose ("Curve: Liq + stops · TP bars · Profitable"). */
+export function levelsSummary(v: LiqView): string {
+  return [t('Curve: {what}', { what: kindName(curveOf(v)) }), ...(takesBeside(v) ? [t('TP bars')] : []), ...(v.liq && v.group !== 'all' ? [groupName(v.group)] : [])].join(' · ');
+}
+/** Everything a view draws, in words, for a tip and an accessible description ("Curve: Liquidation and stop levels. Take-profit bars shown. Traders: Everyone."). */
+export function levelsDescription(v: LiqView): string {
+  return [t('Curve: {what}.', { what: kindTitle(curveOf(v)) }), ...(takesBeside(v) ? [t('Take-profit bars shown.')] : []), ...(v.liq ? [t('Traders: {who}.', { who: groupName(v.group) })] : [])].join(' ');
 }
 
 let plusOnHeld: boolean | null = null;
@@ -68,4 +90,4 @@ export function plusOn(): boolean {
 }
 
 /** What the page draws for these settings now. */
-export const liveView = (s: Pick<LiqLevelSettings, 'kind' | 'takes' | 'group'>): LiqView => effectiveView(s, plusOn());
+export const liveView = (s: LiqChoice): LiqView => effectiveView(s, plusOn());

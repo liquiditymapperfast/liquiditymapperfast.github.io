@@ -4,7 +4,7 @@ import { clock, price as fmtPrice, usd } from '../format.ts';
 import { signedUsd } from '../cvd/text.ts';
 import { t } from '../i18n.ts';
 import { bandText } from '../depth-settings.ts';
-import { viewParts, type LiqView } from '../liq-view.ts';
+import { curveOf, viewParts, type LiqView } from '../liq-view.ts';
 import { ratioFigure, sideRatio } from './pane-table.ts';
 
 /**
@@ -124,18 +124,20 @@ export function depthCardLines(h: { time: number; bands: readonly { r: number; b
  */
 export function liqCardLines(h: { asOf: number; bands: readonly { r: number; bid: number; ask: number }[]; watched: number; units: 'usd' | 'coin'; coin: string; view?: LiqView; takes?: { bid: number; ask: number } | null }): InfoLine[] {
   const fmt = (value: number): string => h.units === 'coin' ? `${coinFigures.format(value)} ${h.coin}` : money(value);
-  const kind = h.view?.kind ?? 'liq';
+  const kind = h.view ? curveOf(h.view) : 'liq';
   const lines: InfoLine[] = [{ text: h.view ? viewParts(h.view).join(' · ') : t('Liquidation levels'), bold: true }, { label: t('Positions'), text: clock(h.asOf, true) }];
   h.bands.forEach((band, j) => lines.push({ label: `±${bandText(band.r)}%`, text: `${fmt(band.bid)} · ${fmt(band.ask)}`, bold: j === h.watched }));
   const w = h.bands[h.watched];
   if (w) {
     const diff = w.bid - w.ask;
     lines.push({ label: 'Δ', text: h.units === 'coin' ? `${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff))}` : signedUsd(diff), color: sideColor(diff), bold: true });
-    const ratio = ratioLine(w.bid, w.ask, [t('longs'), t('shorts')]); if (ratio) lines.push(ratio);
+    // Take profits on alone are resting orders: the buys below the price are bids, the sells above asks.
+    const ratio = ratioLine(w.bid, w.ask, kind === 'takes' ? [t('bids'), t('asks')] : [t('longs'), t('shorts')]); if (ratio) lines.push(ratio);
   }
   // The take profits of the watched band: the sells that close longs above the price, the buys that close shorts below; never added to the rest.
   if (h.takes) lines.push({ label: t('Take profits above / below'), text: `${fmt(h.takes.ask)} · ${fmt(h.takes.bid)}`, rule: true });
-  lines.push({ text: kind === 'stops' ? t('Stops of longs · shorts within each distance of the price, from HyperTracker\'s snapshot of the orders on Hyperliquid\'s BTC: where the orders rest, not what will trigger.')
+  lines.push({ text: kind === 'takes' ? t('Take profits of shorts · longs within each distance of the price, from HyperTracker\'s snapshot of the orders on Hyperliquid\'s BTC: where the orders rest, not what will fill.')
+    : kind === 'stops' ? t('Stops of longs · shorts within each distance of the price, from HyperTracker\'s snapshot of the orders on Hyperliquid\'s BTC: where the orders rest, not what will trigger.')
     : kind === 'both' ? t('Longs · shorts that would be liquidated or stopped out within each distance of the price, from HyperTracker\'s snapshot of Hyperliquid\'s BTC positions and orders: where the money sits, not what will happen.')
       : t('Longs · shorts that would be liquidated within each distance of the price, from HyperTracker\'s snapshot of Hyperliquid\'s BTC positions: where the money sits, not what will be liquidated.'), color: 'muted', wrap: true, rule: true });
   return lines;

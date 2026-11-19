@@ -5,7 +5,8 @@ import { durationPair, durationText, spanText } from './oi-lines.ts';
 import { valueFormat } from './script-lines.ts';
 import type { RangeSelection } from './selection.ts';
 import type { GridItem, RangeLine } from './stats.ts';
-import { groupTitle, type LiqView } from '../liq-view.ts';
+import { curveOf, groupTitle, takesBeside, type LiqView } from '../liq-view.ts';
+import { sideTitle } from '../liq-words.ts';
 
 /** One snapshot of the tracked liquidation levels as the Depth pane holds it: when its positions stood, when it was fetched, its buckets. */
 export interface DepthLiqRow { asOf: number; fetchedAt: number; long: ArrayLike<number>; short: ArrayLike<number>; longCoin: ArrayLike<number>; shortCoin: ArrayLike<number> }
@@ -248,17 +249,18 @@ export class DepthRangeSummary {
   }
 
   #liq(lines: RangeLine[], held: DepthPaneHeld, sel: RangeSelection, now: number, note: (key: string, text: string) => RangeLine): RangeLine[] {
-    const s = depthLiqStretch(held, sel, now), c = held.coins, coin = held.coin, kind = held.view?.kind ?? 'liq', group = held.view?.group ?? 'all';
+    const s = depthLiqStretch(held, sel, now), c = held.coins, coin = held.coin, kind = held.view ? curveOf(held.view) : 'liq', group = held.view?.group ?? 'all';
     // Which levels are summed up, and whose: the pane shows what the page's one choice says (`liq-view.ts`).
-    const what = kind === 'stops' ? t('Tracked stop orders') : kind === 'both' ? t('Tracked liquidations and stops') : t('Tracked liquidation levels');
-    lines.push(note('dp-status', [what, ...(kind !== 'stops' && group !== 'all' ? [groupTitle(group)] : []), tn(s.rows.length, '{n} snapshot in force', '{n} snapshots in force')].join(' · ')));
+    const what = kind === 'takes' ? t('Tracked take-profit orders') : kind === 'stops' ? t('Tracked stop orders') : kind === 'both' ? t('Tracked liquidations and stops') : t('Tracked liquidation levels');
+    lines.push(note('dp-status', [what, ...((kind === 'liq' || kind === 'both') && group !== 'all' ? [groupTitle(group)] : []), tn(s.rows.length, '{n} snapshot in force', '{n} snapshots in force')].join(' · ')));
     if (held.omitted.length) {
       const bands = held.omitted.map(band).join(', ');
       lines.push(note('dp-omitted', held.wide ? t('Not one of the 4-hour history\'s bands, left out: {bands}.', { bands }) : t('Beyond the liquidation history\'s reach, left out: {bands}.', { bands })));
     }
-    if (held.view?.takes) lines.push(note('dp-takes', t('Take profits are drawn as a dashed line and not counted here.')));
+    if (held.view && takesBeside(held.view)) lines.push(note('dp-takes', t('Take profits are drawn as a dashed line and not counted here.')));
     if (!s.rows.length) {
       lines.push(note('dp-empty', s.closed > 0 && s.none <= 0 ? t('This stretch of the liquidation levels\' history is part of Plus.')
+        : kind === 'takes' ? t('No take-profit levels snapshot was in force in this selection.')
         : kind === 'stops' ? t('No stop levels snapshot was in force in this selection.') : kind === 'both' ? t('No snapshot with both liquidations and stops was in force in this selection.')
           : t('No liquidation levels snapshot was in force in this selection.')));
     }
@@ -267,6 +269,8 @@ export class DepthRangeSummary {
       lines.push(note('dp-when', s.rows.length > 1
         ? t('First snapshot: positions as of {asOf}, fetched {read}; last: positions as of {asOf2}, fetched {read2}.', { asOf: clock(first.asOf, true), read: clock(first.fetchedAt, true), asOf2: clock(lastRow.asOf, true), read2: clock(lastRow.fetchedAt, true) })
         : t('One snapshot: positions as of {asOf}, fetched {read}.', { asOf: clock(first.asOf, true), read: clock(first.fetchedAt, true) })));
+      // Take profits on alone are said as what they are: the take profits of shorts below the price, of longs above it.
+      const below = kind === 'takes' ? sideTitle('takes', 'long') : null, above = kind === 'takes' ? sideTitle('takes', 'short') : null;
       const items: GridItem[] = s.bands.map((b, j) => {
         const vals = [b.firstLong, b.lastLong, b.firstShort, b.lastShort].filter((v): v is number => v !== null);
         if (!vals.length) return { key: `dp-${j}`, label: band(b.r), value: t('Not in the history\'s buckets') };
@@ -275,11 +279,11 @@ export class DepthRangeSummary {
         return {
           key: `dp-${j}`, label: band(b.r), value: '',
           rows: s.rows.length > 1 ? [
-            { label: t('Longs first → last'), value: `${v(b.firstLong)} → ${v(b.lastLong)}${b.firstLong !== null && b.lastLong !== null ? ` (${fmt(b.lastLong - b.firstLong, true)})` : ''}`, tone: 'buy' as const },
-            { label: t('Shorts first → last'), value: `${v(b.firstShort)} → ${v(b.lastShort)}${b.firstShort !== null && b.lastShort !== null ? ` (${fmt(b.lastShort - b.firstShort, true)})` : ''}`, tone: 'sell' as const },
+            { label: below ?? t('Longs first → last'), value: `${v(b.firstLong)} → ${v(b.lastLong)}${b.firstLong !== null && b.lastLong !== null ? ` (${fmt(b.lastLong - b.firstLong, true)})` : ''}`, tone: 'buy' as const },
+            { label: above ?? t('Shorts first → last'), value: `${v(b.firstShort)} → ${v(b.lastShort)}${b.firstShort !== null && b.lastShort !== null ? ` (${fmt(b.lastShort - b.firstShort, true)})` : ''}`, tone: 'sell' as const },
           ] : [
-            { label: t('Longs'), value: v(b.firstLong), tone: 'buy' as const },
-            { label: t('Shorts'), value: v(b.firstShort), tone: 'sell' as const },
+            { label: below ?? t('Longs'), value: v(b.firstLong), tone: 'buy' as const },
+            { label: above ?? t('Shorts'), value: v(b.firstShort), tone: 'sell' as const },
           ],
         };
       });
@@ -294,7 +298,7 @@ export class DepthRangeSummary {
     if (s.span > 0) lines.push(note('dp-cover', [t('Snapshots in force for {k} of {span}', (({ k, n }) => ({ k, span: n }))(durationPair(s.inForce, s.span))), ...parts].join(' · ')));
     if (kind === 'liq' && !held.wide) lines.push(note('dp-how', t('Potential liquidation levels of tracked positions, not liquidations that happened. Snapshots expire after 90 minutes.')));
     else {
-      const of = kind === 'stops' ? t('Stop orders resting at each snapshot, not orders that triggered.') : kind === 'both' ? t('Potential liquidations and resting stop orders at each snapshot, not what happened.')
+      const of = kind === 'takes' ? t('Take-profit orders resting at each snapshot, not orders that filled.') : kind === 'stops' ? t('Stop orders resting at each snapshot, not orders that triggered.') : kind === 'both' ? t('Potential liquidations and resting stop orders at each snapshot, not what happened.')
         : t('Potential liquidation levels of tracked positions, not liquidations that happened.');
       const hold = held.wide ? t('Each 4-hour row stands until the next, at most {time}.', { time: durationText(held.holdMs ?? LIQ_HOLD) }) : t('Snapshots expire after 90 minutes.');
       lines.push(note('dp-how', `${of} ${hold}`));
