@@ -538,6 +538,21 @@ export function captionPlace(lane: Lane, need: number): { x: number; w: number }
 /** The colour strength of what still stands of the rows in view (heatScale over each side's standing dollars). */
 export const standingHeat = (rows: readonly LiqRow[]): ((usd: number) => number) => heatScale(rows.flatMap(r => [r.longLeft, r.shortLeft]));
 
+/** One lane of the stripe as drawn: its rows in view, their colour scale, and what they were made for (`laneRows`). */
+export interface LaneRows { key: string; rows: LiqRow[]; heat: (usd: number) => number }
+/**
+ * The rows in view of one lane of the stripe (the levels', or the take profits' beside them) with their colour scale, as the map draws them
+ * and its box reads them: `held`, the lane's last, is kept while the source's key for that lane and the rows on screen are the same; else
+ * they are grouped again.
+ */
+export function laneRows(src: Pick<LiqLevelsSource, 'key' | 'takesKey' | 'taken' | 'takesTaken'>, lane: 'levels' | 'takes', levels: LiqLevels, view: Pick<View, 'p0' | 'p1'>, ph: number, held: LaneRows | null): LaneRows {
+  const per = binsPerRow(levels.step, view, ph), span = per * levels.step, g0 = Math.floor(view.p0 / span), g1 = Math.ceil(view.p1 / span);
+  const key = `${lane === 'takes' ? src.takesKey() : src.key()}|${per}|${g0}|${g1}`;
+  if (held?.key === key) return held;
+  const rows = liqRows(levels, lane === 'takes' ? src.takesTaken() : src.taken(), per, g0 * span, g1 * span);
+  return { key, rows, heat: standingHeat(rows) };
+}
+
 /**
  * Draws the rows as a stripe from `x0` (the live edge) to the plot's right edge, beside the profile column: what still stands of each row,
  * the more the darker, with a crisp edge on the strongest on the side facing the price, and a small diamond in the side's colour at the start
@@ -583,11 +598,16 @@ export function paintLiqStripe(ctx: CanvasRenderingContext2D, view: View, x0: nu
   ctx.restore();
 }
 
+/** Each set of levels held gets an identity of its own (`Layer.id`). */
+let layerIds = 0;
+
 /**
  * One set of levels as the page draws it: the levels, the prices the page saw itself since they came (`Seen`), and what price has taken of
- * them, worked out again only when the candles or the prices seen change.
+ * them, worked out again only when the candles or the prices seen change. Every key made from it names it (`id`): everyone's take profits and
+ * the profitable traders' come from one order file with the same snapshot times, and shared a drawing (Sol, review 2026-11-19, round 2).
  */
 class Layer {
+  readonly id = ++layerIds;
   #seen: Seen | null = null;
   #derived: { key: string; taken: { long: Taken; short: Taken }; standing: LiqStanding } | null = null;
   constructor(readonly levels: LiqLevels) {}
@@ -601,7 +621,7 @@ class Layer {
   }
   key(candles: KeyLevelHistory): string {
     const l = this.levels, s = this.#seen;
-    return `${l.kind}|${l.asOf}|${l.fetchedAt}|${candles.version}|${candles.bars.length}|${s?.low}|${s?.high}`;
+    return `${this.id}|${l.kind}|${l.asOf}|${l.fetchedAt}|${candles.version}|${candles.bars.length}|${s?.low}|${s?.high}`;
   }
   derive(candles: KeyLevelHistory): { taken: { long: Taken; short: Taken }; standing: LiqStanding } {
     const key = this.key(candles);
@@ -647,7 +667,10 @@ interface PlusPart<T> {
   doneFor: number;
   /** Answers holding an older snapshot than the free file's, for the snapshot asked for. */
   tries: number;
-  /** How the last read went: not asked yet, being asked, answered, failed, not there yet (a 503), or none on the server (`absent`). */
+  /**
+   * How the last read went: not asked yet, being asked, answered, failed, not there yet (a 503), or (the profitable traders' orders) none on
+   * the server (`absent`: a 404 or a 503, nothing held, said through every later ask and failure until a valid file comes).
+   */
   status: 'idle' | 'loading' | 'ready' | 'failed' | 'waiting' | 'absent';
 }
 const plusPart = <T>(): PlusPart<T> => ({ held: null, pending: false, nextAt: 0, doneFor: -1, tries: 0, status: 'idle' });
@@ -844,7 +867,9 @@ export class LiqLevelsSource {
     const pass = this.access.pass(now);
     if (pass === null) return;
     part.pending = true;
-    if (!part.held) part.status = 'loading';
+    // Not there (`absent`) stays said while it is asked again, and after any answer but a valid file (`failed` below too).
+    const fail = (): void => { if (!part.held && part.status !== 'absent') part.status = 'failed'; };
+    if (!part.held && part.status !== 'absent') part.status = 'loading';
     const asked = this.#url, steps = this.#steps, target = free.createdAt;
     const done = (): void => { this.#settle(); onChange(); };
     void this.read(which === 'groups' ? urls.groups : which === 'triggers' ? urls.triggers : urls.triggersGroups, pass).then(answer => {
@@ -853,7 +878,7 @@ export class LiqLevelsSource {
       if (answer.status === 200) {
         const took = which === 'groups' ? this.#takeGroups(parseLiqGroups(answer.body, BTC.coin))
           : which === 'triggers' ? this.#takeTriggers(this.#triggers, parseTriggers(answer.body, BTC.coin)) : this.#takeTriggers(this.#orderGroups, parseTriggerGroups(answer.body, BTC.coin));
-        if (took === null) { part.status = 'failed'; part.nextAt = at + RETRY_MS; done(); return; }
+        if (took === null) { if (part.status !== 'absent') part.status = 'failed'; part.nextAt = at + RETRY_MS; done(); return; }
         part.status = 'ready';
         // The snapshot asked for, or a newer one: settled until the free file brings another. An older one (the order file not read yet, an
         // edge's copy): asked again a little later, a few times.
@@ -861,12 +886,14 @@ export class LiqLevelsSource {
       } else if (isRefusal(answer)) {
         // The gate would not take this pass: it is dropped and renewed (`Plus.refused`); the file is asked again with the next one.
         this.access.refused(pass);
-        if (!part.held) part.status = 'failed';
+        fail();
         part.nextAt = at + RETRY_MS;
       } else if (which === 'triggersGroups' && (answer.status === 404 || answer.status === 503)) {
         // The profitable traders' orders: none on the server (404: not deployed yet), or none for this snapshot (503). Said as not available
-        // yet, nothing drawn for them; asked again later (what the server says, else five minutes).
-        if (!part.held) part.status = 'absent';
+        // yet, nothing drawn for them, those held before included (Sol, review 2026-11-19, round 2: a later 503 kept the earlier ones drawn),
+        // until a valid file comes; asked again later (what the server says, else five minutes).
+        if (part.held) { part.held = null; this.version++; }
+        part.status = 'absent';
         part.nextAt = at + (answer.retryAfter !== undefined ? Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, answer.retryAfter * 1_000)) : 5 * MINUTE);
       } else if (answer.status === 503) {
         // Not there yet (no groups for this snapshot, no order file read yet): asked again when the server says.
@@ -874,13 +901,13 @@ export class LiqLevelsSource {
         // The gate may not let the page read the header (CORS): then a minute.
         part.nextAt = at + (answer.retryAfter !== undefined ? Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, answer.retryAfter * 1_000)) : WAIT_UNSAID_MS);
       } else {
-        if (!part.held) part.status = 'failed';
+        fail();
         part.nextAt = at + RETRY_MS;
       }
       done();
     }, () => {
       if (asked !== this.#url || steps !== this.#steps) return;
-      if (!part.held) part.status = 'failed';
+      fail();
       part.nextAt = this.now() + RETRY_MS; done();
     }).finally(() => { part.pending = false; });
   }
@@ -971,10 +998,15 @@ export class LiqLevelsSource {
     return c.state === 'unavailable' || (c.state === 'ready' && this.now() - c.heldTo > CANDLES_LATE_MS);
   }
 
-  /** Changes whenever what is drawn from the levels can change, for the pane's caches. */
-  key(): string { const main = this.#main(); return main ? `${viewKey(this.#view)}|${main.key(this.candles)}` : ''; }
-  /** The same for the take profits. */
-  takesKey(): string { const t = takesBeside(this.#view) ? this.#orders()?.takes : null; return t ? t.key(this.candles) : ''; }
+  /** The family the view's stops and take profits come from: everyone's file, or the profitable traders' own. */
+  #ordersFamily(): 'orders' | 'orderGroups' { return this.#view.group === 'all' ? 'orders' : 'orderGroups'; }
+  /**
+   * Changes whenever what is drawn from the levels can change, for the pane's caches (`laneRows`): it names the view, the family of its orders
+   * and the set of levels drawn (`Layer.id`), so no two families share a drawing.
+   */
+  key(): string { const main = this.#main(); return main ? `${viewKey(this.#view)}|${this.#ordersFamily()}|${main.key(this.candles)}` : ''; }
+  /** The same for the take profits beside the curve. */
+  takesKey(): string { const t = takesBeside(this.#view) ? this.#orders()?.takes : null; return t ? `${viewKey(this.#view)}|${this.#ordersFamily()}|takes|${t.key(this.candles)}` : ''; }
 
   /** How far price has traded through each bin, worked out again only when the levels, the candles or the prices seen changed. */
   taken(): { long: Taken; short: Taken } | null { return this.#main()?.derive(this.candles).taken ?? null; }

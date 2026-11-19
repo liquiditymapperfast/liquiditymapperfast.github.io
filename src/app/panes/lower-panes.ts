@@ -27,6 +27,7 @@ import { TAKE_DASH } from '../liq-levels.ts';
 import { curveOf, groupTitle, kindName, levelsDescription, liveView, viewKey, type LiqView } from '../liq-view.ts';
 import { toggleLevels } from '../levels-control.ts';
 import { ordersAbsent } from '../liq-words.ts';
+import { wrapText } from '../text-fit.ts';
 import { FREE_DAYS, freeFrom, plusOnSale } from '../plus/config.ts';
 import { plus } from '../plus/pass.ts';
 import { togglePlus } from '../plus/panel.ts';
@@ -382,6 +383,8 @@ type LiqSeries = {
   closed: { from: number; to: number } | null;
   /** What it shows (`liq-view.ts`), how long a row stands without a later one (90 minutes; a rollup's four hours and that), whether it is the rollups. */
   view: LiqView; holdMs: number; wide: boolean;
+  /** The profitable traders' orders the view shows are not on the server for some of this stretch (`LiqHistory.ordersAbsent`): said, never borrowed. */
+  absent: boolean;
   /** The take profits, a layer of their own (a dashed line), in the same shape: per column and band, below the price (`bid`) and above. */
   takes: { bid: Float32Array; ask: Float32Array; bidCoin: Float32Array; askCoin: Float32Array; rowAt: Int32Array } | null;
 };
@@ -623,7 +626,8 @@ export class DepthPane extends TimePane {
       if (index.first === null) return t('No liquidation levels recorded yet.');
     }
     const edges = shape.edges;
-    if (!edges) return t('The liquidation levels\' history is loading…');
+    // A wide view of their orders alone whose rollup is not on the server has no buckets to read: said, not loading (Sol, review 2026-11-19, round 2).
+    if (!edges) return this.#history.ordersAbsent(view, v.t0, v.t1) ? ordersAbsent() : t('The liquidation levels\' history is loading…');
     // The history's buckets end at its last edge (±25 %): a wider band would leave out what lies past it, so it is not drawn. The rollups'
     // thirteen buckets end on the presets' bands: a band between two of their edges would read a narrower one, so it is not drawn either.
     const reach = edges[edges.length - 1]! / 100, bucket = (r: number): number => shape.wide ? bandOnEdge(edges, r) : bandIndex(edges, r);
@@ -661,7 +665,7 @@ export class DepthPane extends TimePane {
     };
     const main = build(s.rows);
     this.#liq = { key, series: { t0, t1, w, radii, answer: { k, bid: main.bid, ask: main.ask, bidCoin: main.bidCoin, askCoin: main.askCoin } }, rowAt: main.rowAt, rows: s.rows, idx, omitted, closed,
-      view, holdMs: s.holdMs, wide: s.wide, takes: s.takes ? build(s.takes) : null };
+      view, holdMs: s.holdMs, wide: s.wide, absent: s.ordersAbsent, takes: s.takes ? build(s.takes) : null };
     return this.#liq;
   }
 
@@ -714,14 +718,14 @@ export class DepthPane extends TimePane {
       // of its span change.
       const sameLiq = (): boolean => !!was && !!rows && !!was.rows && was.source === 'liq' && was.key === depthHeldKey('liq', [], s.radii, liqHeld ? viewKey(liqHeld.view) : '') && was.rows.length === rows.length && rows.every((r, i) => r === was.rows![i])
         && was.radii.join(',') === s.radii.join(',') && Math.floor(was.t0 / MINUTE) === Math.floor(s.t0 / MINUTE) && Math.floor(was.t1 / MINUTE) === Math.floor(s.t1 / MINUTE)
-        && was.t1 >= pageNow();
+        && was.t1 >= pageNow() && (was.ordersAbsent ?? false) === (liqHeld?.absent ?? false);
       if (!was || (was.bid !== s.answer.bid && !sameLiq()) || was.coins !== coins || was.focus !== top || was.coin !== coin) {
         const ids = liqHeld ? [] : (this.#series?.ids ?? []);
         this.#publish({ key: depthHeldKey(liqHeld ? 'liq' : 'book', ids, s.radii, liqHeld ? viewKey(liqHeld.view) : ''), source: liqHeld ? 'liq' : 'book', ids, t0: s.t0, t1: s.t1, w: s.w, radii: s.radii,
           bid: s.answer.bid, ask: s.answer.ask, bidCoin: s.answer.bidCoin, askCoin: s.answer.askCoin, present: liqHeld ? null : s.answer.present ?? null,
           centred: liqHeld ? null : s.answer.centred ?? null, stepMs: liqHeld ? 0 : s.answer.stepMs ?? MINUTE, answeredAt: liqHeld ? Infinity : this.#series?.answeredAt ?? 0,
           rows, buckets: liqHeld ? liqHeld.idx : null, omitted: liqHeld ? liqHeld.omitted : [], coins, coin, focus: top, ...(liqHeld?.closed ? { closedFrom: liqHeld.closed.from, closedTo: liqHeld.closed.to } : {}),
-          ...(liqHeld ? { view: liqHeld.view, holdMs: liqHeld.holdMs, wide: liqHeld.wide } : {}) });
+          ...(liqHeld ? { view: liqHeld.view, holdMs: liqHeld.holdMs, wide: liqHeld.wide, ordersAbsent: liqHeld.absent } : {}) });
       }
     }
     // A column holds something where the book had depth, or (liquidation levels) where a snapshot is in force, money in its bands or not.
@@ -742,7 +746,7 @@ export class DepthPane extends TimePane {
       if (closed) { say(t('This stretch of the liquidation levels\' history is part of Plus.')); this.#lockAt = closedX; return; }
       const kind = liqHeld ? curveOf(liqHeld.view) : 'liq';
       // The profitable traders' orders the server does not have yet: said so, never everyone's drawn under their name.
-      if (liqHeld && this.#history.ordersAbsent(liqHeld.view, v.t0, v.t1)) { say(ordersAbsent()); return; }
+      if (liqHeld?.absent) { say(ordersAbsent()); return; }
       say(kind === 'takes' ? t('No take-profit levels recorded for this stretch of time.') : kind === 'stops' ? t('No stop levels recorded for this stretch of time.') : kind === 'both' ? t('No snapshot with both liquidations and stops in this stretch of time.')
         : t('No liquidation levels recorded for this stretch of time.'));
       return;
@@ -851,6 +855,15 @@ export class DepthPane extends TimePane {
     ctx.fillText(amountText(max, coins), axisX, mid - half); ctx.fillText(amountText(max, coins), axisX, mid + half);
     if (half > 40) { ctx.fillText(amountText(halfValue, coins), axisX, mid - half / 2); ctx.fillText(amountText(halfValue, coins), axisX, mid + half / 2); }
     ctx.fillText('0', axisX, mid);
+    // The profitable traders' orders the view shows are not on the server for some of this stretch: said over what is drawn (their liquidations
+    // alone, or nothing beside them), on a plate so it reads over the bands, on up to three lines as the column says it (Sol, review 2026-11-19,
+    // round 2).
+    if (liqHeld?.absent) {
+      const measure = (text: string): number => ctx.measureText(text).width, lines = wrapText(measure, ordersAbsent(), Math.max(40, pw - 24), 3);
+      ctx.save(); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.globalAlpha = 0.85; ctx.fillStyle = p.bg; ctx.fillRect(8, 4, Math.max(0, ...lines.map(measure)) + 8, 2 + 14 * lines.length);
+      ctx.globalAlpha = 1; ctx.fillStyle = p.muted; lines.forEach((line, i) => ctx.fillText(line, 12, 11 + 14 * i)); ctx.restore();
+    }
     const rows = Array.from({ length: k }, (_, j) => ({ r: s.radii[j]!, bid: readX >= 0 ? bid[at(readX, j)]! : NaN, ask: readX >= 0 ? ask[at(readX, j)]! : NaN }));
     const readRow = liq ? rowOf(readX) : null;
     const foot = liq ? (readRow ? t('positions as of {time}', { time: clock(readRow.asOf, true) }) : '') : Number.isFinite(readTime) ? (pointed ? clock(readTime, true) : `${t('newest')} ${clock(readTime)}`) : '';

@@ -24,18 +24,18 @@ export interface LiqLevelSettings { on: boolean; column: boolean; liq: boolean; 
  * A saved setting, checked, whichever form it was saved in (settings, a layout or a layouts file, a backup, the old address's hand-over: all
  * go through here). What a save from before the feature lacks reads as on (new features start on). The three switches as saved, where at
  * least one is on; a save of one kind and a take-profit switch (before 2026-11-19) as that kind: `liq` liquidations, `stops` stops, `both`
- * the two, its take profits kept. Anything else, a save from before the Plus choices included, reads as the free view: liquidations of
- * everyone, no take profits. Any other group value reads as everyone's (`all`).
+ * the two, its take profits kept. A switch present in either form that is not a boolean, and anything else, a save from before the Plus
+ * choices included, reads as the free view: liquidations of everyone, no take profits. Any other group value reads as everyone's (`all`).
  */
 export function readLiqLevels(saved: unknown): LiqLevelSettings {
   const s = saved && typeof saved === 'object' ? saved as Record<string, unknown> : {};
   const shown = { on: typeof s.on === 'boolean' ? s.on : true, column: typeof s.column === 'boolean' ? s.column : true };
   const group: LiqGroup = (LIQ_GROUPS as readonly unknown[]).includes(s.group) ? s.group as LiqGroup : 'all';
   const free: LiqLevelSettings = { ...shown, liq: true, stops: false, takes: false, group: 'all' };
+  // A switch that is present but not a boolean makes the whole choice malformed, in either form (Sol, review 2026-11-19: { liq: "invalid",
+  // stops: true } read as stops; round 2: { kind: "stops", takes: "invalid" } still did); a missing one is off.
+  if (LIQ_PARTS.some(part => part in s && typeof s[part] !== 'boolean')) return free;
   if ('liq' in s || 'stops' in s) {
-    // A kind that is present but not a boolean makes the whole choice malformed (Sol, review 2026-11-19: { liq: "invalid", stops: true } read
-    // as stops); a missing one is off.
-    if (LIQ_PARTS.some(part => part in s && typeof s[part] !== 'boolean')) return free;
     const liq = s.liq === true, stops = s.stops === true, takes = s.takes === true;
     return liq || stops || takes ? { ...shown, liq, stops, takes, group } : free;
   }

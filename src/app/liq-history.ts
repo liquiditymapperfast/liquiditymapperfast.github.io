@@ -8,7 +8,8 @@
  * traders, the stop and take-profit orders' days (only snapshots an order file was read with have a row, about one of two), and
  * for views wider than `MAX_DAYS` days one file a family holding a row per four hours over the whole history (the rollups). A view of
  * liquidations and stops ("both") joins a family's row to the orders' by the snapshot (`createdAt`), so it has a row only where the
- * snapshot has both.
+ * snapshot has both; where the profitable traders' orders are not on the server (a 404 or a 503), their liquidations are drawn alone and
+ * that is said (`ordersAbsent`), as the live column does.
  *
  * What it says is where the money would be liquidated (or the orders would trigger), as the positions stood: not what happened, and not
  * where price will go.
@@ -61,9 +62,12 @@ export const isRefusal = (answer: LiqAnswer): boolean =>
  * file.
  */
 const answeredMissing = (error: unknown): boolean => {
-  const status = error instanceof Error && /^\d{3}$/.test(error.message) ? Number(error.message) : 0;
+  const status = statusOf(error);
   return status >= 400 && status < 500 && status !== 429;
 };
+
+/** The status a failed read was answered with, or 0 (no answer, or the gate's refusal). */
+function statusOf(error: unknown): number { return error instanceof Error && /^\d{3}$/.test(error.message) ? Number(error.message) : 0; }
 
 /** A read: the address, and the pass to send with it when the file is a Plus one. It throws `LIQ_REFUSED` for the gate's refusal, else the status (with `retryAfter` where the server said one). */
 export type LiqGet = (url: string, pass?: string | null) => Promise<unknown>;
@@ -89,6 +93,20 @@ const WAIT_MIN_MS = 30_000, WAIT_MAX_MS = 15 * 60_000;
  * so a refusal of a day far inside the free week is the server's fault, not a boundary.
  */
 const REFUSAL_HOLDS_MS = 10 * 60_000, REFUSAL_REACH_MS = 2 * DAY_MS_;
+/**
+ * The profitable traders' orders' files (their days and their rollup) answered 404 (not on the server yet) or 503 (not there yet): not
+ * available yet, as the live file is (`LiqLevelsSource.ordersAbsent`), and asked again when the server says (`Retry-After`, within the bounds
+ * above), else in five minutes (Sol, review 2026-11-19, round 2: a 404 waited ten minutes over a Retry-After of five, a 503 a minute, and
+ * neither was said).
+ */
+const ABSENT_WAIT_MS = 5 * 60_000;
+const absentAnswer = (family: LiqFamily, error: unknown): boolean => family === 'orderGroups' && (statusOf(error) === 404 || statusOf(error) === 503);
+const absentUntil = (error: unknown, now: number): number => {
+  const wait = (error as { retryAfter?: unknown } | null)?.retryAfter;
+  return now + (typeof wait === 'number' && wait > 0 ? Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000)) : ABSENT_WAIT_MS);
+};
+/** What a day or a rollup not on the server holds: no rows (one array, so the memos keep what they made of it). */
+const NONE: HistRow[] = [];
 /** At most this many days are held: a view wider than that shows the newest of them, or (with Plus) reads the rollups. */
 export const MAX_DAYS = 120;
 /** How long a snapshot stands for when no later one comes: about three of their periods (one comes every ~29 minutes); after that, a gap. */
@@ -146,9 +164,13 @@ function readPart(long: unknown, short: unknown, n: number): HistPart | null {
  * Free: `[asOf, createdAt, fetchedAt, mark, beyondLong, beyondShort, long[n], short[n]]`. Orders: `[asOf, createdAt, fetchedAt, mark, stops,
  * takes]`, a part `[beyondLong, beyondShort, long[n], short[n]]` or null. Groups: the same times and mark, then a part a group, of which only
  * HyperTracker's profitable traders' is read, at its place among the file's `groups` names where it names them (none of them it: no rows),
- * else the first; whatever else a row holds is left unread and never kept. Ordered by fetch time.
+ * else the first; whatever else a row holds is left unread and never kept. Their orders (`orderGroups`) are read strictly, refused whole as
+ * null (`readOrderGroupRows`). Ordered by fetch time.
  */
-export function readHistRows(raw: unknown, n: number, family: LiqFamily): HistRow[] {
+export function readHistRows(raw: unknown, n: number, family: Exclude<LiqFamily, 'orderGroups'>): HistRow[];
+export function readHistRows(raw: unknown, n: number, family: LiqFamily): HistRow[] | null;
+export function readHistRows(raw: unknown, n: number, family: LiqFamily): HistRow[] | null {
+  if (family === 'orderGroups') return readOrderGroupRows(raw, n);
   const doc = raw && typeof raw === 'object' ? raw as { rows?: unknown; groups?: unknown } : null, rows = doc?.rows;
   if (!Array.isArray(rows)) return [];
   const names = family === 'groups' && Array.isArray(doc?.groups) ? doc.groups as unknown[] : null, named = names ? names.indexOf('profitable') : 0;
@@ -171,6 +193,44 @@ export function readHistRows(raw: unknown, n: number, family: LiqFamily): HistRo
       }
     }
     if (parts) out.push({ asOf: asOf as number, createdAt: createdAt as number, fetchedAt: fetchedAt as number, mark: mark as number, parts });
+  }
+  return out.sort((a, b) => a.fetchedAt - b.fetchedAt);
+}
+
+/** A part with its beyond figures (`[beyondLong, beyondShort, long[n], short[n]]`), every one of them checked. */
+function readWholePart(cell: unknown, n: number): HistPart | null {
+  if (!Array.isArray(cell) || cell.length !== 4 || !cell.slice(0, 2).every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0)) return null;
+  return readPart(cell[2], cell[3], n);
+}
+
+/**
+ * The profitable traders' stop and take-profit history (`trigger-history-groups`, its days and its rollup): after each row's times and mark
+ * come its cells group by group as the file's `groups` names them and, within a group, kind by kind as its `kinds` does, which must be
+ * exactly stops then take profits; theirs are read at their place, a cell `[beyondLong, beyondShort, long[n], short[n]]` or null. A file that
+ * does not name them once (everyone's trigger history names no group), names other kinds, or holds a single malformed row is refused whole
+ * (null): never read in part, never read as theirs (Sol, review 2026-11-19, round 2).
+ */
+function readOrderGroupRows(raw: unknown, n: number): HistRow[] | null {
+  const doc = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as { rows?: unknown; groups?: unknown; kinds?: unknown } : null;
+  if (!doc || !Array.isArray(doc.rows) || !Array.isArray(doc.groups) || !Array.isArray(doc.kinds)) return null;
+  const groups = doc.groups as unknown[], kinds = doc.kinds as unknown[];
+  if (kinds.length !== 2 || kinds[0] !== 'stops' || kinds[1] !== 'takes') return null;
+  if (!groups.every(g => typeof g === 'string') || new Set(groups).size !== groups.length) return null;
+  const place = groups.indexOf('profitable');
+  if (place < 0) return null;
+  const at = 4 + place * kinds.length, length = 4 + groups.length * kinds.length, out: HistRow[] = [];
+  for (const row of doc.rows as unknown[]) {
+    if (!Array.isArray(row) || row.length !== length) return null;
+    const [asOf, createdAt, fetchedAt, mark] = row as unknown[];
+    if (![asOf, createdAt, fetchedAt, mark].every(v => typeof v === 'number' && Number.isFinite(v)) || !((mark as number) > 0)) return null;
+    const parts: (HistPart | null)[] = [];
+    for (const cell of [row[at], row[at + 1]]) {
+      if (cell === null) { parts.push(null); continue; }
+      const p = readWholePart(cell, n);
+      if (!p) return null;
+      parts.push(p);
+    }
+    out.push({ asOf: asOf as number, createdAt: createdAt as number, fetchedAt: fetchedAt as number, mark: mark as number, parts });
   }
   return out.sort((a, b) => a.fetchedAt - b.fetchedAt);
 }
@@ -205,12 +265,13 @@ export function readDay(raw: unknown, edges: readonly number[]): LiqRow[] {
   return readHistRows(raw, edges.length, 'free').map(r => cumulate(r, r.parts[0]!, edges));
 }
 
-/** A rollup (`…-4h.json`): its 13 bucket edges, how many hours a row stands for, and its rows. Null when malformed. */
+/** A rollup (`…-4h.json`): its 13 bucket edges, how many hours a row stands for, and its rows. Null when malformed (their orders' refused: `readOrderGroupRows`). */
 export function readRollup(raw: unknown, family: LiqFamily): { edges: readonly number[]; hours: number; rows: HistRow[] } | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>, edges = readEdges(o.edges), hours = o.hours;
   if (!edges || typeof hours !== 'number' || !(hours > 0 && hours <= 24)) return null;
-  return { edges, hours, rows: readHistRows(raw, edges.length, family) };
+  const rows = readHistRows(raw, edges.length, family);
+  return rows ? { edges, hours, rows } : null;
 }
 
 /** The bucket a band of `radius` (a fraction of the price) ends on: the last edge within it, or -1 when the band is narrower than the first bucket. */
@@ -240,10 +301,18 @@ export function familiesFor(view: LiqView): LiqFamily[] {
  * one before it), the take profits' rows where the view shows them, the buckets they are in, how long a row stands without a later one, and
  * whether they come from the rollups (`wide`).
  */
-export interface HistSeries { rows: LiqRow[]; takes: LiqRow[] | null; edges: readonly number[] | null; holdMs: number; wide: boolean }
+export interface HistSeries {
+  rows: LiqRow[]; takes: LiqRow[] | null; edges: readonly number[] | null; holdMs: number; wide: boolean;
+  /** Whether the profitable traders' orders the view shows are not on the server for some of the stretch (`ordersAbsent`): said, never borrowed. */
+  ordersAbsent: boolean;
+}
 
-interface DayEntry { rows: HistRow[]; at: number; busy: boolean; failed: number; wait: number; newest: number; created: number; lead: number; due: number; missing?: boolean }
-interface RollupEntry { edges: readonly number[]; hours: number; rows: HistRow[]; at: number; busy: boolean; failed: number; wait: number }
+/**
+ * A day held, of a family. `absent`: the profitable traders' orders' file answered 404 (not on the server yet) or 503 (not there yet), so
+ * nothing of it is drawn and that is said (`ordersAbsent`) until a file comes.
+ */
+interface DayEntry { rows: HistRow[]; at: number; busy: boolean; failed: number; wait: number; newest: number; created: number; lead: number; due: number; missing?: boolean; absent?: boolean }
+interface RollupEntry { edges: readonly number[]; hours: number; rows: HistRow[]; at: number; busy: boolean; failed: number; wait: number; absent?: boolean }
 
 /** The rows in force over [t0, t1] of rows ordered by fetch time: every row fetched in it, and the last one before it. */
 function inForce<T extends { fetchedAt: number }>(all: readonly T[], t0: number, t1: number): T[] {
@@ -417,19 +486,15 @@ export class LiqHistory {
   }
 
   /**
-   * Whether the view asks for the profitable traders' orders and every day of [t0, t1] asked for them was answered as not there (the server has
-   * none yet): the Depth pane says so rather than that nothing was recorded.
+   * Whether the view asks for the profitable traders' orders and the server has none for some of [t0, t1]: a 404 or a 503 for one of their days,
+   * or for their rollup in a wide view. The Depth pane and its Range summary say so and draw the rest of the view (Liq + stops: their
+   * liquidations alone), never everyone's orders in their place.
    */
   ordersAbsent(view: LiqView, t0: number, t1: number): boolean {
     if (view.group === 'all' || !ordersShown(view)) return false;
-    let any = false;
-    for (let day = Math.floor(t0 / DAY_MS) * DAY_MS; day < t1; day += DAY_MS) {
-      const held = this.#days.get(`orderGroups|${day}`);
-      if (!held) continue;
-      if (held.rows.length || held.missing !== true) return false;
-      any = true;
-    }
-    return any;
+    if (this.#wide) return this.#rollups.get('orderGroups')?.absent === true;
+    for (let day = Math.floor(t0 / DAY_MS) * DAY_MS; day < t1; day += DAY_MS) if (this.#days.get(`orderGroups|${day}`)?.absent === true) return true;
+    return false;
   }
 
   /** Whether a day is to be asked for now: not held, or still being written and due, and not on its way or waiting after a failure. */
@@ -449,7 +514,10 @@ export class LiqHistory {
     this.get(dayUrl(dayText(day)), pass).then(raw => {
       if (probe) this.#probed(true, now);
       if (this.#index?.edges !== edges || steps !== this.#steps) return;
-      entry.rows = readHistRows(raw, edges.length, family); entry.at = now; entry.missing = false; this.version++;
+      // Their orders' file refused (not theirs, or malformed): a failed read, asked again in a minute; what was read of the day before stays.
+      const rows = readHistRows(raw, edges.length, family);
+      if (!rows) { entry.failed = now; return; }
+      entry.rows = rows; entry.at = now; entry.missing = false; entry.absent = false; this.version++;
       // A day the gate had refused is open now (its rule or the page's clock changed): the days from it on are, and the ones before it are
       // asked again in turn.
       if (pass === null && family === 'free' && day < this.#refusedBefore) this.#refusedBefore = this.#onSale() && day <= this.access.freeFrom(now) ? -Infinity : day;
@@ -463,6 +531,14 @@ export class LiqHistory {
       entry.due = entry.rows.length ? nextAskAt(entry.created, now, entry.lead) : prev && prev.rows.length ? nextAskAt(prev.created, now, prev.lead) : now + DUE_EVERY_MS;
       changed();
     }, (error: unknown) => {
+      // The profitable traders' orders not on the server: none of that day is drawn (what was read of it before included), and that is said
+      // until a file comes; asked again when the server says, else in five minutes.
+      if (absentAnswer(family, error)) {
+        if (probe) this.#probed(true, now);
+        if (steps !== this.#steps) return;
+        entry.absent = true; entry.rows = NONE; entry.wait = absentUntil(error, now); entry.due = 0; this.version++; changed();
+        return;
+      }
       entry.failed = now;
       const missing = answeredMissing(error);
       if (probe) this.#probed(missing, now);
@@ -499,9 +575,16 @@ export class LiqHistory {
       if (steps !== this.#steps) return;
       const read = readRollup(raw, family);
       if (!read) { entry.failed = now; return; }
-      entry.edges = read.edges; entry.hours = read.hours; entry.rows = read.rows; entry.at = now; this.version++;
+      entry.edges = read.edges; entry.hours = read.hours; entry.rows = read.rows; entry.at = now; entry.absent = false; this.version++;
       changed();
     }, (error: unknown) => {
+      // Their orders' rollup not on the server: held as none (`series` draws the rest of the view and says it), asked again as a day is.
+      if (absentAnswer(family, error)) {
+        if (probe) this.#probed(true, now);
+        if (steps !== this.#steps) return;
+        entry.absent = true; entry.rows = NONE; entry.at = -Infinity; entry.wait = absentUntil(error, now); this.version++; changed();
+        return;
+      }
       entry.failed = now;
       const missing = answeredMissing(error);
       if (probe) this.#probed(missing, now);
@@ -525,9 +608,10 @@ export class LiqHistory {
    * A view's rows from one set of history rows of each family it reads (a day's, or a rollup's): its liquidations (all positions or the
    * profitable traders'; a row without that part has no row), its stops, or both added where the snapshot has both (joined by `createdAt`,
    * or within a rollup by its four-hour block), or the take profits on alone; and the take profits beside the others. Take profits are held
-   * with their sides swapped.
+   * with their sides swapped. `absent`: the profitable traders' orders are not on the server here, so Liq + stops is their liquidations alone
+   * (the live column's rule); a file that holds no row of theirs is not that, and keeps the join.
    */
-  #viewRows(view: LiqView, by: Partial<Record<LiqFamily, HistRow[]>>, edges: readonly number[], block: number | null): { rows: LiqRow[]; takes: LiqRow[] } {
+  #viewRows(view: LiqView, by: Partial<Record<LiqFamily, HistRow[]>>, edges: readonly number[], block: number | null, absent = false): { rows: LiqRow[]; takes: LiqRow[] } {
     const liq: { row: HistRow; part: HistPart }[] = [];
     if (view.liq) {
       const fam = view.group !== 'all' ? 'groups' : 'free';
@@ -539,6 +623,7 @@ export class LiqHistory {
     let main: { row: HistRow; part: HistPart }[];
     if (curve === 'liq') main = liq;
     else if (curve === 'stops') main = orders.flatMap(row => row.parts[0] ? [{ row, part: row.parts[0] }] : []);
+    else if (absent) main = liq;
     else {
       // Both: a snapshot with both parts. A rollup's rows are each part's state at its block's end, which may be two snapshots of one block.
       const join = (r: HistRow): number => block ? Math.floor(r.fetchedAt / block) : r.createdAt;
@@ -553,9 +638,11 @@ export class LiqHistory {
   }
 
   /** The buckets the rows for `view` are in (null while not read), how long a row stands, and whether they come from the rollups: what `series` will say, without its rows. */
-  shape(view: LiqView = FREE_VIEW): Omit<HistSeries, 'rows' | 'takes'> {
+  shape(view: LiqView = FREE_VIEW): Omit<HistSeries, 'rows' | 'takes' | 'ordersAbsent'> {
     if (!this.#wide) return { edges: this.#index?.edges ?? null, holdMs: LIQ_HOLD_MS, wide: false };
-    const held = familiesFor(view).map(f => this.#rollups.get(f)), first = held[0];
+    // The profitable traders' orders' rollup not on the server is left out (`series`): the rest of the view is drawn, or it says they are missing.
+    const absent = this.#rollups.get('orderGroups')?.absent === true;
+    const held = familiesFor(view).filter(f => !(absent && f === 'orderGroups')).map(f => this.#rollups.get(f)), first = held[0];
     const ready = !!first && held.every(e => e && e.at > -Infinity && e.edges.length === first.edges.length);
     return { edges: ready ? first.edges : null, holdMs: first ? first.hours * 3_600_000 + LIQ_HOLD_MS : LIQ_HOLD_MS, wide: true };
   }
@@ -566,19 +653,22 @@ export class LiqHistory {
     // under one key for both, so a change between them kept an empty or a doubled overlay). Keyed by the order family it reads.
     const families = familiesFor(view), vk = viewKey(view), beside = takesBeside(view), of: LiqFamily = view.group !== 'all' ? 'orderGroups' : 'orders';
     if (this.#wide) {
-      const held = families.map(f => this.#rollups.get(f));
-      const first = held[0];
-      if (!first || held.some(e => !e || e.at === -Infinity) || held.some(e => e!.edges.length !== first.edges.length)) return { rows: [], takes: beside ? [] : null, edges: first && first.at > -Infinity ? first.edges : null, holdMs: first ? first.hours * 3_600_000 + LIQ_HOLD_MS : LIQ_HOLD_MS, wide: true };
+      // The profitable traders' orders' rollup not on the server: held as none, so the rest of the view is drawn rather than waited for (Sol,
+      // review 2026-11-19, round 2: wide views stayed "loading").
+      const absent = this.ordersAbsent(view, t0, t1), used = families.filter(f => !(absent && f === 'orderGroups'));
+      const held = used.map(f => this.#rollups.get(f)), first = held[0];
+      if (!first || held.some(e => !e || e.at === -Infinity) || held.some(e => e!.edges.length !== first.edges.length)) return { rows: [], takes: beside ? [] : null, edges: first && first.at > -Infinity ? first.edges : null, holdMs: first ? first.hours * 3_600_000 + LIQ_HOLD_MS : LIQ_HOLD_MS, wide: true, ordersAbsent: absent };
       const by: Partial<Record<LiqFamily, HistRow[]>> = {};
-      families.forEach((f, i) => { by[f] = held[i]!.rows; });
-      const block = first.hours * 3_600_000;
-      const deps = held.map(e => e!.rows);
-      const rows = this.#memo(`4h|${vk}`, deps, () => this.#viewRows(view, by, first.edges, block).rows);
-      const takes = beside ? this.#memo(`4h|takes|${of}`, [by[of]], () => this.#viewRows(view, by, first.edges, block).takes) : null;
-      return { rows: inForce(rows, t0, t1), takes: takes ? inForce(takes, t0, t1) : null, edges: first.edges, holdMs: block + LIQ_HOLD_MS, wide: true };
+      used.forEach((f, i) => { by[f] = held[i]!.rows; });
+      if (absent) by.orderGroups = NONE;
+      const block = first.hours * 3_600_000, mark = absent ? '|absent' : '';
+      const deps = families.map(f => by[f]);
+      const rows = this.#memo(`4h|${vk}${mark}`, deps, () => this.#viewRows(view, by, first.edges, block, absent).rows);
+      const takes = beside ? this.#memo(`4h|takes|${of}${mark}`, [by[of]], () => this.#viewRows(view, by, first.edges, block, absent).takes) : null;
+      return { rows: inForce(rows, t0, t1), takes: takes ? inForce(takes, t0, t1) : null, edges: first.edges, holdMs: block + LIQ_HOLD_MS, wide: true, ordersAbsent: absent };
     }
     const index = this.#index;
-    if (!index) return { rows: [], takes: beside ? [] : null, edges: null, holdMs: LIQ_HOLD_MS, wide: false };
+    if (!index) return { rows: [], takes: beside ? [] : null, edges: null, holdMs: LIQ_HOLD_MS, wide: false, ordersAbsent: false };
     const days = new Set<number>();
     for (const key of this.#days.keys()) {
       const family = key.slice(0, key.indexOf('|')) as LiqFamily, day = Number(key.slice(key.indexOf('|') + 1));
@@ -586,13 +676,15 @@ export class LiqHistory {
     }
     const rows: LiqRow[] = [], takes: LiqRow[] = [];
     for (const day of days) {
+      // Their orders not on the server for this day: Liq + stops is their liquidations alone there (`#viewRows`), keyed apart.
+      const absent = families.includes('orderGroups') && this.#days.get(`orderGroups|${day}`)?.absent === true, mark = absent ? '|absent' : '';
       const by: Partial<Record<LiqFamily, HistRow[]>> = {}, deps: unknown[] = [];
       for (const f of families) { const e = this.#days.get(`${f}|${day}`); by[f] = e?.rows ?? []; deps.push(e?.rows); }
-      rows.push(...this.#memo(`${day}|${vk}`, deps, () => this.#viewRows(view, by, index.edges, null).rows));
-      if (beside) takes.push(...this.#memo(`${day}|takes|${of}`, [by[of]], () => this.#viewRows(view, by, index.edges, null).takes));
+      rows.push(...this.#memo(`${day}|${vk}${mark}`, deps, () => this.#viewRows(view, by, index.edges, null, absent).rows));
+      if (beside) takes.push(...this.#memo(`${day}|takes|${of}${mark}`, [by[of]], () => this.#viewRows(view, by, index.edges, null, absent).takes));
     }
     rows.sort((a, b) => a.fetchedAt - b.fetchedAt); takes.sort((a, b) => a.fetchedAt - b.fetchedAt);
-    return { rows: inForce(rows, t0, t1), takes: beside ? inForce(takes, t0, t1) : null, edges: index.edges, holdMs: LIQ_HOLD_MS, wide: false };
+    return { rows: inForce(rows, t0, t1), takes: beside ? inForce(takes, t0, t1) : null, edges: index.edges, holdMs: LIQ_HOLD_MS, wide: false, ordersAbsent: this.ordersAbsent(view, t0, t1) };
   }
 
   /** The rows held that are in force over [t0, t1] for `view`: every row fetched in it, and the last one before it. Ordered by fetch time. */

@@ -26,7 +26,7 @@ import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from '../scope.ts';
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText, wrapText } from '../text-fit.ts';
-import { binsPerRow, captionPlace, dollarPriceOf, liqCurves, liqProfile, onTheWay, seamStats, liqRows, paintLiqStripe, standingBelow, standingHeat, stripeLanes, TAKE_DASH, type CurvePoint, type Lane, type LiqLevels, type LiqRow, type LiqStanding } from '../liq-levels.ts';
+import { captionPlace, dollarPriceOf, laneRows, liqCurves, liqProfile, onTheWay, seamStats, paintLiqStripe, standingBelow, stripeLanes, TAKE_DASH, type CurvePoint, type Lane, type LaneRows, type LiqLevels, type LiqRow, type LiqStanding } from '../liq-levels.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRowsHeld, type TradedRows } from '../traded.ts';
 import { MEASURES, measureDef, metricWords, type ProfileMetric } from '../measures/registry.ts';
@@ -364,7 +364,7 @@ export class HeatPane {
   /** Where this frame's "depth recorded from" note was printed, so the liquidation levels' note can keep clear of it. */
   #historyNote: { x0: number; x1: number; top: number } | null = null;
   /** Liquidation levels' rows in view and what they were grouped for (#liqRowsInView). */
-  #liqRows: { key: string; rows: LiqRow[]; heat: (usd: number) => number } | null = null;
+  #liqRows: LaneRows | null = null;
   /** The wide liquidation column as last drawn with its curves (its left and width, the curves' width, their dollars at full width), for `#paintLiqReadout`. */
   #liqScale: { x0: number; W: number; width: number; maxCum: number } | null = null;
   /** The pointer over a volume profile column (its y, and which column: its side and its place there, nearest the map first), or null. */
@@ -496,7 +496,7 @@ export class HeatPane {
   /** Whether the button had no room for the group it shows (it then says the kind alone, and the group goes under it: `columnNotes`). */
   #liqKindGroupOff = false;
   /** The take profits' rows in view (their own lane of the stripe), as `#liqRows`; and where the stripe's lanes were drawn this frame. */
-  #liqTakeRows: { key: string; rows: LiqRow[]; heat: (usd: number) => number } | null = null;
+  #liqTakeRows: LaneRows | null = null;
   #liqLanes: { levels: Lane; takes: Lane | null } | null = null;
   #palette = PALETTES.light!;
   /** The palette the volume profile is drawn in (`#tradedPalette`), kept while neither the theme nor the colours chosen change. */
@@ -2256,26 +2256,10 @@ export class HeatPane {
   /** Where the liquidation stripe begins: the live edge (the plot's left edge when that is off to the left). */
   #liqStripeLeft(pw: number): number { return Math.max(0, Math.round(this.view.xOf(pageNow(), pw))); }
 
-  /** The rows in view with their colour scale, as drawn; grouped again only when the levels, what price has taken or the rows on screen change. */
-  #liqRowsDrawn(levels: LiqLevels, ph: number): { rows: LiqRow[]; heat: (usd: number) => number } {
-    const v = this.view, per = binsPerRow(levels.step, v, ph), span = per * levels.step, g0 = Math.floor(v.p0 / span), g1 = Math.ceil(v.p1 / span);
-    const key = `${this.hub.liqLevels.key()}|${per}|${g0}|${g1}`;
-    if (this.#liqRows?.key !== key) {
-      const rows = liqRows(levels, this.hub.liqLevels.taken(), per, g0 * span, g1 * span);
-      this.#liqRows = { key, rows, heat: standingHeat(rows) };
-    }
-    return this.#liqRows;
-  }
+  /** The rows in view with their colour scale, as drawn; grouped again only when the levels, what price has taken or the rows on screen change (`laneRows`). */
+  #liqRowsDrawn(levels: LiqLevels, ph: number): LaneRows { return this.#liqRows = laneRows(this.hub.liqLevels, 'levels', levels, this.view, ph, this.#liqRows); }
   /** The same for the take profits' lane (their own colour scale). */
-  #liqTakeRowsDrawn(levels: LiqLevels, ph: number): { rows: LiqRow[]; heat: (usd: number) => number } {
-    const v = this.view, per = binsPerRow(levels.step, v, ph), span = per * levels.step, g0 = Math.floor(v.p0 / span), g1 = Math.ceil(v.p1 / span);
-    const key = `${this.hub.liqLevels.takesKey()}|${per}|${g0}|${g1}`;
-    if (this.#liqTakeRows?.key !== key) {
-      const rows = liqRows(levels, this.hub.liqLevels.takesTaken(), per, g0 * span, g1 * span);
-      this.#liqTakeRows = { key, rows, heat: standingHeat(rows) };
-    }
-    return this.#liqTakeRows;
-  }
+  #liqTakeRowsDrawn(levels: LiqLevels, ph: number): LaneRows { return this.#liqTakeRows = laneRows(this.hub.liqLevels, 'takes', levels, this.view, ph, this.#liqTakeRows); }
 
   /** The chart's price when it is in dollars (a dollar or a dollar stablecoin), else NaN: Liquidation levels compare it with Hyperliquid's. */
   #dollarPrice(state: AppState): number { return dollarPriceOf(state); }

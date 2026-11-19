@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LiqLevelsSource, parseTriggerGroups, combineTaken, liqRows, onTheWay, parseLiqGroups, parseLiqLevels, parseTriggers, partsBetween, partsOnTheWay, standingBelow, sumLevels, takenByCandles, liqStanding, type LiqLevels, type LiqRow, type LiqStanding } from '../src/app/liq-levels.ts';
+import { LiqLevelsSource, binsIn, parseTriggerGroups, combineTaken, laneRows, liqCurves, liqProfile, liqRows, onTheWay, parseLiqGroups, parseLiqLevels, parseTriggers, partsBetween, partsOnTheWay, standingBelow, sumLevels, takenByCandles, liqStanding, type LaneRows, type LiqLevels, type LiqRow, type LiqStanding } from '../src/app/liq-levels.ts';
 import { DAY_MS, LIQ_HOLD_MS, LiqHistory, MAX_DAYS, bandOnEdge, dayText, familiesFor, readHistRows, readRollup, type LiqAnswer } from '../src/app/liq-history.ts';
 import { readLiqLevels, plusUrls } from '../src/app/liq-url.ts';
 import { FREE_VIEW, curveOf, effectiveView, heldBack, isFreeChoice, levelsDescription, levelsSummary, takesBeside, viewKey, type LiqView } from '../src/app/liq-view.ts';
@@ -12,6 +12,7 @@ import { carriedSettings } from '../src/app/layouts/layouts.ts';
 import { columnNotes, liqNote, liqWhy, ordersAbsent, splitAmounts, splitText, takesLeftOut } from '../src/app/liq-words.ts';
 import { dollars, mirrorSplits, probeBoxLines, readingTexts, stripeBoxLines } from '../src/app/liq-box.ts';
 import { usd } from '../src/app/format.ts';
+import { DepthRangeSummary, depthHeldKey, type DepthPaneHeld } from '../src/app/range/depth-lines.ts';
 import type { InfoLine } from '../src/app/infobox.ts';
 import { BTC } from '../src/shared/coins.ts';
 import type { CandleRow } from '../src/app/store.ts';
@@ -760,4 +761,331 @@ test('a split never prints NaN: a part that is not a finite amount of at least n
     assert.ok(!splitAmounts(total, v, w).join(' ').includes('NaN'), [total, v, w].join(' '));
     assert.ok(!splitText({ liq: v, stops: w }, total).includes('NaN'));
   }
+});
+
+// Sol's review of a002e459..d5a6b43f (round 2). Everyone's orders and the profitable traders' come from one order file, so the two families
+// carry the same snapshot times; everyone's amounts are ten times theirs and their counts five times (Sol's probe: 100 against 10).
+const FAM = {
+  all: { liq: [[9, 0, 100, 0, 0, 5, 0, 100, 0], [11, 0, 0, 0, 100, 0, 5, 0, 100]], stops: [[8, 100, 0, 0, 0, 5, 0, 100, 0], [12, 0, 0, 100, 0, 0, 5, 0, 100]],
+    takes: [[6, 0, 0, 0, 100, 0, 5, 0, 100], [14, 100, 0, 0, 0, 5, 0, 100, 0]] },
+  profitable: { liq: [[9, 0, 10, 0, 0, 1, 0, 10, 0], [11, 0, 0, 0, 10, 0, 1, 0, 10]], stops: [[8, 10, 0, 0, 0, 1, 0, 10, 0], [12, 0, 0, 10, 0, 0, 1, 0, 10]],
+    takes: [[6, 0, 0, 0, 10, 0, 1, 0, 10], [14, 10, 0, 0, 0, 1, 0, 10, 0]] },
+};
+/** A levels service with both families of every Plus file and a pass (`over` replaces a file's answer). */
+function familyService(over: Record<string, LiqAnswer | (() => LiqAnswer)> = {}, freeDoc: () => unknown = () => free(FAM.all.liq)) {
+  return service({ [U.groups]: { status: 200, body: groups(FAM.profitable.liq, null) }, [U.triggers]: { status: 200, body: triggers(FAM.all.stops, FAM.all.takes) },
+    [U.triggersGroups]: { status: 200, body: triggerGroups(FAM.profitable.stops, FAM.profitable.takes) }, ...over }, { value: 'v1.pass.sig' }, freeDoc);
+}
+const show = async (s: ReturnType<typeof service>, v: Partial<LiqView>): Promise<void> => {
+  for (let i = 0; i < 3; i++) { s.src.ensure(BTC, () => {}, view(v)); await tick(); }
+  assert.equal(s.src.state, 'ready', JSON.stringify(v));
+};
+/** Everyone, then the profitable traders, then everyone again: the group, everyone's amount or theirs, and the count. */
+const BOTH_WAYS = [['all', 100, 5], ['profitable', 10, 1], ['all', 100, 5]] as const;
+/** The map's prices in view and its height: a $10 bin is 100 px tall, so a row is a bin. */
+const SCREEN = { p0: 50, p1: 160 }, PH = 1_100;
+const rowAt = (rows: readonly LiqRow[], p: number): LiqRow => { const r = rows.find(x => x.p0 <= p && p < x.p1); assert.ok(r, `a row at ${p}`); return r; };
+
+test('every key a drawing of the levels is kept by names the order family: everyone\'s take profits and the profitable traders\', of one order file, never share one (Sol, round 2)', async () => {
+  const s = familyService(), key: string[] = [], takes: string[] = [];
+  for (const [group] of BOTH_WAYS) {
+    await show(s, { liq: true, stops: true, takes: true, group });
+    key.push(s.src.key()); takes.push(s.src.takesKey());
+  }
+  assert.equal(s.src.takes!.asOf, AS_OF, 'the two families carry the same snapshot times');
+  for (const [name, k] of [['key', key], ['takesKey', takes]] as const) {
+    assert.notEqual(k[0], k[1], `${name}: Everyone to Profitable`); assert.notEqual(k[1], k[2], `${name}: Profitable to Everyone`);
+    assert.equal(k[0], k[2], `${name}: Everyone again is the same drawing`);
+  }
+});
+
+test('the stripe follows the order family both ways: its take profits\' lane and its levels\' lane, kept from frame to frame as the map keeps them', async () => {
+  for (const v of [{ liq: true, takes: true }, { liq: true, stops: true, takes: true }, { liq: false, stops: true, takes: true }]) {
+    const s = familyService(), name = JSON.stringify(v);
+    let takes: LaneRows | null = null, levels: LaneRows | null = null;
+    for (const [group, amount, count] of BOTH_WAYS) {
+      await show(s, { ...v, group });
+      takes = laneRows(s.src, 'takes', s.src.takes!, SCREEN, PH, takes); levels = laneRows(s.src, 'levels', s.src.levels!, SCREEN, PH, levels);
+      // The take profits of longs (sells above the price) and of shorts (buys below it), the view's group's.
+      assert.equal(rowAt(takes.rows, 145).short, amount, `${name} ${group}: take profits of longs`); assert.equal(rowAt(takes.rows, 145).shortWallets, count);
+      assert.equal(rowAt(takes.rows, 65).long, amount, `${name} ${group}: take profits of shorts`);
+      // The levels' lane: their liquidations, their stops, or both.
+      if (v.liq) assert.equal(rowAt(levels.rows, 95).long, amount, `${name} ${group}: liquidations`);
+      if (v.stops) assert.equal(rowAt(levels.rows, 85).long, amount, `${name} ${group}: stops`);
+    }
+  }
+});
+
+test('the stripe\'s box follows the order family both ways: what it says at a level is the view\'s group\'s', async () => {
+  const s = familyService();
+  let takes: LaneRows | null = null, levels: LaneRows | null = null;
+  for (const [group, amount, count] of BOTH_WAYS) {
+    await show(s, { liq: true, takes: true, group });
+    takes = laneRows(s.src, 'takes', s.src.takes!, SCREEN, PH, takes); levels = laneRows(s.src, 'levels', s.src.levels!, SCREEN, PH, levels);
+    const box = stripeBoxLines(rowAt(takes.rows, 145), 'takes', 100, s.src.takesStanding(), null, side => side === 'short');
+    assert.equal(lineAfter(box, 'At this level').figure.text, dollars(amount), `${group}: the take profit's level`);
+    assert.equal(lineAfter(box, 'Orders').figure.text, String(count), `${group}: its orders`);
+    assert.equal(lineAfter(box, 'If price gets here').figure.text, dollars(amount));
+    const liq = stripeBoxLines(rowAt(levels.rows, 95), 'liq', 100, s.src.standing(), null, side => side === 'long');
+    assert.equal(lineAfter(liq, 'At this level').figure.text, dollars(amount), `${group}: the liquidation level`);
+    assert.equal(lineAfter(liq, 'Positions').figure.text, String(count));
+  }
+});
+
+test('the liquidation column follows the order family both ways: its curve, its take-profit bars, its reading at the pointer and its notes', async () => {
+  const s = familyService();
+  for (const [group, amount] of BOTH_WAYS) {
+    await show(s, { liq: true, takes: true, group });
+    // Rows of $10 from $50: [90, 100) is the fifth, [60, 70) the second, [140, 150) the tenth.
+    const prof = liqProfile(s.src.standing()!, 10, 50, 160, 100), tprof = liqProfile(s.src.takesStanding()!, 10, 50, 160, 100);
+    assert.equal(prof.long[4], amount, `${group}: the liquidations' bar`); assert.equal(liqCurves(prof, 100).long.at(-1)!.usd, amount, `${group}: the curve`);
+    assert.equal(tprof.short[9], amount, `${group}: take profits of longs`); assert.equal(tprof.long[1], amount, `${group}: take profits of shorts`);
+    assert.equal(readingTexts(onTheWay(s.src.standing()!, 100, 85)!, 100, 85, null).short, `▼ ${dollars(amount)}`, `${group}: the reading`);
+    assert.deepEqual(columnNotes(view({ liq: true, takes: true, group }), true, true, s.src.ordersAbsent()), ['Take profits not included']);
+  }
+});
+
+test('the phone\'s Liq tab follows the order family both ways: its totals, its finger and its take-profit bars', async () => {
+  const s = familyService(), price = 100, lo = 50, hi = 150;
+  for (const [group, amount, count] of BOTH_WAYS) {
+    // Take profits alone: the totals are theirs (those of shorts below the price, of longs above), and so is what the finger reads.
+    await show(s, { liq: false, takes: true, group });
+    const st = s.src.standing()!;
+    assert.equal(standingBelow(st, 'long', price) - standingBelow(st, 'long', lo), amount, `${group}: below`);
+    assert.equal(standingBelow(st, 'short', hi) - standingBelow(st, 'short', price), amount, `${group}: above`);
+    assert.equal(liqProfile(st, 10, lo, hi, price).short[9], amount, `${group}: the finger's level`);
+    assert.deepEqual(binsIn(s.src.levels!, 'short', 140, 150), { positions: count, top: amount }, `${group}: its orders and the largest`);
+    // Beside the liquidations: their dashed bars, on the levels' scale.
+    await show(s, { liq: true, takes: true, group });
+    const tprof = liqProfile(s.src.takesStanding()!, 10, lo, hi, price);
+    assert.equal(tprof.short[9], amount, `${group}: bars above`); assert.equal(tprof.long[1], amount, `${group}: bars below`);
+  }
+});
+
+/** One snapshot of every history family, everyone's amounts ten times the profitable traders' (1,000 against 100), in days and in the rollups. */
+function familyHistory() {
+  const day = Date.UTC(2026, 10, 15), now = day + 12 * 3_600_000, t = day + 3 * 3_600_000, roll = (v: number): number[] => zeros(13).map((_, i) => i === 9 ? v : 0);
+  const host = (u: string): string => u.replace(/^https?:\/\/[^/]+/, 'https://levels.hiverust.dev');
+  const files: Record<string, unknown> = {};
+  const put = (u: string, body: unknown): void => { files[host(u)] = body; };
+  put('https://x/v1/btc/liquidation-history.json', { edges: EDGES, first: day - 3 * DAY_MS, last: now - 600_000 });
+  put(`https://x/v1/btc/liquidation-history/${dayText(day)}.json`, { rows: [freeRow(t, { 10: [1_000, 1_000] })] });
+  put(U.groupsDay(dayText(day)), { groups: ['profitable'], rows: [plusRow(t, part({ 10: [100, 100] }), null)] });
+  put(U.triggersDay(dayText(day)), { kinds: ['stops', 'takes'], rows: [plusRow(t, part({ 20: [1_000, 1_000] }), part({ 30: [1_000, 1_000] }))] });
+  put(U.triggersGroupsDay(dayText(day)), { groups: ['profitable'], kinds: ['stops', 'takes'], rows: [plusRow(t, part({ 20: [100, 100] }), part({ 30: [100, 100] }))] });
+  put(U.rollup.free, { hours: 4, edges: ROLLUP_EDGES, rows: [[...freeRow(t, {}).slice(0, 6), roll(1_000), roll(1_000)]] });
+  put(U.rollup.groups, { hours: 4, edges: ROLLUP_EDGES, groups: ['profitable'], rows: [plusRow(t, part({ 9: [100, 100] }, 13), null)] });
+  put(U.rollup.triggers, { hours: 4, edges: ROLLUP_EDGES, kinds: ['stops', 'takes'], rows: [plusRow(t, part({ 9: [1_000, 1_000] }, 13), part({ 9: [1_000, 1_000] }, 13))] });
+  put(U.rollup.triggersGroups, { hours: 4, edges: ROLLUP_EDGES, groups: ['profitable'], kinds: ['stops', 'takes'], rows: [plusRow(t, part({ 9: [100, 100] }, 13), part({ 9: [100, 100] }, 13))] });
+  const h = new LiqHistory(url => url in files ? Promise.resolve(files[url]) : Promise.reject(new Error('404')), { freeFrom: () => day - 7 * DAY_MS, pass: () => 'v1.member.sig', refused: () => {} });
+  const ask = async (v: LiqView, from = day): Promise<void> => { for (let i = 0; i < 3; i++) { h.ensure(from, now, now, () => {}, v); await tick(); await tick(); } };
+  return { h, ask, files, put, day, now, t, wideFrom: now - (MAX_DAYS + 10) * DAY_MS };
+}
+const HISTORY_WAYS = [['all', 1_000], ['profitable', 100], ['all', 1_000]] as const;
+
+test('the Depth pane\'s history follows the order family both ways, in days and in the 4-hour history (its memos keyed by the family): its levels and its take profits', async () => {
+  const f = familyHistory();
+  for (const [from, label, bucket] of [[f.day, 'days', 20], [f.wideFrom, '4-hour history', 9]] as const) {
+    for (const [group, amount] of HISTORY_WAYS) {
+      const v = view({ liq: true, stops: true, takes: true, group });
+      await f.ask(v, from);
+      const s = f.h.series(from, f.now, v);
+      assert.equal(s.wide, label !== 'days');
+      // Liquidations and stops added up from the mark out (the stops' bucket holds both), the take profits beside them with their sides swapped.
+      assert.equal(s.rows.at(-1)!.long[bucket], 2 * amount, `${label} ${group}: liquidations and stops`);
+      assert.equal(s.takes!.at(-1)!.long[label === 'days' ? 30 : 9], amount, `${label} ${group}: take profits`);
+    }
+  }
+});
+
+test('the Depth pane\'s Range summary follows the order family both ways: it sums the snapshot of the view drawn, never another family\'s', async () => {
+  const f = familyHistory(), summary = new DepthRangeSummary(), sel = { t0: f.t - 600_000, t1: f.t + 1_800_000, p0: null, p1: null, live: false, draft: false };
+  const held = (v: LiqView): DepthPaneHeld => ({ key: depthHeldKey('liq', [], [0.01], viewKey(v)), source: 'liq', ids: [], t0: f.day, t1: f.now, w: 100, radii: [0.01],
+    bid: new Float32Array(100), ask: new Float32Array(100), bidCoin: new Float32Array(100), askCoin: new Float32Array(100), present: null, centred: null, stepMs: 0, answeredAt: Infinity,
+    rows: f.h.series(f.day, f.now, v).rows, buckets: [20], omitted: [], view: v, holdMs: LIQ_HOLD_MS, wide: false, coins: false, coin: 'BTC', focus: 0 });
+  const longs = (lines: ReturnType<DepthRangeSummary['lines']>): string | undefined => lines.find(l => l.key === 'dp-grid')?.grid?.[0]?.rows?.find(r => r.label === 'Longs')?.value;
+  let before: DepthPaneHeld | null = null;
+  for (const [group, amount] of HISTORY_WAYS) {
+    const v = view({ liq: true, stops: true, group });
+    await f.ask(v);
+    const mine = held(v), lines = summary.lines(sel, mine, true, mine.key, f.now);
+    assert.equal(longs(lines), `$${(2 * amount).toLocaleString('en-US')}`, `${group}: the snapshot's liquidations and stops`);
+    assert.equal(lines.some(l => l.cells[0]?.includes('Profitable traders')), group === 'profitable', `${group}: whose`);
+    // The snapshot drawn for the other family is not summed up under this one's: the summary waits for its own.
+    if (before) assert.ok(summary.lines(sel, before, true, mine.key, f.now).some(l => l.key === 'dp-wait'), `${group}: the other family's snapshot waits`);
+    before = mine;
+  }
+});
+
+test('a 404 or 503 for the profitable traders\' orders after a good answer drops them from the drawing, and it stays so until a valid answer comes (Sol, round 2)', async () => {
+  for (const status of [404, 503]) {
+    let asOf = AS_OF, mine: LiqAnswer | null = { status: 200, body: triggerGroups(FAM.profitable.stops, FAM.profitable.takes) };
+    const s = familyService({ [U.groups]: () => ({ status: 200, body: groups(FAM.profitable.liq, null, asOf) }), [U.triggersGroups]: () => { if (!mine) throw new Error('offline'); return mine; } }, () => free(FAM.all.liq, asOf));
+    const all = view({ liq: true, stops: true, takes: true, group: 'profitable' }), ensure = async (v = all): Promise<void> => { for (let i = 0; i < 3; i++) { s.src.ensure(BTC, () => {}, v); await tick(); } };
+    await show(s, all);
+    assert.equal(s.src.levels!.kind, 'both'); assert.ok(s.src.takes);
+    const before = { key: s.src.key(), version: s.src.version };
+    let lane = laneRows(s.src, 'levels', s.src.levels!, SCREEN, PH, null);
+    assert.equal(rowAt(lane.rows, 85).long, 10, 'their stops drawn');
+    // A newer snapshot comes, and their orders' file answers 404 or 503.
+    mine = { status, body: null, ...(status === 503 ? { retryAfter: 300 } : {}) };
+    asOf = AS_OF + 30 * MIN; s.at(s.now() + 2 * 3_600_000);
+    await ensure();
+    assert.ok(s.src.ordersAbsent(), `${status}: said as not available yet`);
+    assert.equal(s.src.state, 'ready'); assert.equal(s.src.levels!.kind, 'liq', `${status}: their liquidations alone`);
+    assert.equal(s.src.takes, null, `${status}: their take profits no longer drawn`); assert.equal(s.src.takesState, 'missing'); assert.equal(s.src.takesKey(), '');
+    assert.notEqual(s.src.key(), before.key, `${status}: the drawing's key changed`); assert.ok(s.src.version > before.version);
+    lane = laneRows(s.src, 'levels', s.src.levels!, SCREEN, PH, lane);
+    assert.equal(lane.rows.find(r => r.p0 === 80), undefined, `${status}: their stops gone from the levels' lane`);
+    s.src.ensure(BTC, () => {}, view({ liq: false, stops: true, group: 'profitable' }));
+    assert.equal(s.src.state, 'missing'); assert.equal(liqWhy(s.src, null), ordersAbsent(), `${status}: stops alone say why`);
+    // Asked again after the wait: still not available while the answer is out, and after a failed read.
+    mine = null; s.at(s.now() + 6 * MIN); s.src.ensure(BTC, () => {}, all);
+    assert.ok(s.src.ordersAbsent(), `${status}: while asked again`);
+    await ensure();
+    assert.ok(s.src.ordersAbsent(), `${status}: after a failed read`); assert.equal(s.src.takes, null);
+    // A valid answer: drawn again.
+    mine = { status: 200, body: triggerGroups(FAM.profitable.stops, FAM.profitable.takes) }; s.at(s.now() + 6 * MIN);
+    await ensure();
+    assert.ok(!s.src.ordersAbsent(), `${status}: available again`); assert.equal(s.src.levels!.kind, 'both'); assert.ok(s.src.takes);
+  }
+});
+
+/** A history reader whose profitable traders' orders' files answer as `answer` says (a body, or a failed read of that status), each ask counted. */
+function absentHistory(answer: (url: string) => unknown | { fail: number; retryAfter?: number }) {
+  const f = familyHistory(), asks = new Map<string, number>();
+  const h = new LiqHistory(url => {
+    asks.set(url, (asks.get(url) ?? 0) + 1);
+    if (/trigger-history-groups/.test(url)) {
+      const a = answer(url) as { fail?: number; retryAfter?: number } | undefined;
+      if (a && typeof a.fail === 'number') return Promise.reject(Object.assign(new Error(String(a.fail)), a.retryAfter !== undefined ? { retryAfter: a.retryAfter } : {}));
+      return Promise.resolve(a);
+    }
+    return url in f.files ? Promise.resolve(f.files[url]) : Promise.reject(new Error('404'));
+  }, { freeFrom: () => f.day - 7 * DAY_MS, pass: () => 'v1.member.sig', refused: () => {} });
+  const ask = async (v: LiqView, now: number, from = f.day): Promise<void> => { for (let i = 0; i < 3; i++) { h.ensure(from, f.now, now, () => {}, v); await tick(); await tick(); } };
+  const dayUrl = `https://levels.hiverust.dev/v1/plus/btc/trigger-history-groups/${dayText(f.day)}.json`, rollUrl = 'https://levels.hiverust.dev/v1/plus/btc/trigger-history-groups-4h.json';
+  return { ...f, h, ask, asks: (url: string): number => asks.get(url) ?? 0, dayUrl, rollUrl };
+}
+const MINE_STOPS = view({ liq: false, stops: true, group: 'profitable' });
+
+test('the profitable traders\' orders\' history answering 404 or 503 is not available yet, asked again when the server says or in five minutes, and read once it comes, by the same reader (Sol, round 2)', async () => {
+  for (const [label, fail, retryAfter, waitMs] of [['404', 404, undefined, 5 * 60_000], ['503 with Retry-After 120', 503, 120, 120_000], ['503 without it', 503, undefined, 5 * 60_000]] as const) {
+    for (const [from, wide] of [['days', false], ['4-hour history', true]] as const) {
+      let served: unknown = null;
+      const r = absentHistory(() => served ?? { fail, retryAfter }), start = r.now, url = wide ? r.rollUrl : r.dayUrl, at = wide ? r.wideFrom : r.day, name = `${label}, ${from}`;
+      await r.ask(MINE_STOPS, start, at);
+      assert.equal(r.asks(url), 1, `${name}: asked`);
+      assert.ok(r.h.ordersAbsent(MINE_STOPS, at, r.now), `${name}: not available yet`);
+      assert.ok(r.h.series(at, r.now, MINE_STOPS).ordersAbsent, `${name}: and the series says so`);
+      await r.ask(MINE_STOPS, start + waitMs - 5_000, at);
+      assert.equal(r.asks(url), 1, `${name}: not asked again before the wait`);
+      await r.ask(MINE_STOPS, start + waitMs + 1_000, at);
+      assert.equal(r.asks(url), 2, `${name}: asked again once it is over`);
+      // The file comes: the same reader reads it after the next wait.
+      served = wide ? { hours: 4, edges: ROLLUP_EDGES, groups: ['profitable'], kinds: ['stops', 'takes'], rows: [plusRow(r.t, part({ 9: [100, 100] }, 13), part({ 9: [100, 100] }, 13))] }
+        : { groups: ['profitable'], kinds: ['stops', 'takes'], rows: [plusRow(r.t, part({ 20: [100, 100] }), part({ 30: [100, 100] }))] };
+      await r.ask(MINE_STOPS, start + 2 * waitMs + 2_000, at);
+      assert.equal(r.asks(url), 3, `${name}: asked once more`);
+      assert.ok(!r.h.ordersAbsent(MINE_STOPS, at, r.now), `${name}: available`);
+      assert.equal(r.h.series(at, r.now, MINE_STOPS).rows.at(-1)!.long[wide ? 9 : 20], 100, `${name}: their stops drawn`);
+    }
+  }
+});
+
+test('missing profitable orders never erase their liquidations\' history: Liq + stops draws them alone and says the orders are missing, in days and in the 4-hour history; a file without such rows is not missing (Sol, round 2)', async () => {
+  let served: unknown = null;
+  const r = absentHistory(() => served ?? { fail: 404 });
+  for (const [from, label, bucket] of [[r.day, 'days', 10], [r.wideFrom, '4-hour history', 9]] as const) {
+    const both = view({ liq: true, stops: true, group: 'profitable' }), beside = view({ liq: true, takes: true, group: 'profitable' });
+    await r.ask(both, r.now, from); await r.ask(beside, r.now, from); await r.ask(MINE_STOPS, r.now, from);
+    assert.ok(r.h.shape(both).edges, `${label}: not loading`);
+    const s = r.h.series(from, r.now, both);
+    assert.ok(s.rows.length > 0, `${label}: their liquidations drawn`); assert.equal(s.rows.at(-1)!.long[bucket], 100, `${label}: alone`);
+    assert.ok(s.ordersAbsent, `${label}: and the stops said missing`);
+    const b = r.h.series(from, r.now, beside);
+    assert.ok(b.rows.length > 0 && b.ordersAbsent, `${label}: take profits beside their liquidations are said missing`); assert.deepEqual(b.takes, []);
+    const alone = r.h.series(from, r.now, MINE_STOPS);
+    assert.deepEqual(alone.rows, [], `${label}: stops alone draw nothing`); assert.ok(r.h.ordersAbsent(MINE_STOPS, from, r.now), `${label}: and say why`);
+  }
+  // A day file that holds no row of theirs (a 200): not missing, so Liq + stops keeps saying no snapshot has both.
+  served = { groups: ['profitable'], kinds: ['stops', 'takes'], rows: [] };
+  const both = view({ liq: true, stops: true, group: 'profitable' });
+  await r.ask(both, r.now + 6 * 60_000);
+  const s = r.h.series(r.day, r.now, both);
+  assert.deepEqual(s.rows, [], 'no snapshot with both parts'); assert.ok(!s.ordersAbsent, 'and nothing missing');
+});
+
+test('the Depth pane\'s Range summary says the profitable traders\' orders are missing beside what it sums, never as a stretch without snapshots (Sol, round 2)', async () => {
+  const r = absentHistory(() => ({ fail: 503, retryAfter: 300 })), summary = new DepthRangeSummary(), sel = { t0: r.t - 600_000, t1: r.t + 1_800_000, p0: null, p1: null, live: false, draft: false };
+  const held = (v: LiqView, rows: NonNullable<DepthPaneHeld['rows']>, absent: boolean): DepthPaneHeld => ({ key: depthHeldKey('liq', [], [0.01], viewKey(v)), source: 'liq', ids: [], t0: r.day, t1: r.now, w: 100, radii: [0.01],
+    bid: new Float32Array(100), ask: new Float32Array(100), bidCoin: new Float32Array(100), askCoin: new Float32Array(100), present: null, centred: null, stepMs: 0, answeredAt: Infinity,
+    rows, buckets: [20], omitted: [], view: v, holdMs: LIQ_HOLD_MS, wide: false, coins: false, coin: 'BTC', focus: 0, ordersAbsent: absent });
+  const both = view({ liq: true, stops: true, group: 'profitable' });
+  await r.ask(both, r.now);
+  const s = r.h.series(r.day, r.now, both), mine = held(both, s.rows, s.ordersAbsent), lines = summary.lines(sel, mine, true, mine.key, r.now);
+  assert.ok(lines.some(l => l.key === 'dp-absent' && l.cells[0] === ordersAbsent()), 'said beside what is summed');
+  assert.ok(lines.some(l => l.key === 'dp-grid'), 'their liquidations summed');
+  const alone = held(MINE_STOPS, [], true), none = summary.lines(sel, alone, true, alone.key, r.now);
+  assert.ok(none.some(l => l.key === 'dp-absent'), 'stops alone: said');
+  assert.ok(!none.some(l => l.key === 'dp-empty'), 'not as a selection without snapshots');
+  const empty = held(MINE_STOPS, [], false);
+  assert.ok(summary.lines(sel, empty, true, empty.key, r.now).some(l => l.key === 'dp-empty' && /No stop levels snapshot/.test(l.cells[0] ?? '')), 'a file without their rows keeps the old words');
+});
+
+test('the profitable traders\' orders\' history is read only from a file that names them, by their place, and refused whole otherwise (Sol, round 2)', () => {
+  const kinds = ['stops', 'takes'], mine = (g: number[]): unknown[] => plusRow(g[0]!, part({ 20: [g[1]!, 0] }), part({ 30: [0, g[1]!] }));
+  const read = (doc: unknown) => readHistRows(doc, EDGES.length, 'orderGroups');
+  // As the levels service writes it: their cells, stops then take profits, at their place among the groups named.
+  const ok = read({ v: 1, coin: 'BTC', groups: ['profitable'], kinds, rows: [mine([2, 7]), mine([1, 5])] })!;
+  assert.deepEqual(ok.map(r => [r.fetchedAt, r.parts[0]!.long[20], r.parts[1]!.short[30]]), [[1, 5, 5], [2, 7, 7]], 'read, ordered by fetch time');
+  const second = read({ groups: ['other', 'profitable'], kinds, rows: [[1, 1, 1, 100_000, part({ 20: [1, 0] }), part({}), part({ 20: [9, 0] }), part({ 30: [0, 8] })]] })!;
+  assert.deepEqual([second[0]!.parts[0]!.long[20], second[0]!.parts[1]!.short[30]], [9, 8], 'the cells at their place, the other group\'s left unread');
+  // Everyone's file (no group named), a file of everyone (\`all\`), of another group, of other kinds, or of kinds in another order: refused whole.
+  const rows = [mine([1, 5])];
+  assert.equal(read({ kinds, rows }), null, 'everyone\'s trigger history names no group');
+  assert.equal(read({ groups: ['all'], kinds, rows }), null, 'everyone is not the profitable traders');
+  assert.equal(read({ groups: ['other'], kinds, rows }), null);
+  assert.equal(read({ groups: 'profitable', kinds, rows }), null);
+  assert.equal(read({ groups: ['profitable', 'profitable'], kinds, rows }), null, 'named twice: no place');
+  assert.equal(read({ groups: ['profitable'], rows }), null, 'no kinds');
+  assert.equal(read({ groups: ['profitable'], kinds: ['takes', 'stops'], rows }), null, 'the kinds in another order');
+  assert.equal(read({ groups: ['profitable'], kinds: ['stops'], rows }), null);
+  // A valid row beside a malformed one: nothing of the file, never part of it.
+  for (const bad of [[3, 3, 3, 100_000, part({}), [0, 0, [1], [2]]], [3, 3, 3, 100_000, part({})], [3, 3, 3, 0, part({}), part({})], [3, 'x', 3, 100_000, part({}), part({})], [3, 3, 3, 100_000, part({}), part({}), part({})],
+    [3, 3, 3, 100_000, part({}), [-1, 0, zeros(), zeros()]], 'row']) {
+    assert.equal(read({ groups: ['profitable'], kinds, rows: [mine([1, 5]), bad] }), null, JSON.stringify(bad).slice(0, 60));
+  }
+  assert.deepEqual(read({ groups: ['profitable'], kinds, rows: [] }), [], 'a day without their rows is read, empty');
+  // The rollup: the same rule.
+  assert.equal(readRollup({ hours: 4, edges: ROLLUP_EDGES, kinds, rows: [plusRow(5, part({ 9: [1, 2] }, 13), part({}, 13))] }, 'orderGroups'), null, 'everyone\'s rollup is not theirs');
+  assert.equal(readRollup({ hours: 4, edges: ROLLUP_EDGES, groups: ['profitable'], kinds, rows: [plusRow(5, part({ 9: [1, 2] }, 13), part({}, 13))] }, 'orderGroups')!.rows.length, 1);
+});
+
+test('the history never draws a file of everyone\'s orders, or a partly malformed one, under the profitable traders\' name, in days or in the 4-hour history (Sol, round 2)', async () => {
+  const f = familyHistory();
+  // Everyone's day and rollup where theirs are asked for (no group named), and their day with a malformed row beside a valid one.
+  f.put(U.triggersGroupsDay(dayText(f.day)), { kinds: ['stops', 'takes'], rows: [plusRow(f.t, part({ 20: [1_000, 1_000] }), part({ 30: [1_000, 1_000] }))] });
+  f.put(U.rollup.triggersGroups, { hours: 4, edges: ROLLUP_EDGES, groups: ['all'], kinds: ['stops', 'takes'], rows: [plusRow(f.t, part({ 9: [1_000, 1_000] }, 13), part({ 9: [1_000, 1_000] }, 13))] });
+  f.put(U.triggersGroupsDay(dayText(f.day - DAY_MS)), { groups: ['profitable'], kinds: ['stops', 'takes'], rows: [plusRow(f.t - DAY_MS, part({ 20: [5, 5] }), part({})), [1, 2, 3, 100_000, part({}), [0, 0, [1], [2]]]] });
+  for (const [from, label] of [[f.day - DAY_MS, 'days'], [f.wideFrom, '4-hour history']] as const) {
+    const stops = view({ liq: false, stops: true, group: 'profitable' }), both = view({ liq: true, stops: true, takes: true, group: 'profitable' });
+    await f.ask(stops, from); await f.ask(both, from);
+    assert.deepEqual(f.h.series(from, f.now, stops).rows, [], `${label}: nothing of everyone's stops, nothing of a partly malformed file`);
+    const s = f.h.series(from, f.now, both);
+    assert.deepEqual(s.rows, [], `${label}: no snapshot with both their liquidations and their stops`); assert.deepEqual(s.takes, [], `${label}: no take profits`);
+  }
+});
+
+test('a saved levels setting in the older form with a switch that is not a boolean is the free view, in settings and in layouts (Sol, round 2)', () => {
+  const on = { on: true, column: true }, free = { ...on, liq: true, stops: false, takes: false, group: 'all' };
+  assert.deepEqual(readLiqLevels({ kind: 'stops', takes: 'invalid', group: 'profitable' }), free, 'Sol\'s case: was the profitable traders\' stops');
+  assert.deepEqual(readLiqLevels({ kind: 'liq', takes: 1, group: 'profitable' }), free);
+  assert.deepEqual(readLiqLevels({ kind: 'both', takes: null }), free);
+  assert.deepEqual(readLiqLevels({ kind: 'both', takes: true, liq: 'yes' }), free, 'a switch of the newer form beside the older one');
+  assert.deepEqual(readLiqLevels({ kind: 'stops', takes: false, group: 'profitable' }), { ...on, liq: false, stops: true, takes: false, group: 'profitable' }, 'booleans: read as before');
+  assert.deepEqual(readLiqLevels({ kind: 'stops', group: 'profitable' }), { ...on, liq: false, stops: true, takes: false, group: 'profitable' }, 'a missing switch is off');
+  assert.deepEqual(readSettings({ liqLevels: { kind: 'stops', takes: 'invalid', group: 'profitable' } }).liqLevels, free, 'nor in a saved page');
+  assert.deepEqual(carriedSettings({ liqLevels: { kind: 'stops', takes: 'invalid', group: 'profitable' } } as never).liqLevels, free, 'nor through a layout');
+  assert.deepEqual(carriedSettings({ liqLevels: { kind: 'both', takes: 0 } } as never).liqLevels, free);
 });
