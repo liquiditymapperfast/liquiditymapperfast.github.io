@@ -3275,5 +3275,6 @@
  "Right column: {what}.": "右の列：{what}。",
  "Take-profit bars shown on the left.": "利益確定のバーを左に表示中。",
  "Too narrow to split: {what}": "狭すぎて分割できません：{what}",
- "Under a split the Depth pane draws its left column.": "分割中、デプスパネルには左の列が表示されます。"
+ "Under a split the Depth pane draws its left column.": "分割中、デプスパネルには左の列が表示されます。",
+ "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. Too narrow for two, it draws liquidations and stops added up, or everyone's levels, and says so. The phone's Liq tab splits into halves when it is wide enough; the Depth pane draws the left column.": "分割（Plus）は列を 2 つに分けて描きます。清算とストップを 1 つの目盛りで並べるか、全員と黒字のトレーダーをそれぞれの目盛りで並べます。2 列には狭すぎる場合は、清算とストップの合計、または全員のレベルを描き、そう表示します。スマートフォンの清算タブは十分な幅があれば半分ずつに分かれ、デプスパネルは左の列を描きます。"
 }

@@ -3275,5 +3275,6 @@
  "Right column: {what}.": "오른쪽 열: {what}.",
  "Take-profit bars shown on the left.": "익절 막대는 왼쪽에 표시됨.",
  "Too narrow to split: {what}": "너무 좁아 분할할 수 없음: {what}",
- "Under a split the Depth pane draws its left column.": "분할 중에는 뎁스 패널에 왼쪽 열이 표시됩니다."
+ "Under a split the Depth pane draws its left column.": "분할 중에는 뎁스 패널에 왼쪽 열이 표시됩니다.",
+ "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. Too narrow for two, it draws liquidations and stops added up, or everyone's levels, and says so. The phone's Liq tab splits into halves when it is wide enough; the Depth pane draws the left column.": "분할(Plus)은 열을 둘로 나눠 그립니다. 청산과 손절을 하나의 눈금으로 나란히 놓거나, 전체와 수익을 내는 트레이더를 각각의 눈금으로 나란히 놓습니다. 두 열에 너무 좁으면 청산과 손절의 합계 또는 전체의 레벨을 그리고 그렇게 알립니다. 스마트폰의 청산 탭은 충분히 넓으면 반으로 나뉘고, 뎁스 패널은 왼쪽 열을 그립니다."
 }

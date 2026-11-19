@@ -3558,5 +3558,6 @@
  "Right column: {what}.": "Права колонка: {what}.",
  "Take-profit bars shown on the left.": "Смужки тейк-профітів показано ліворуч.",
  "Too narrow to split: {what}": "Надто вузько для поділу: {what}",
- "Under a split the Depth pane draws its left column.": "Під час поділу панель глибини показує ліву колонку."
+ "Under a split the Depth pane draws its left column.": "Під час поділу панель глибини показує ліву колонку.",
+ "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. Too narrow for two, it draws liquidations and stops added up, or everyone's levels, and says so. The phone's Liq tab splits into halves when it is wide enough; the Depth pane draws the left column.": "Поділ (Plus) малює колонку як дві: ліквідації поруч зі стопами на одній шкалі або всі поруч із прибутковими трейдерами, кожна на власній. Якщо для двох надто вузько, він малює ліквідації та стопи разом або рівні всіх і повідомляє про це. Вкладка «Лікв.» на телефоні ділиться на половини, якщо вона достатньо широка; панель глибини малює ліву колонку."
 }

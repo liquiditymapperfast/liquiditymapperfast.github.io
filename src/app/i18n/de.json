@@ -3447,5 +3447,6 @@
  "Right column: {what}.": "Rechte Spalte: {what}.",
  "Take-profit bars shown on the left.": "Take-Profit-Balken links angezeigt.",
  "Too narrow to split: {what}": "Zu schmal zum Aufteilen: {what}",
- "Under a split the Depth pane draws its left column.": "Bei einer Aufteilung zeigt der Tiefe-Bereich ihre linke Spalte."
+ "Under a split the Depth pane draws its left column.": "Bei einer Aufteilung zeigt der Tiefe-Bereich ihre linke Spalte.",
+ "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. Too narrow for two, it draws liquidations and stops added up, or everyone's levels, and says so. The phone's Liq tab splits into halves when it is wide enough; the Depth pane draws the left column.": "Aufteilung (Plus) zeichnet die Spalte als zwei: Liquidationen neben Stops auf einer Skala, oder alle neben den profitablen Tradern, jede auf ihrer eigenen. Ist es für zwei zu schmal, zeichnet sie Liquidationen und Stops zusammengezählt oder die Niveaus aller und sagt das. Der Liq-Reiter auf dem Handy teilt sich in Hälften, wenn er breit genug ist; der Tiefe-Bereich zeichnet die linke Spalte."
 }

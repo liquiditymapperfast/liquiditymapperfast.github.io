@@ -48,6 +48,15 @@ which comes back with Plus (`effectiveView` in `src/app/liq-view.ts`).
   under the legend, the column, the boxes, the Liq tab, the Depth pane and the Range summary), asked again after the server's
   `Retry-After` or five minutes; the profitable traders' liquidations stay drawn alone meanwhile. Every drawing's cache is keyed by its
   layer and order family. The page reads that group alone from the files and leaves whatever else they hold unread.
+- **Split** (`LiqLevelSettings.split`: `none`, `kinds`, `groups`; Plus) draws the liquidation column as two sub-columns (`liq-split.ts`,
+  `splitPair` in `liq-view.ts`): `kinds` liquidations beside stops of the chosen traders on one shared scale (it turns both kinds on, and a kind
+  switched off returns it to `none` on every write, `readLiqLevels`); `groups` everyone's chosen kinds beside the profitable traders', each on
+  its own scale, Traders hidden and never written. The source keeps the right column's view beside the one series and asks both columns'
+  files together, whatever the room (`ensure(coin, onChange, view, right)`; the map and the Liq tab ask through `liveAsk`). The map widens the
+  column to 2 x 100 px only where the plot keeps `MAP_PLOT_FLOOR` (`liqColumnWidth`, the same rule for `gutterAt`), never on a compact map;
+  with less room it draws the fallback (`narrowView`: the two added up, or everyone's) and says "Too narrow to split". Every sub-column and
+  stripe lane is captioned; the take profits stay with the left set. The phone's Liq tab splits into halves at 2 x 120 px. The Depth pane,
+  and everything else that draws one series, draws the left column's set (`effectiveView`).
 - **Liq + stops apart**: wherever the page gives a total of both (the stripe's box, the column's reading and its Mirror box, the Liq tab's
   finger), it adds "Total $X = liquidations $Y + stops $Z" (`partStandings`, `partsBetween`, `partsOnTheWay`); the picture stays the
   total. The Depth pane's readout does not split it: its history rows hold the sum only.

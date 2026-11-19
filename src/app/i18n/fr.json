@@ -3505,5 +3505,6 @@
  "Right column: {what}.": "Colonne de droite : {what}.",
  "Take-profit bars shown on the left.": "Barres de take profit affichées à gauche.",
  "Too narrow to split: {what}": "Trop étroit pour diviser : {what}",
- "Under a split the Depth pane draws its left column.": "Avec une division, le panneau Profondeur affiche sa colonne de gauche."
+ "Under a split the Depth pane draws its left column.": "Avec une division, le panneau Profondeur affiche sa colonne de gauche.",
+ "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. Too narrow for two, it draws liquidations and stops added up, or everyone's levels, and says so. The phone's Liq tab splits into halves when it is wide enough; the Depth pane draws the left column.": "Division (Plus) dessine la colonne en deux : les liquidations à côté des stops sur une seule échelle, ou tout le monde à côté des traders rentables, chacun sur la sienne. Trop étroite pour deux, elle dessine les liquidations et les stops additionnés, ou les niveaux de tout le monde, et le dit. L’onglet Liq du téléphone se divise en moitiés quand il est assez large ; le panneau Profondeur dessine la colonne de gauche."
 }
