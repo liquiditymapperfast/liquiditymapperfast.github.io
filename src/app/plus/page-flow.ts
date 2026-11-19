@@ -94,15 +94,16 @@ export type PaidPlan = { kind: 'ask'; generation: number } | { kind: 'waits' } |
 /**
  * Whether the payment `id` is asked for now, and for which membership (Sol, review 2026-11-19). Its checkout completing writes its record
  * (once: `PaidStore.begin`) and asks for the membership as it is then. The page coming back to it asks only while nothing changed since that
- * checkout: the same membership (its generation) and no answer dropped for a change; else it waits for its Try again. Try again asks for the
- * membership as it is then, while the record is kept: one given up a day after its checkout, or settled elsewhere, is gone, and nothing but
- * a checkout completing writes a record.
+ * checkout: the same membership (its generation), no answer dropped for a change, and no Plus in force here (a key that had ended when the
+ * payment was made can come back to life without a new generation, and is not replaced unasked); else it waits for its Try again. Try again
+ * asks for the membership as it is then, while the record is kept: one given up a day after its checkout, or settled elsewhere, is gone, and
+ * nothing but a checkout completing writes a record.
  */
-export function planPayment(id: string, via: PaidVia, deps: { member: Pick<Plus, 'generation'>; paid: PaidStore }): PaidPlan {
+export function planPayment(id: string, via: PaidVia, deps: { member: Pick<Plus, 'generation' | 'state'>; paid: PaidStore }): PaidPlan {
   const now = deps.member.generation(), known = deps.paid.get(id);
   if (!known) return via === 'checkout' ? { kind: 'ask', generation: deps.paid.begin(id, now).generation } : { kind: 'gone' };
   if (via === 'retry') return { kind: 'ask', generation: now };
-  return known.stale || known.generation !== now ? { kind: 'waits' } : { kind: 'ask', generation: known.generation };
+  return known.stale || known.generation !== now || deps.member.state === 'on' ? { kind: 'waits' } : { kind: 'ask', generation: known.generation };
 }
 /** The payment `id` asked for the membership `generation` (`planPayment`): taken, its record is settled; dropped for a change, it is marked so. */
 export async function setUpPayment(id: string, generation: number, deps: FlowDeps & { paid: PaidStore }): Promise<PassOutcome> {

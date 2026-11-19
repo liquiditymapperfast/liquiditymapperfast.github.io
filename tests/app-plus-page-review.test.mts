@@ -41,10 +41,17 @@ const askFor = (plan: PaidPlan): number => { assert.equal(plan.kind, 'ask'); ret
 /** The Plus server's address in these tests, and a key's renewal sent to the slow server by its path. */
 const API = 'https://plus.test/v1';
 const postVia = (server: ReturnType<typeof slow>): Post => async url => { const a = await server.ask(url.slice(API.length), null); if (!a) throw new Error('not reached'); return a; };
-/** The key kept here as the server's refusal leaves it (`replaced`: newer keys pushed it out), or as a pass that ran out does (checking); neither is a new generation. */
-const endKept = (s: ReturnType<typeof shared>, why: 'replaced' | null): void => {
+/**
+ * The key kept here as the server's refusal leaves it (`why`: `replaced`, newer keys pushed it out; `canceled`), as a pass that ran out does
+ * (null: checking), or as a renewal that answered again leaves it (`revive`: in force); none of them is a new generation.
+ */
+const endKept = (s: ReturnType<typeof shared>, why: string | null): void => {
   const held = JSON.parse(s.data.get(PLUS_STORE)!) as Record<string, unknown>;
   s.data.set(PLUS_STORE, JSON.stringify(why ? { ...held, pass: '', ended: true, why } : { ...held, pass: '' }));
+};
+const revive = (s: ReturnType<typeof shared>): void => {
+  const held = JSON.parse(s.data.get(PLUS_STORE)!) as { key: string } & Record<string, unknown>;
+  s.data.set(PLUS_STORE, JSON.stringify({ ...held, pass: passOf(held.key.slice(0, 9), NOW + 24 * HOUR), ended: false, why: '' }));
 };
 
 test('Sol 1 (P1): a checkout\'s key that arrives after another tab stored key C, or removed the key here, never replaces C or brings it back', async () => {
@@ -190,6 +197,19 @@ test('Sol final 2 (P2): a payment dropped for another key is not set up by a rel
     give(there, KEY_C); there.forget();
     const page = new Plus(storage, noPost, () => NOW);
     assert.deepEqual(planPayment(TXN_B, 'resume', { member: page, paid: new PaidStore(storage, () => NOW) }), { kind: 'waits' });
+  }
+  // Paid while the key here had ended (the prices are drawn then), never answered; the key comes back to life (its renewal answers again,
+  // no new generation): a reload does not replace Plus in force unasked. Its Try again still asks.
+  {
+    const { storage, here } = tabs(), paidHere = new PaidStore(storage, () => NOW);
+    give(here, KEY_C); endKept(storage, 'canceled'); here.reload();
+    assert.equal(here.state, 'ended');
+    planPayment(TXN_B, 'checkout', { member: here, paid: paidHere });
+    revive(storage);
+    const page = new Plus(storage, noPost, () => NOW), paidPage = new PaidStore(storage, () => NOW);
+    assert.equal(page.state, 'on'); assert.equal(paidPage.get(TXN_B)?.generation, page.generation(), 'the same generation');
+    assert.deepEqual(planPayment(TXN_B, 'resume', { member: page, paid: paidPage }), { kind: 'waits' });
+    assert.deepEqual(planPayment(TXN_B, 'retry', { member: page, paid: paidPage }), { kind: 'ask', generation: page.generation() });
   }
   // Nothing changed since its checkout (its answer late): a reload asks again, for the membership of the checkout, and takes it.
   {

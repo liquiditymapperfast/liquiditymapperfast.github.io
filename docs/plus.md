@@ -123,9 +123,10 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
   or the receipt was sent): one that comes after another tab stored a key, or after the key here was removed, changes nothing. A paid
   checkout then stays waiting in this browser (`paid.ts`, `lmf.plus.paid`): one record per transaction, `{ id, at, generation, stale }`,
   written once when its checkout completes and never dated again, and given up a day after that checkout. A reload asks for it again by
-  itself only while nothing changed since: the membership's generation is still the record's, and no answer for it was dropped for a
-  change (`stale`). Otherwise it waits, beside the membership when Plus is on, for its Try again, which asks for it for the membership as
-  it is then, and only while its record is kept (`planPayment`). Its own setting-up settles it; a key that opens Plus on the page, or a
+  itself only while nothing changed since: the membership's generation is still the record's, no answer for it was dropped for a change
+  (`stale`), and Plus is not in force here (a key that had ended when it was paid can come back to life without a new generation, and is
+  not replaced unasked). Otherwise it waits, beside the membership when Plus is on, for its Try again, which asks for it for the
+  membership as it is then, and only while its record is kept (`planPayment`). Its own setting-up settles it; a key that opens Plus on the page, or a
   restore, settles the payments that were waiting when it was sent, and only those (one paid meanwhile, in another tab, keeps its record).
   The page's Reveal, and the showing after a checkout or a restore, hold for that key only, and so do the thanks after a checkout
   (`besideMembership`), beside which a payment still waiting stays in sight.
