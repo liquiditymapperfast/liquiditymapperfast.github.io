@@ -54,9 +54,14 @@ which comes back with Plus (`effectiveView` in `src/app/liq-view.ts`).
   its own scale, Traders hidden and never written. The source keeps the right column's view beside the one series and asks both columns'
   files together, whatever the room (`ensure(coin, onChange, view, right)`; the map and the Liq tab ask through `liveAsk`). The map widens the
   column to 2 x 100 px only where the plot keeps `MAP_PLOT_FLOOR` (`liqColumnWidth`, the same rule for `gutterAt`), never on a compact map;
-  with less room it draws the fallback (`narrowView`: the two added up, or everyone's) and says "Too narrow to split". Every sub-column and
-  stripe lane is captioned; the take profits stay with the left set. The phone's Liq tab splits into halves at 2 x 120 px. The Depth pane,
-  and everything else that draws one series, draws the left column's set (`effectiveView`).
+  with less room it draws the fallback (`narrowView`: the two added up, or everyone's) and says "Too narrow to split". The stripe gives each
+  column a lane (`stripePlan`, `splitLanes` in `liq-split.ts`): `kinds` wherever it is chosen; `groups` where the column is drawn split
+  (`liqSplitDrawn`), else everyone's alone (too narrow, a compact map, the column off). The two group lanes each take their own colour scale,
+  their captions say kind and group ("Liq + stops · Profitable") and the stripe's box names the group. The profitable traders' lane draws the
+  source's right set alone, its rows kept by that set's key (view, group and order family), and stands on its own readiness as their
+  sub-column does; with their orders absent it draws their liquidations alone and the note under the legend says they are not available
+  yet. Every sub-column and stripe lane is captioned; the take profits stay with the left set. The phone's Liq tab splits into halves at
+  2 x 120 px. The Depth pane, and everything else that draws one series, draws the left column's set (`effectiveView`).
 - **Liq + stops apart**: wherever the page gives a total of both (the stripe's box, the column's reading and its Mirror box, the Liq tab's
   finger), it adds "Total $X = liquidations $Y + stops $Z" (`partStandings`, `partsBetween`, `partsOnTheWay`); the picture stays the
   total. The Depth pane's readout does not split it: its history rows hold the sum only.

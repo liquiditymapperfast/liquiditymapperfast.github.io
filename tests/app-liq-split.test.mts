@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { LADDER_SUB_MIN, SPLIT_COLUMN_W, SPLIT_SUB_W, kindLanes, ladderSplitFits, liqColumnWidth, placeProbeBoxes, splitFits, splitHeads, splitScales, stackCaptions, subAt, subColumns, type BoxAt, type BoxSize } from '../src/app/liq-split.ts';
+import { LADDER_SUB_MIN, SPLIT_COLUMN_W, SPLIT_SUB_W, ladderSplitFits, liqColumnWidth, placeProbeBoxes, splitFits, splitHeads, splitLanes, splitScales, stackCaptions, subAt, subColumns, type BoxAt, type BoxSize } from '../src/app/liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../src/app/layouts/dock-model.ts';
 import { readLiqLevels } from '../src/app/liq-url.ts';
 import { FREE_VIEW, narrowView, splitPair } from '../src/app/liq-view.ts';
@@ -66,13 +66,13 @@ test('the split column\'s heading: each caption over its column, the maxima unde
 });
 
 test('the stripe\'s lanes for liquidations beside stops: the take profits by the live edge, then liquidations, then stops beside the column; captions never overlap', () => {
-  const lanes = kindLanes(100, 400, true);
+  const lanes = splitLanes(100, 400, true);
   assert.ok(lanes.takes && lanes.takes.x0 === 100 && lanes.takes.x1 === 190, 'three tenths for the take profits');
-  assert.ok(lanes.liq.x0 === 192 && lanes.liq.x1 <= lanes.stops.x0 - 2 && lanes.stops.x1 === 400, 'liquidations, 2 px, stops to the column');
-  const none = kindLanes(100, 400, false);
-  assert.equal(none.takes, null); assert.equal(none.liq.x0, 100); assert.equal(none.stops.x1, 400);
-  const narrow = kindLanes(380, 400, true);
-  for (const l of [narrow.takes!, narrow.liq, narrow.stops]) assert.ok(l.x1 >= l.x0 && l.x0 >= 380 && l.x1 <= 400, 'never outside the stripe');
+  assert.ok(lanes.left.x0 === 192 && lanes.left.x1 <= lanes.right.x0 - 2 && lanes.right.x1 === 400, 'liquidations, 2 px, stops to the column');
+  const none = splitLanes(100, 400, false);
+  assert.equal(none.takes, null); assert.equal(none.left.x0, 100); assert.equal(none.right.x1, 400);
+  const narrow = splitLanes(380, 400, true);
+  for (const l of [narrow.takes!, narrow.left, narrow.right]) assert.ok(l.x1 >= l.x0 && l.x0 >= 380 && l.x1 <= 400, 'never outside the stripe');
   // Three plates where two would overlap: the second goes a row down, the third stays up where it is clear.
   assert.deepEqual(stackCaptions([{ x: 10, w: 80 }, { x: 60, w: 80 }, { x: 200, w: 50 }], 6, 15), [6, 23, 6]);
 });
@@ -189,7 +189,7 @@ test('the split\'s pieces are where the page draws them: the map\'s split painte
   const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8'), tab = fs.readFileSync('src/app/panes/liq-pane.ts', 'utf8'), depth = fs.readFileSync('src/app/panes/lower-panes.ts', 'utf8');
   assert.match(heat, /if \(pair && !strip && W === SPLIT_COLUMN_W\) \{ this\.#paintLiqSplit\(ctx, state, pw, ph, pair\); return; \}/);
   assert.match(heat, /const set: LiqSet = pair\?\.split === 'kinds' \? src\.setOf\(narrowView\(pair\)\) : src;/, 'too narrow: the sum, or everyone\'s');
-  assert.match(heat, /kindLanes\(x0, pw, !!takes\)/); assert.match(heat, /this\.#paintLaneCaptions\(ctx, \[/);
+  assert.match(heat, /splitLanes\(x0, pw, !!takes\)/); assert.match(heat, /this\.#paintLaneCaptions\(ctx, \[/);
   assert.match(heat, /splitScales\(\{ maxLevel: Math\.max\(profs\[0\]\?\.maxLevel \?\? 0, tprof\?\.maxLevel \?\? 0\), maxCum: profs\[0\]\?\.maxCum \?\? 0 \},\n\s+\{ maxLevel: profs\[1\]\?\.maxLevel \?\? 0, maxCum: profs\[1\]\?\.maxCum \?\? 0 \}, pair\.split === 'kinds'\)/);
   assert.match(tab, /halves = !!pair && ladderSplitFits\(W - AXIS\)/); assert.match(tab, /#paintHalves\(/);
   assert.match(depth, /Under a split the Depth pane draws its left column\./);

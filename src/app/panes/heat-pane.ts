@@ -27,7 +27,7 @@ import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText, wrapText } from '../text-fit.ts';
 import { captionPlace, dollarPriceOf, laneRows, liqCurves, liqProfile, onTheWay, seamStats, paintLiqStripe, standingBelow, stripeLanes, TAKE_DASH, type CurvePoint, type Lane, type LaneRows, type LiqLevels, type LiqRow, type LiqSet, type LiqStanding } from '../liq-levels.ts';
-import { SPLIT_COLUMN_W, kindLanes, liqColumnWidth, splitHeads, splitScales, stackCaptions, subAt, subColumns, type Sub, type SubScale } from '../liq-split.ts';
+import { SPLIT_COLUMN_W, liqColumnWidth, splitHeads, splitLanes, splitScales, stackCaptions, stripePlan, subAt, subColumns, type Sub, type SubScale } from '../liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../layouts/dock-model.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRowsHeld, type TradedRows } from '../traded.ts';
@@ -56,8 +56,8 @@ import { blockMsOf, editScope, withEdits } from '../tpo/settings.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
 import { liqLevelsUrl } from '../liq-url.ts';
 import { curveOf, groupName, groupTitle, heldBack, kindName, kindTitle, levelsDescription, liveAsk, liveSplit, liveView, narrowView, pairKey, plusOn, viewKey, viewParts, type LiqPair, type LiqView } from '../liq-view.ts';
-import { columnNotes, liqNote, liqWhy, narrowNote, ordersAbsent, pairDescription, sideTitle, splitName, subNames, takesLeftOut, takesOf } from '../liq-words.ts';
-import { mirrorSplits, readingTexts, stripeBoxLines } from '../liq-box.ts';
+import { columnNotes, liqNote, liqWhy, narrowNote, ordersAbsent, pairDescription, sideTitle, splitName, subNames, takesLeftOut } from '../liq-words.ts';
+import { mirrorSplits, readingTexts, setBoxLines, stripeBoxLines } from '../liq-box.ts';
 import { toggleLevels } from '../levels-control.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
@@ -512,9 +512,13 @@ export class HeatPane {
   #liqKindGroupOff = false;
   /** The take profits' rows in view (their own lane of the stripe), as `#liqRows`; and where the stripe's lanes were drawn this frame. */
   #liqTakeRows: LaneRows | null = null;
-  #liqLanes: { levels: Lane; takes: Lane | null } | null = null;
-  /** A split's stops' lane as drawn this frame, with the right set it was drawn from (`laneRows` memo in `#liqRightRows`), for the hover box. */
-  #liqStopsLane: { lane: Lane; set: LiqSet } | null = null;
+  /** With the group each lane's reading names (`stripePlan`: everyone beside the profitable traders), or null. */
+  #liqLanes: { levels: Lane; takes: Lane | null; whose: string | null; takesWhose: string | null } | null = null;
+  /**
+   * A split's right lane as drawn this frame (the stops of the chosen traders, or the profitable traders' levels), with the right set it was
+   * drawn from (`laneRows` memo in `#liqRightRows`, kept by that set's key) and the group its reading names, for the hover box.
+   */
+  #liqRightLane: { lane: Lane; set: LiqSet; whose: string | null } | null = null;
   #liqRightRows: LaneRows | null = null;
   #palette = PALETTES.light!;
   /** The palette the volume profile is drawn in (`#tradedPalette`), kept while neither the theme nor the colours chosen change. */
@@ -2213,7 +2217,8 @@ export class HeatPane {
    */
   #paintLiquidationLevels(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     const src = this.hub.liqLevels, p = this.#palette, v = this.view, view = liveView(state.liqLevels);
-    this.#liqLanes = null;
+    // Nothing drawn answers the pointer until this frame draws it again (another coin, a replay: neither lane stands).
+    this.#liqLanes = null; this.#liqRightLane = null;
     const ask = liveAsk(state.liqLevels);
     src.ensure(currentCoin(), () => this.invalidate(), ask.view, ask.right);
     // They are on unless switched off, so where they cannot be (no address, another coin, a replay) the map says nothing: the button's panel
@@ -2222,44 +2227,50 @@ export class HeatPane {
     const levels = src.levels;
     src.observe(this.#dollarPrice(state));
     // Under a split of liquidations beside stops the stripe draws both (a lane each), so the note says both, and when their orders stood.
-    const pair = liveSplit(state.liqLevels), both = pair?.split === 'kinds' ? narrowView(pair) : null;
+    // Everyone beside the profitable traders draws a lane each where the column is drawn split, else everyone's alone (`stripePlan`).
+    const pair = liveSplit(state.liqLevels), both = pair?.split === 'kinds' ? narrowView(pair) : null, plan = stripePlan(pair, liqSplitDrawn(state));
     const said = both ? { ...src.setOf(both), takesState: src.takesState } : src;
     let note = levels && src.state === 'ready' ? liqNote(said, both ?? view, levels.asOf) : liqWhy(src, src.asOfs().liq) || t('Liquidation levels are loading.');
-    this.#liqStopsLane = null;
-    if (levels && src.state === 'ready') {
+    // The right lane's set: the stops of the chosen traders, or the profitable traders' own levels (their files alone: never everyone's in
+    // their place). Their stops and take profits not on the server: said under the legend, as the sub-column says it under its button.
+    const right = plan.two ? src.right : null, rightReady = !!right?.levels && right.state === 'ready';
+    if (plan.standalone && right?.ordersAbsent()) note = `${note} · ${ordersAbsent()}`;
+    if ((levels && src.state === 'ready') || (plan.standalone && rightReady)) {
       const x0 = this.#liqStripeLeft(pw);
       if (x0 < pw - 8) {
         // The take profits are a lane of their own by the live edge, dashed, never added to the levels (they sit on the other side of the
-        // price); the levels' lane is the one beside the liquidation column, whose curve sums them. Liquidations beside stops (a split): the
-        // liquidations' lane, then the stops' beside the column, in the column's order.
-        const takes = src.takesState === 'ready' ? src.takes : null;
-        const lanes: { levels: Lane; takes: Lane | null; stops: Lane | null } = both ? (({ liq, takes: tl, stops }) => ({ levels: liq, takes: tl, stops }))(kindLanes(x0, pw, !!takes)) : { ...stripeLanes(x0, pw, !!takes), stops: null };
-        const { rows, heat } = this.#liqRowsDrawn(levels, ph);
-        // Take profits on alone are the levels: drawn as they are beside the others (dashed, buys below in the rising colour), the full width.
-        const alone = levels.kind === 'takes';
-        paintLiqStripe(ctx, v, lanes.levels.x0, lanes.levels.x1, ph, rows, heat, alone ? { long: p.candleUp, short: p.candleDown, text: p.text, muted: p.muted, bg: p.bg }
-          : { long: p.candleDown, short: p.candleUp, text: p.text, muted: p.muted, bg: p.bg }, alone);
-        if (takes && lanes.takes) {
-          const tk = this.#liqTakeRowsDrawn(takes, ph);
-          // By what the orders do: the take profits of shorts are buys (below the price, the rising colour), those of longs sells.
-          paintLiqStripe(ctx, v, lanes.takes.x0, lanes.takes.x1, ph, tk.rows, tk.heat, { long: p.candleUp, short: p.candleDown, text: p.text, muted: p.muted, bg: p.bg }, true);
+        // price); the levels' lane is the one beside the liquidation column, whose curve sums them. A split drawn as two lanes: the left
+        // set's lane, then the right set's beside the column, in the column's order.
+        const takes = levels && src.state === 'ready' && src.takesState === 'ready' ? src.takes : null;
+        const lanes: { levels: Lane; takes: Lane | null; right: Lane | null } = plan.two ? (({ left, takes: tl, right: rl }) => ({ levels: left, takes: tl, right: rl }))(splitLanes(x0, pw, !!takes)) : { ...stripeLanes(x0, pw, !!takes), right: null };
+        if (levels && src.state === 'ready') {
+          const { rows, heat } = this.#liqRowsDrawn(levels, ph);
+          // Take profits on alone are the levels: drawn as they are beside the others (dashed, buys below in the rising colour), the full width.
+          const alone = levels.kind === 'takes';
+          paintLiqStripe(ctx, v, lanes.levels.x0, lanes.levels.x1, ph, rows, heat, alone ? { long: p.candleUp, short: p.candleDown, text: p.text, muted: p.muted, bg: p.bg }
+            : { long: p.candleDown, short: p.candleUp, text: p.text, muted: p.muted, bg: p.bg }, alone);
+          if (takes && lanes.takes) {
+            const tk = this.#liqTakeRowsDrawn(takes, ph);
+            // By what the orders do: the take profits of shorts are buys (below the price, the rising colour), those of longs sells.
+            paintLiqStripe(ctx, v, lanes.takes.x0, lanes.takes.x1, ph, tk.rows, tk.heat, { long: p.candleUp, short: p.candleDown, text: p.text, muted: p.muted, bg: p.bg }, true);
+          }
+          this.#liqLanes = { levels: lanes.levels, takes: lanes.takes, whose: plan.whose[0], takesWhose: plan.takesWhose };
         }
-        // The stops' lane of a split, from its right set (the profitable traders' own where they are the group: never everyone's in their place).
-        const right = both ? src.right : null;
-        if (lanes.stops && right?.levels && right.state === 'ready') {
+        // The right lane, from its own set, on its own colour scale; its rows kept by the set's key, which names its view (its group) and the
+        // family of its orders, so a lane of one group never shows another's rows.
+        if (lanes.right && right?.levels && rightReady) {
           const rr = this.#liqRightRows = laneRows({ key: () => right.key(), takesKey: () => '', taken: () => right.taken(), takesTaken: () => null }, 'levels', right.levels, this.view, ph, this.#liqRightRows);
-          paintLiqStripe(ctx, v, lanes.stops.x0, lanes.stops.x1, ph, rr.rows, rr.heat, { long: p.candleDown, short: p.candleUp, text: p.text, muted: p.muted, bg: p.bg }, false);
-          this.#liqStopsLane = { lane: lanes.stops, set: right };
+          paintLiqStripe(ctx, v, lanes.right.x0, lanes.right.x1, ph, rr.rows, rr.heat, { long: p.candleDown, short: p.candleUp, text: p.text, muted: p.muted, bg: p.bg }, false);
+          this.#liqRightLane = { lane: lanes.right, set: right, whose: plan.whose[1] };
         }
-        this.#liqLanes = { levels: lanes.levels, takes: lanes.takes };
         if (pair) {
-          // Under a split every lane says what it holds: whose take profits, and the liquidations' and the stops' lanes (whose, where not
-          // everyone's), or everyone's levels alone beside the profitable traders' column.
-          const whose = (words: string): string => pair.left.group !== 'all' ? `${words} · ${groupName(pair.left.group)}` : words;
+          // Under a split every lane says what it holds (`stripePlan`): whose take profits, the liquidations' and the stops' lanes (whose,
+          // where not everyone's), everyone's and the profitable traders' lanes, or everyone's levels alone beside a column too narrow to split.
+          const [leftWords, rightWords] = plan.captions;
           this.#paintLaneCaptions(ctx, [
-            ...(lanes.takes ? [{ lane: lanes.takes, words: takesOf(pair.left.group), dashed: true }] : []),
-            ...(both ? [{ lane: lanes.levels, words: whose(kindName('liq')), dashed: false }, ...(this.#liqStopsLane ? [{ lane: this.#liqStopsLane.lane, words: whose(kindName('stops')), dashed: false }] : [])]
-              : [{ lane: lanes.levels, words: `${kindName(curveOf(pair.left))} · ${groupName('all')}`, dashed: false }]),
+            ...(lanes.takes && plan.takes ? [{ lane: lanes.takes, words: plan.takes, dashed: true }] : []),
+            ...(leftWords ? [{ lane: lanes.levels, words: leftWords, dashed: false }] : []),
+            ...(lanes.right && rightWords && (plan.standalone || this.#liqRightLane) ? [{ lane: lanes.right, words: rightWords, dashed: false }] : []),
           ], pw);
         } else if (lanes.takes) this.#paintTakesCaption(ctx, lanes.takes, pw);
       }
@@ -2360,12 +2371,14 @@ export class HeatPane {
 
   /**
    * What a level under the pointer holds, for the hover box: only on the stripe, on a row strong enough to be drawn there (the levels' lane,
-   * or the take profits' by the live edge); what the box says is `stripeBoxLines`'s.
+   * the take profits' by the live edge, or a split's right lane, which stands on its own set); what the box says is `stripeBoxLines`'s, with
+   * the lane's group where the plan names one (everyone beside the profitable traders).
    */
   #liquidationLines(state: AppState, x: number, y: number, pw: number, ph: number, touch: boolean): InfoLine[] {
-    const src = this.hub.liqLevels, lanes = this.#liqLanes, v = this.view, stops = this.#liqStopsLane;
-    if (!lanes || replaying() || src.state !== 'ready') return [];
-    if (stops && this.#liqRightRows && x >= stops.lane.x0 && x < stops.lane.x1) return this.#laneLines(state, stops.set, this.#liqRightRows, y, ph, touch);
+    const src = this.hub.liqLevels, lanes = this.#liqLanes, v = this.view, right = this.#liqRightLane;
+    if (replaying()) return [];
+    if (right && this.#liqRightRows && x >= right.lane.x0 && x < right.lane.x1) return this.#laneLines(state, right.set, this.#liqRightRows, y, ph, touch, right.whose);
+    if (!lanes || src.state !== 'ready') return [];
     const inTakes = !!lanes.takes && x >= lanes.takes.x0 && x < lanes.takes.x1, levels = inTakes ? src.takes : x >= lanes.levels.x0 && x < lanes.levels.x1 ? src.levels : null;
     if (!levels) return [];
     const { rows, heat } = inTakes ? this.#liqTakeRowsDrawn(levels, ph) : this.#liqRowsDrawn(levels, ph), slop = touch ? 6 : 2;
@@ -2379,13 +2392,18 @@ export class HeatPane {
     }
     if (!row) return [];
     const found = row, kind = levels.kind;
-    const lines = stripeBoxLines(found, kind, this.#liqPrice(state), inTakes ? src.takesStanding() : src.standing(), kind === 'both' ? src.partStandings() : null, side => shown(found, side));
+    const lines = stripeBoxLines(found, kind, this.#liqPrice(state), inTakes ? src.takesStanding() : src.standing(), kind === 'both' ? src.partStandings() : null, side => shown(found, side),
+      inTakes ? lanes.takesWhose : lanes.whose);
     // The profitable traders' orders the view asks for are not on the server: said where a level is read, never drawn from everyone's.
     return src.ordersAbsent() ? [...lines, { text: ordersAbsent(), color: 'muted', wrap: true, rule: true }] : lines;
   }
 
-  /** What a row of a split's stops' lane holds under the pointer, for the hover box, from its own set (as `#liquidationLines` reads the levels' lane). */
-  #laneLines(state: AppState, set: LiqSet, drawn: LaneRows, y: number, ph: number, touch: boolean): InfoLine[] {
+  /**
+   * What a row of a split's right lane holds under the pointer, for the hover box, from its own set and the rows drawn of it (as
+   * `#liquidationLines` reads the levels' lane), its group named where `whose` gives one; measured from the price the levels' lane uses, else
+   * (no left levels held) Hyperliquid's as the set's own levels last saw it.
+   */
+  #laneLines(state: AppState, set: LiqSet, drawn: LaneRows, y: number, ph: number, touch: boolean, whose: string | null = null): InfoLine[] {
     const levels = set.levels, v = this.view, slop = touch ? 6 : 2;
     if (!levels || set.state !== 'ready') return [];
     const shown = (r: LiqRow, side: 'long' | 'short'): boolean => r[`${side}Left`] > 0 && drawn.heat(r[`${side}Left`]) > 0;
@@ -2397,9 +2415,8 @@ export class HeatPane {
       if (d < best) { best = d; row = r; }
     }
     if (!row) return [];
-    const found = row, kind = levels.kind;
-    const lines = stripeBoxLines(found, kind, this.#liqPrice(state), set.standing(), kind === 'both' ? set.partStandings() : null, side => shown(found, side));
-    return set.ordersAbsent() ? [...lines, { text: ordersAbsent(), color: 'muted', wrap: true, rule: true }] : lines;
+    const found = row, at = this.#liqPrice(state);
+    return setBoxLines(found, set, at > 0 ? at : this.hub.liqLevels.lastPriceOf(levels), side => shown(found, side), whose);
   }
 
   #paintLayers(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {

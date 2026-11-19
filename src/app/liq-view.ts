@@ -5,8 +5,9 @@
  * the profitable traders' liquidations, stops and take profits each come from files of their own, never everyone's under their name.
  *
  * A split (2026-11-19) draws the liquidation column as two sub-columns (`splitPair`): liquidations beside stops, or everyone beside the
- * profitable traders. Everywhere that draws one series (the Depth pane, its history, the stripe beside everyone's, a column too narrow to
- * split, a phone's strip) draws the left column's set (`effectiveView`): the page's one series.
+ * profitable traders. The stripe gives each column a lane of its own beside a drawn split (liq-split.ts `stripePlan`). Everywhere that draws
+ * one series (the Depth pane, its history, the stripe beside a column too narrow to split everyone beside the profitable traders, such a
+ * column itself, a phone's strip) draws the left column's set (`effectiveView`): the page's one series.
  */
 import { t } from './i18n.ts';
 import { plus } from './plus/pass.ts';
@@ -59,7 +60,8 @@ export const isFreeChoice = (v: LiqChoice): boolean => v.liq && !v.stops && !v.t
 
 /**
  * What is drawn as one series: the choice with Plus, the free view without it; under a split, the left column's set (`splitPair`), which the
- * Depth pane, the stripe beside everyone's and a column too narrow to split draw.
+ * Depth pane, a column too narrow to split and the stripe's left lane draw (its only lane beside such a column under everyone beside the
+ * profitable traders).
  */
 export function effectiveView(s: LiqChoice, plusOn: boolean): LiqView {
   if (!plusOn) return FREE_VIEW;
