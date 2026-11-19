@@ -1100,12 +1100,12 @@ test('a saved levels setting in the older form with a switch that is not a boole
  * A stand-in page for one pane in Node: elements that keep their classes, text and children, a 2D context that draws nothing, and the page's
  * timers held for the test to run, so a frame can be drawn without the second's tick (as the page does after a change of the setting).
  */
-function standInPage() {
+function standInPage(width = 390) {
   const g = globalThis as unknown as Record<string, unknown>, saved = { document: g.document, window: g.window, ResizeObserver: g.ResizeObserver };
   const ctx: unknown = new Proxy(function () { /* draws nothing */ }, { get: (_t, k) => k === Symbol.toPrimitive ? () => 0 : k === 'then' ? undefined : ctx, apply: () => ctx, set: () => true });
   class StandIn {
     children: (StandIn | string)[] = []; dataset: Record<string, string> = {}; style: Record<string, string> = {}; className = ''; hidden = false;
-    clientWidth = 390; clientHeight = 640; width = 0; height = 0;
+    clientWidth = width; clientHeight = 640; width = 0; height = 0;
     #text: string | null = null;
     constructor(readonly tagName: string) {}
     #classes(): string[] { return this.className.split(/\s+/).filter(Boolean); }
@@ -1125,7 +1125,7 @@ function standInPage() {
     closest(): null { return null; }
     querySelector(): null { return null; }
     getContext(): unknown { return ctx; }
-    getBoundingClientRect(): { top: number; left: number; width: number; height: number } { return { top: 0, left: 0, width: 390, height: 640 }; }
+    getBoundingClientRect(): { top: number; left: number; width: number; height: number } { return { top: 0, left: 0, width: this.clientWidth, height: 640 }; }
     setPointerCapture(): void { /* no pointer */ }
     /** The first element at or below this one holding every class of `names`. */
     find(names: string): StandIn | null {
@@ -1456,4 +1456,32 @@ test('an RFC 850 date, whose two-digit year names no century, is no Retry-After:
     at += 5 * MIN; src.ensure(BTC, () => {}, mine); await tick();
     assert.equal(stub.asks(U.triggersGroups), 2, 'asked again after the fallback');
   } finally { stub.restore(); }
+});
+
+test('the phone\'s Liq tab under a split: halves at a phone\'s width, named by the split; narrower, what the split falls back to, said in the foot', async () => {
+  for (const [width, split, title, sub, foot, long] of [
+    [390, 'kinds', 'Liq | Stops', 'Profitable traders · BTC · Hyperliquid', null, '$10'],
+    [300, 'kinds', 'Liq | Stops', 'Profitable traders · BTC · Hyperliquid', 'Too narrow to split: Liq + stops', '$20'],
+    [300, 'groups', 'Everyone | Profitable', 'Liquidation and stop levels · BTC · Hyperliquid', 'Too narrow to split: Everyone', '$200'],
+  ] as const) {
+    const page = standInPage(width), now = Date.now();
+    plus().accept({ key: 'standin-key-0123456789', pass: standInPass(now + 23 * 3_600_000), until: now + 20 * DAY_MS });
+    try {
+      const s = service({ [U.groups]: { status: 200, body: groups(NEAR.profitable.liq, null) }, [U.triggers]: { status: 200, body: triggers(NEAR.all.stops, NEAR.all.takes) },
+        [U.triggersGroups]: { status: 200, body: triggerGroups(NEAR.profitable.stops, NEAR.profitable.takes) } }, { value: 'v1.pass.sig' }, () => free(NEAR.all.liq));
+      const store = new Store(initialState());
+      store.set({ liqLevels: { ...store.state.liqLevels, liq: true, stops: true, takes: false, group: 'profitable', split } });
+      const pane = new LiqPane(page.parent as never, store, { liqLevels: s.src } as never);
+      pane.setShown(true);
+      for (let i = 0; i < 4; i++) { page.tick(); await tick(); }
+      page.frames();
+      const name = `${split} at ${width} px`;
+      assert.equal(page.text('liq-title'), title, name); assert.equal(page.text('liq-sub'), sub, name);
+      const said = page.text('liq-foot') ?? '';
+      if (foot) assert.ok(said.startsWith(`${foot} · `), `${name}: ${said}`); else assert.ok(!said.includes('Too narrow'), `${name}: ${said}`);
+      // The summary weighs what is drawn as one series: the left half (their liquidations), or the fallback (theirs added up; everyone's).
+      assert.equal(page.text('liq-usd long'), long, name);
+      pane.setShown(false);
+    } finally { plus().forget(); page.restore(); }
+  }
 });

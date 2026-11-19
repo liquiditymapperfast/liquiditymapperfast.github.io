@@ -32,6 +32,14 @@ export function splitPair(s: LiqChoice, plusOn: boolean): LiqPair | null {
   if (split === 'groups') return { split, left: { liq: s.liq, stops: s.stops, takes: s.takes, group: 'all' }, right: { liq: s.liq, stops: s.stops, takes: false, group: 'profitable' } };
   return null;
 }
+/**
+ * What a split draws where it has no room for its two columns (a narrow map, a narrow Liq tab): as with no split, liquidations and stops added
+ * up, for liquidations beside stops; everyone's chosen kinds for everyone beside the profitable traders (the saved Traders value is not
+ * drawn, nor written: it waits for the split to go back to none). Never anything that is switched on left out.
+ */
+export function narrowView(p: LiqPair): LiqView {
+  return p.split === 'kinds' ? { liq: true, stops: true, takes: p.left.takes, group: p.left.group } : p.left;
+}
 /** The same pair, the same key. */
 export const pairKey = (p: LiqPair | null): string => p ? `${p.split}|${viewKey(p.left)}|${viewKey(p.right)}` : '';
 

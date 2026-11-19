@@ -7,7 +7,8 @@ import { t } from './i18n.ts';
 import { clock, usd } from './format.ts';
 import type { LevelsKind, LiqLevelsSource } from './liq-levels.ts';
 import type { LiqFamily } from './liq-history.ts';
-import { curveOf, groupTitle, takesBeside, type LiqView } from './liq-view.ts';
+import { curveOf, groupName, groupTitle, kindName, kindTitle, takesBeside, type LiqPair, type LiqView } from './liq-view.ts';
+import type { LiqSplit } from './liq-url.ts';
 
 /** What a side of a set of levels is called. Take profits are held with their sides swapped: the long side is the take profits of shorts. */
 export function sideTitle(kind: LevelsKind, side: 'long' | 'short'): string {
@@ -137,3 +138,43 @@ export function liqNote(src: Pick<LiqLevelsSource, 'view' | 'takesState' | 'asOf
   }
   return parts.join(' · ');
 }
+
+/** A split's name on the column's button and the Liq tab's title: its left column | its right one. */
+export function splitName(split: Exclude<LiqSplit, 'none'>): string {
+  return split === 'kinds' ? t('Liq | Stops') : t('Everyone | Profitable');
+}
+/** A split's name in the levels control's Split choice. */
+export function splitChoiceName(split: LiqSplit): string {
+  return split === 'kinds' ? t('Liquidations | Stops') : split === 'groups' ? t('Everyone | Profitable') : t('None');
+}
+/** What heads each sub-column of a split: the kind (liquidations, stops), or whose levels they are (everyone, the profitable traders). */
+export function subNames(p: LiqPair): [string, string] {
+  return p.split === 'kinds' ? [kindName('liq'), kindName('stops')] : [groupName('all'), groupName('profitable')];
+}
+/**
+ * The levels control's live line under a split: what each column holds, then what both share ("Left: Liquidations · Right: Stops ·
+ * Profitable", "Left: Everyone · Right: Profitable · Curve: Liq + stops · TP bars on the left").
+ */
+export function pairSummary(p: LiqPair): string {
+  const [left, right] = subNames(p);
+  return [t('Left: {what}', { what: left }), t('Right: {what}', { what: right }),
+    ...(p.split === 'groups' ? [t('Curve: {what}', { what: kindName(curveOf(p.left)) })] : []),
+    ...(takesBeside(p.left) ? [t('TP bars on the left')] : []),
+    ...(p.split === 'kinds' && p.left.group !== 'all' ? [groupName(p.left.group)] : [])].join(' · ');
+}
+/** Everything a split draws, in words, for the button's tip and a screen reader. */
+export function pairDescription(p: LiqPair): string {
+  const left = p.split === 'kinds' ? kindTitle('liq') : groupTitle('all'), right = p.split === 'kinds' ? kindTitle('stops') : groupTitle('profitable');
+  return [t('Left column: {what}.', { what: left }), t('Right column: {what}.', { what: right }),
+    ...(p.split === 'groups' ? [t('Curve: {what}.', { what: kindTitle(curveOf(p.left)) })] : []),
+    ...(takesBeside(p.left) ? [t('Take-profit bars shown on the left.')] : []),
+    ...(p.split === 'kinds' ? [t('Traders: {who}.', { who: groupName(p.left.group) })] : [])].join(' ');
+}
+/**
+ * Said under the column's button (or on the Liq tab) when a split has no room for its two columns: that, and what is drawn instead
+ * ("Too narrow to split: Liq + stops"). Liquidations beside stops fall back to the two added up, as with no split; everyone beside the
+ * profitable traders to everyone's.
+ */
+export const narrowNote = (what: string): string => t('Too narrow to split: {what}', { what });
+/** The take profits' caption on the stripe under a split: whose they are. */
+export const takesOf = (group: LiqView['group']): string => `${t('Take profits')} · ${groupName(group)}`;

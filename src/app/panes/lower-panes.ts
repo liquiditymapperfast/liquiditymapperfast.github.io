@@ -24,7 +24,7 @@ import type { InfoLine } from '../infobox.ts';
 import { barAt, columnAt, depthCardLines, depthColumns, depthKey, liqCardLines, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
 import { LiqHistory, bandIndex, bandOnEdge, type LiqRow } from '../liq-history.ts';
 import { TAKE_DASH } from '../liq-levels.ts';
-import { curveOf, groupTitle, kindName, levelsDescription, liveView, viewKey, type LiqView } from '../liq-view.ts';
+import { curveOf, groupTitle, kindName, levelsDescription, liveSplit, liveView, viewKey, type LiqView } from '../liq-view.ts';
 import { toggleLevels } from '../levels-control.ts';
 import { ordersAbsent, readFailed } from '../liq-words.ts';
 import { wrapText } from '../text-fit.ts';
@@ -559,7 +559,9 @@ export class DepthPane extends TimePane {
     const view = liveView(this.store.state.liqLevels), caption = kindName(curveOf(view));
     this.#levelsButton.hidden = !liq;
     if (this.#levelsButton.textContent !== caption) this.#levelsButton.textContent = caption;
-    setTip(this.#levelsButton, `${levelsDescription(view)} ${t('Press to choose what the levels show.')}`);
+    // Under a split the pane keeps one series, the split's left column (`liveView`), and its tip says so.
+    const split = liveSplit(this.store.state.liqLevels) ? `${t('Under a split the Depth pane draws its left column.')} ` : '';
+    setTip(this.#levelsButton, `${split}${levelsDescription(view)} ${t('Press to choose what the levels show.')}`);
     // The depth sound and the venues are the order book's: they have nothing to say about liquidation levels.
     if (this.#bellLabel) this.#bellLabel.hidden = liq;
     this.#venues.root.hidden = liq; this.#venues.sync();

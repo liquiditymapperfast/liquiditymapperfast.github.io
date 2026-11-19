@@ -702,6 +702,8 @@ export interface LiqSet {
   asOfs(): { liq: number | null; orders: number | null };
   /** Whether its stop and take-profit orders are old enough to say so (see `LiqLevelsSource.ordersOld`). */
   ordersOld(): boolean;
+  /** Liquidations and stops apart while it adds them up (see `LiqParts`), else null. */
+  partStandings(): LiqParts | null;
 }
 
 /**
@@ -813,6 +815,7 @@ export class LiqLevelsSource implements LiqSet {
       blame: () => blame,
       asOfs: () => this.#asOfsOf(v),
       ordersOld: () => this.#ordersOldOf(v),
+      partStandings: () => { const main = layer(); return main instanceof SumLayer ? { liq: main.a.derive(this.candles).standing, stops: main.b.derive(this.candles).standing } : null; },
     };
   }
 

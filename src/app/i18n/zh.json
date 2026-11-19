@@ -3263,5 +3263,17 @@
  "Liquidations, stops and take profits as three separate layers": "强平、止损和止盈：三个独立的图层",
  "Everyone and profitable traders: liquidation and stop levels at each price, on one dollar scale": "全部与盈利交易者：每个价格上的强平与止损价位，同一美元刻度",
  "Play again": "重新播放",
- "With Plus, the button at the top of the liquidation column opens the Levels control (the Liq levels panel, the Depth pane's levels button and the phone's Liq tab title open the same one): three switches, liquidations, stops and take profits, any of them together and one always on, and whose levels they are, everyone's or the profitable traders': the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit. Take profits are always dashed: beside the others a lane of their own next to the newest candle and bars from the column's right edge, on alone a curve of their own. Where the profitable traders' stops and take profits are not on the server yet, the page says they are not available yet and draws nothing in their place. The Depth pane's history follows the same choice.": "有了 Plus，强平栏顶部的按钮会打开价位窗口（强平价位面板、深度面板的价位按钮和手机上“强平”标签页的标题也会打开同一个窗口）：三个开关，即强平、止损和止盈，可以任意组合，并且总有一个开启；还可以选择显示谁的价位：所有人的，或盈利交易者的，即 HyperTracker 认定为盈利的钱包，也就是其永续合约历史总盈利为正的四个群组。止盈始终为虚线：与其他一起显示时，是最新K线旁单独的一条和从这一栏右边缘画出的柱；只开启止盈时，是一条单独的曲线。盈利交易者的止损和止盈还不在服务器上时，页面会说明它们尚不可用，并且不会在原处画出任何内容。深度面板的历史也跟随同一选择。"
+ "With Plus, the button at the top of the liquidation column opens the Levels control (the Liq levels panel, the Depth pane's levels button and the phone's Liq tab title open the same one): three switches, liquidations, stops and take profits, any of them together and one always on, and whose levels they are, everyone's or the profitable traders': the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit. Take profits are always dashed: beside the others a lane of their own next to the newest candle and bars from the column's right edge, on alone a curve of their own. Where the profitable traders' stops and take profits are not on the server yet, the page says they are not available yet and draws nothing in their place. The Depth pane's history follows the same choice.": "有了 Plus，强平栏顶部的按钮会打开价位窗口（强平价位面板、深度面板的价位按钮和手机上“强平”标签页的标题也会打开同一个窗口）：三个开关，即强平、止损和止盈，可以任意组合，并且总有一个开启；还可以选择显示谁的价位：所有人的，或盈利交易者的，即 HyperTracker 认定为盈利的钱包，也就是其永续合约历史总盈利为正的四个群组。止盈始终为虚线：与其他一起显示时，是最新K线旁单独的一条和从这一栏右边缘画出的柱；只开启止盈时，是一条单独的曲线。盈利交易者的止损和止盈还不在服务器上时，页面会说明它们尚不可用，并且不会在原处画出任何内容。深度面板的历史也跟随同一选择。",
+ "Split": "拆分",
+ "Liq | Stops": "强平 | 止损",
+ "Everyone | Profitable": "全部 | 盈利",
+ "Liquidations | Stops": "强平 | 止损",
+ "Left: {what}": "左：{what}",
+ "Right: {what}": "右：{what}",
+ "TP bars on the left": "止盈柱在左侧",
+ "Left column: {what}.": "左栏：{what}。",
+ "Right column: {what}.": "右栏：{what}。",
+ "Take-profit bars shown on the left.": "止盈柱显示在左侧。",
+ "Too narrow to split: {what}": "太窄，无法拆分：{what}",
+ "Under a split the Depth pane draws its left column.": "拆分时，深度面板显示左栏。"
 }

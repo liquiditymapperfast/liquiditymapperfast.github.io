@@ -1,0 +1,104 @@
+/**
+ * The liquidation column split in two (Plus, 2026-11-19; `LiqSplit` in liq-url.ts, the pair of views in liq-view.ts `splitPair`): where the
+ * two sub-columns go, when there is room for them, their scales, and the stripe's lanes and captions. Pure, so the painters
+ * (panes/heat-pane.ts, panes/liq-pane.ts) only call what the tests hold.
+ */
+import type { Lane } from './liq-levels.ts';
+import { wrapText } from './text-fit.ts';
+
+/**
+ * A sub-column's width on the map, and the split column's (two of them, the divider inside). The column is 128 px unsplit; two readable
+ * sub-columns need about 90 px each, and at 100 a sub-column holds "LEVEL MAX $123.4M" on one line in English.
+ */
+export const SPLIT_SUB_W = 100;
+export const SPLIT_COLUMN_W = 2 * SPLIT_SUB_W;
+
+/**
+ * Whether a map pane has room for the split column: the plot it leaves with the unsplit column (`plot`, `columnW` that column's width) keeps
+ * at least `floor` once the column widens to `SPLIT_COLUMN_W`. The floor is the plot a desktop keeps before its side columns fold
+ * (`MAP_PLOT_FLOOR`): a split that fits never folds one, and one that does not fit draws the column unsplit, with a note.
+ */
+export function splitFits(plot: number, columnW: number, floor: number): boolean {
+  return Number.isFinite(plot) && plot - (SPLIT_COLUMN_W - columnW) >= floor;
+}
+
+/** A sub-column: its left edge and width. */
+export interface Sub { x0: number; w: number }
+/** The two sub-columns of a column [x0, x0 + W): the left half and the right half (the right one's first pixel is the divider). */
+export function subColumns(x0: number, W: number): [Sub, Sub] {
+  const half = Math.floor(W / 2);
+  return [{ x0, w: half }, { x0: x0 + half, w: W - half }];
+}
+
+/** What a sub-column's bars and curve are measured against: its largest row, and the most its curve reaches. */
+export interface SubScale { maxLevel: number; maxCum: number }
+/**
+ * The scales the two sub-columns draw on: one shared scale (liquidations beside stops: both are dollars of the same traders, so a bar
+ * compares across the divider), or each its own (everyone beside the profitable traders: everyone's are many times larger, and on one scale
+ * the profitable traders' would be a few pixels). Never below 1, so nothing divides by zero.
+ */
+export function splitScales(left: SubScale, right: SubScale, shared: boolean): [SubScale, SubScale] {
+  const floor = (s: SubScale): SubScale => ({ maxLevel: Math.max(1, s.maxLevel), maxCum: Math.max(1, s.maxCum) });
+  if (!shared) return [floor(left), floor(right)];
+  const one = floor({ maxLevel: Math.max(left.maxLevel, right.maxLevel), maxCum: Math.max(left.maxCum, right.maxCum) });
+  return [one, one];
+}
+
+/**
+ * The stripe's lanes for liquidations beside stops, between the live edge `x0` and the plot's right edge: the take profits' lane by the live
+ * edge where they show (three tenths of the stripe), then liquidations, then stops beside the column, 2 px apart, in the column's order.
+ */
+export function kindLanes(x0: number, right: number, takes: boolean): { takes: Lane | null; liq: Lane; stops: Lane } {
+  const w = Math.max(0, right - x0), tw = takes ? (w >= 30 ? Math.round(w * 0.3) : Math.floor(w / 3)) : 0;
+  const t = takes ? { x0, x1: x0 + tw } : null, from = Math.min(right, takes ? x0 + tw + 2 : x0), rest = Math.max(0, right - from), half = Math.floor((rest - 2) / 2);
+  return { takes: t, liq: { x0: from, x1: Math.min(right, from + Math.max(0, half)) }, stops: { x0: Math.min(right, from + Math.max(0, half) + 2), x1: right } };
+}
+
+/**
+ * Where captions go when several share the stripe's top: each at its own place (`x`, `w`), at `top`, moved down a row (`h`) while it would
+ * overlap one already placed (with `gap` px between plates). Returns each caption's top, in the order given.
+ */
+export function stackCaptions(items: readonly { x: number; w: number }[], top: number, h: number, gap = 2): number[] {
+  const placed: { x0: number; x1: number; y: number }[] = [];
+  return items.map(({ x, w }) => {
+    let y = top;
+    while (placed.some(p => p.y === y && x < p.x1 + gap && x + w > p.x0 - gap)) y += h + gap;
+    placed.push({ x0: x, x1: x + w, y });
+    return y;
+  });
+}
+
+/**
+ * Whether the phone's Liq tab has room to split its ladder: two halves of at least `LADDER_SUB_MIN` px beside the price axis (a half holds a
+ * milestone's "−2.5 % $123.4M" and the largest level's label).
+ */
+export const LADDER_SUB_MIN = 120;
+export const ladderSplitFits = (plotW: number): boolean => plotW >= 2 * LADDER_SUB_MIN + 8;
+
+/**
+ * The liquidation column's width (px): none where it is not shown, the strip on a compact map, the split column where a split is drawn and
+ * the plot the unsplit column leaves (`plotUnsplit`, with `column` px for it) keeps `floor` once the column widens (`splitFits`: a split
+ * never folds a side column), else the column. One rule for the frame's own width (heat-pane's `liqColumnW`) and for the layout's question
+ * about a width it could give the map (`gutterAt`), so the two never disagree.
+ */
+export function liqColumnWidth(o: { shown: boolean; compact: boolean; strip: number; column: number; split: boolean; plotUnsplit: number; floor: number }): number {
+  if (!o.shown) return 0;
+  if (o.compact) return o.strip;
+  return o.split && splitFits(o.plotUnsplit, o.column, o.floor) ? SPLIT_COLUMN_W : o.column;
+}
+
+/**
+ * The heading of a split column, as lines fitted to the room by `measure`: each sub-column's caption (what it shows) and, where each has a
+ * scale of its own (everyone beside the profitable traders), its LEVEL MAX and CUM MAX under it, in its own `subRoom`; where the two share one
+ * scale (liquidations beside stops), the two maxima once, across the column (`wholeRoom`). A line that does not fit wraps under itself (at
+ * most two lines), never cut short: every column is captioned with exactly what it shows. `rows` is how many lines the heading takes.
+ */
+export function splitHeads(measure: (text: string) => number, o: { captions: [string, string]; maxima: [[string, string], [string, string]] | [string, string]; shared: boolean; subRoom: number; wholeRoom: number }):
+  { subs: [{ caption: string[]; scale: string[] }, { caption: string[]; scale: string[] }]; across: string[]; rows: number } {
+  const wrap = (text: string, room: number): string[] => wrapText(measure, text, room, 2);
+  const per = (i: 0 | 1): { caption: string[]; scale: string[] } => ({ caption: wrap(o.captions[i], o.subRoom), scale: o.shared ? [] : (o.maxima as [[string, string], [string, string]])[i].flatMap(line => wrap(line, o.subRoom)) });
+  const subs: [{ caption: string[]; scale: string[] }, { caption: string[]; scale: string[] }] = [per(0), per(1)];
+  const across = o.shared ? (o.maxima as [string, string]).flatMap(line => wrap(line, o.wholeRoom)) : [];
+  const tall = (sub: { caption: string[]; scale: string[] }): number => sub.caption.length + sub.scale.length;
+  return { subs, across, rows: Math.max(tall(subs[0]), tall(subs[1])) + across.length };
+}

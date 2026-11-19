@@ -3263,5 +3263,17 @@
  "Liquidations, stops and take profits as three separate layers": "清算、ストップ、利益確定を3つの別々のレイヤーで",
  "Everyone and profitable traders: liquidation and stop levels at each price, on one dollar scale": "全員と黒字のトレーダー：各価格の清算とストップのレベルを、同じドルの目盛りで",
  "Play again": "もう一度再生",
- "With Plus, the button at the top of the liquidation column opens the Levels control (the Liq levels panel, the Depth pane's levels button and the phone's Liq tab title open the same one): three switches, liquidations, stops and take profits, any of them together and one always on, and whose levels they are, everyone's or the profitable traders': the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit. Take profits are always dashed: beside the others a lane of their own next to the newest candle and bars from the column's right edge, on alone a curve of their own. Where the profitable traders' stops and take profits are not on the server yet, the page says they are not available yet and draws nothing in their place. The Depth pane's history follows the same choice.": "Plus があれば、清算レベル列の上部のボタンでレベルウィンドウが開きます（清算レベルのパネル、デプスパネルのレベルボタン、スマートフォンの清算タブのタイトルからも同じウィンドウが開きます）。清算、ストップ、利益確定の 3 つのスイッチがあり、どれを組み合わせてもよく、常に 1 つはオンです。誰のレベルかも選べます。全員か、黒字のトレーダーです。HyperTracker が黒字と数えるウォレット、つまり全期間のパーペチュアル損益がプラスの 4 つのコホートです。利益確定は常に破線です。ほかと並べると最新のローソク足の隣の専用レーンと列の右端から伸びるバーで、利益確定だけをオンにすると専用の曲線で表示されます。黒字のトレーダーのストップと利益確定がまだサーバーにない場合は、まだ利用できないと表示され、代わりに何かを描くことはありません。デプスパネルの履歴も同じ選択に従います。"
+ "With Plus, the button at the top of the liquidation column opens the Levels control (the Liq levels panel, the Depth pane's levels button and the phone's Liq tab title open the same one): three switches, liquidations, stops and take profits, any of them together and one always on, and whose levels they are, everyone's or the profitable traders': the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit. Take profits are always dashed: beside the others a lane of their own next to the newest candle and bars from the column's right edge, on alone a curve of their own. Where the profitable traders' stops and take profits are not on the server yet, the page says they are not available yet and draws nothing in their place. The Depth pane's history follows the same choice.": "Plus があれば、清算レベル列の上部のボタンでレベルウィンドウが開きます（清算レベルのパネル、デプスパネルのレベルボタン、スマートフォンの清算タブのタイトルからも同じウィンドウが開きます）。清算、ストップ、利益確定の 3 つのスイッチがあり、どれを組み合わせてもよく、常に 1 つはオンです。誰のレベルかも選べます。全員か、黒字のトレーダーです。HyperTracker が黒字と数えるウォレット、つまり全期間のパーペチュアル損益がプラスの 4 つのコホートです。利益確定は常に破線です。ほかと並べると最新のローソク足の隣の専用レーンと列の右端から伸びるバーで、利益確定だけをオンにすると専用の曲線で表示されます。黒字のトレーダーのストップと利益確定がまだサーバーにない場合は、まだ利用できないと表示され、代わりに何かを描くことはありません。デプスパネルの履歴も同じ選択に従います。",
+ "Split": "分割",
+ "Liq | Stops": "清算 | ストップ",
+ "Everyone | Profitable": "全員 | 黒字",
+ "Liquidations | Stops": "清算 | ストップ",
+ "Left: {what}": "左：{what}",
+ "Right: {what}": "右：{what}",
+ "TP bars on the left": "利益確定バーは左",
+ "Left column: {what}.": "左の列：{what}。",
+ "Right column: {what}.": "右の列：{what}。",
+ "Take-profit bars shown on the left.": "利益確定のバーを左に表示中。",
+ "Too narrow to split: {what}": "狭すぎて分割できません：{what}",
+ "Under a split the Depth pane draws its left column.": "分割中、デプスパネルには左の列が表示されます。"
 }

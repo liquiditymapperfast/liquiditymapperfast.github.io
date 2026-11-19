@@ -2,7 +2,9 @@
  * The levels control (Karl, 2026-11-19, built as the Plus prototype's): what the levels show, as one component in three places: a popover
  * under the liquidation column's button (and the Depth pane's levels button, and the phone's Liq tab title on a wide screen), a bottom sheet
  * on a phone (under 768 px), and the Liq levels panel. Inside it: three switches (liquidations, stops, take profits; one always stays on),
- * Traders (everyone or the profitable traders, radios), a live line saying what the curve adds up, and "How levels work". A change applies at
+ * Split (none, liquidations beside stops, or everyone beside the profitable traders, radios), Traders (everyone or the profitable traders,
+ * radios, hidden while everyone stands beside the profitable traders), a live line saying what the curve adds up or what each column of a
+ * split holds, and "How levels work". A change applies at
  * once. Without Plus the paid choices carry a lock and open the Plus panel, changing nothing; the free choices (liquidations, everyone) work.
  * A labelled dialog, not a menu: switches are switches, Traders are radios with arrow keys, Escape closes and gives the focus back.
  */
@@ -13,9 +15,9 @@ import { setTip } from './tip.ts';
 import { togglePlus } from './plus/panel.ts';
 import { plus } from './plus/pass.ts';
 import { PLUS_NAME } from './plus/name.ts';
-import { LIQ_GROUPS, LIQ_PARTS, type LiqGroup, type LiqLevelSettings, type LiqPart } from './liq-url.ts';
-import { FREE_VIEW, groupName, heldBack, kindName, levelsSummary, plusOn, type LiqChoice } from './liq-view.ts';
-import { curveSentence } from './liq-words.ts';
+import { LIQ_GROUPS, LIQ_PARTS, LIQ_SPLITS, splitFor, type LiqGroup, type LiqLevelSettings, type LiqPart, type LiqSplit } from './liq-url.ts';
+import { FREE_VIEW, groupName, heldBack, kindName, levelsSummary, plusOn, splitPair, type LiqChoice } from './liq-view.ts';
+import { curveSentence, pairSummary, splitChoiceName } from './liq-words.ts';
 
 /** Under this width the control is a bottom sheet; at it and above, a popover. */
 export const SHEET_BELOW = 768;
@@ -38,6 +40,20 @@ export function pressPart(s: LiqChoice, part: LiqPart, member: boolean): { chang
   const shown = shownChoice(s, member), on = !shown[part], next = { liq: shown.liq, stops: shown.stops, takes: shown.takes }, change: Partial<LiqLevelSettings> = {};
   next[part] = on; change[part] = on;
   return next.liq || next.stops || next.takes ? { change } : 'last';
+}
+/** The split the control shows: the saved one where its kinds allow it, with Plus; none without (nothing is split for a visitor). */
+export const shownSplit = (s: LiqChoice, member: boolean): LiqSplit => member ? splitFor(s.split ?? 'none', s) : 'none';
+/**
+ * What pressing a Split choice does: a change, or the presentation of Plus (a split without Plus: nothing changes). Liquidations beside stops
+ * turns both kinds on (switching either off later returns it to none: `readLiqLevels`); everyone beside the profitable traders needs one of
+ * the two, so with neither on (take profits alone) liquidations come on. The Traders choice is never written: it waits, hidden, for the split
+ * to go back to none.
+ */
+export function pressSplit(s: LiqChoice, split: LiqSplit, member: boolean): { change: Partial<LiqLevelSettings> } | 'plus' {
+  if (!member && split !== 'none') return 'plus';
+  if (split === 'kinds') return { change: { split, liq: true, stops: true } };
+  if (split === 'groups') return { change: { split, ...(!s.liq && !s.stops ? { liq: true } : {}) } };
+  return { change: { split: 'none' } };
 }
 /** What pressing a group does: a change (the group is every kind's), or the Plus panel (the profitable traders without Plus). */
 export function pressGroup(_s: LiqChoice, group: LiqGroup, member: boolean): { change: Partial<LiqLevelSettings> } | 'plus' {
@@ -117,7 +133,7 @@ export function appLevels(store: Store): LevelsModel {
 
 export function createLevelsControl(source: Store | LevelsModel, o: LevelsOptions): LevelsControl {
   const model: LevelsModel = 'get' in source ? source : appLevels(source);
-  const id = `lv${++uid}`, headId = `${id}h`, tradersId = `${id}t`, howId = `${id}w`;
+  const id = `lv${++uid}`, headId = `${id}h`, tradersId = `${id}t`, howId = `${id}w`, splitId = `${id}s`;
   const set = (change: Partial<LiqLevelSettings>): void => { model.set(change); };
   const rows = new Map<LiqPart, { b: HTMLButtonElement; sw: HTMLElement; lock: HTMLElement | null; label: string }>();
   const rowsEl = el('div', { class: 'lv-rows', role: 'group' });
@@ -163,6 +179,32 @@ export function createLevelsControl(source: Store | LevelsModel, o: LevelsOption
     });
     seg.append(r); radios.set(group, r);
   }
+  // Split: three choices in a column (their names are long in some languages), the two splits Plus's.
+  const splitList = el('div', { class: 'lv-split' });
+  splitList.setAttribute('aria-labelledby', splitId);
+  const splits = new Map<LiqSplit, HTMLButtonElement>();
+  for (const split of LIQ_SPLITS) {
+    const lock = split !== 'none' ? el('span', { class: 'plus-tag locked lv-lock', textContent: PLUS_NAME, hidden: true }) : null;
+    const b = el('button', { type: 'button', class: 'lv-opt' }, el('span', { class: 'lv-dot', ariaHidden: 'true' }), el('span', { class: 'lv-opt-label', textContent: splitChoiceName(split) }), ...(lock ? [lock] : []));
+    b.dataset.split = split; b.dataset.focus = `lv-split-${split}`;
+    b.addEventListener('click', () => {
+      const p = pressSplit(model.get(), split, model.member());
+      if (p === 'plus') o.locked(b);
+      else set(p.change);
+    });
+    // Arrow keys move the choice (a radio group: one tab stop), where the splits can be chosen.
+    b.addEventListener('keydown', event => {
+      const key = event.key, at = LIQ_SPLITS.indexOf(split), n = LIQ_SPLITS.length;
+      const to = key === 'ArrowDown' || key === 'ArrowRight' ? (at + 1) % n : key === 'ArrowUp' || key === 'ArrowLeft' ? (at + n - 1) % n : key === 'Home' ? 0 : key === 'End' ? n - 1 : -1;
+      if (to < 0 || splitList.getAttribute('role') !== 'radiogroup') return;
+      event.preventDefault();
+      const next = LIQ_SPLITS[to]!, p = pressSplit(model.get(), next, model.member());
+      if (typeof p === 'object') { set(p.change); splits.get(next)?.focus(); }
+    });
+    splitList.append(b); splits.set(split, b);
+  }
+  const splitSec = o.hideSplit ? null : el('div', { class: 'lv-sec' }, el('p', { class: 'lv-sub', id: splitId, textContent: t('Split') }), splitList);
+  const tradersSec = el('div', { class: 'lv-sec' }, el('p', { class: 'lv-sub', id: tradersId, textContent: t('Traders') }), seg);
   const sum = el('p', { class: 'lv-sum' });
   sum.setAttribute('aria-live', 'polite');
   const kept = el('p', { class: 'lv-kept', textContent: t('Without Plus the page shows liquidations of all traders. Your choice is kept and comes back with Plus.'), hidden: true });
@@ -177,7 +219,8 @@ export function createLevelsControl(source: Store | LevelsModel, o: LevelsOption
   const root = el('div', { class: 'lv' },
     el('div', { class: 'lv-head' }, el('h3', { id: headId, textContent: t('Levels') }), ...(closeButton ? [closeButton] : [])),
     rowsEl,
-    el('div', { class: 'lv-sec' }, el('p', { class: 'lv-sub', id: tradersId, textContent: t('Traders') }), seg),
+    ...(splitSec ? [splitSec] : []),
+    tradersSec,
     el('div', { class: 'lv-foot' }, sum, kept, flash, how, howText));
 
   const sync = (): void => {
@@ -202,7 +245,20 @@ export function createLevelsControl(source: Store | LevelsModel, o: LevelsOption
       else { r.removeAttribute('role'); r.removeAttribute('aria-checked'); r.setAttribute('aria-pressed', String(chosen)); r.tabIndex = 0; }
       if (locked) r.setAttribute('aria-label', t('{name}, Plus required', { name: groupName(group) })); else r.removeAttribute('aria-label');
     }
-    const text = levelsSummary(member ? s : FREE_VIEW);
+    // The split: one of three, the two splits locked without Plus; while everyone stands beside the profitable traders, Traders has no say.
+    const split = o.hideSplit ? 'none' : shownSplit(saved, member);
+    splitList.setAttribute('role', member ? 'radiogroup' : 'group');
+    for (const [k, b] of splits) {
+      const chosen = split === k, locked = !member && k !== 'none', lock = b.querySelector<HTMLElement>('.lv-lock');
+      if (lock) lock.hidden = !locked;
+      b.classList.toggle('locked', locked); b.classList.toggle('sel', chosen);
+      if (member) { b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(chosen)); b.removeAttribute('aria-pressed'); b.tabIndex = chosen ? 0 : -1; }
+      else { b.removeAttribute('role'); b.removeAttribute('aria-checked'); b.setAttribute('aria-pressed', String(chosen)); b.tabIndex = 0; }
+      if (locked) b.setAttribute('aria-label', t('{name}, Plus required', { name: splitChoiceName(k) })); else b.removeAttribute('aria-label');
+    }
+    tradersSec.hidden = split === 'groups';
+    const pair = split !== 'none' ? splitPair(saved, true) : null;
+    const text = pair ? pairSummary(pair) : levelsSummary(member ? s : FREE_VIEW);
     if (sum.textContent !== text) sum.textContent = text;
     kept.hidden = !heldBack(saved, member);
   };

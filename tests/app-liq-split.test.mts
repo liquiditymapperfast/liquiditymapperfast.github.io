@@ -1,0 +1,196 @@
+// Split (Plus, 2026-11-19): the liquidation column as two sub-columns, liquidations beside stops on one scale or everyone beside the
+// profitable traders each on its own; the room it needs and what it falls back to; the stripe's lanes and captions; the levels control's
+// Split choice; and the words.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { LADDER_SUB_MIN, SPLIT_COLUMN_W, SPLIT_SUB_W, kindLanes, ladderSplitFits, liqColumnWidth, splitFits, splitHeads, splitScales, stackCaptions, subColumns } from '../src/app/liq-split.ts';
+import { MAP_PLOT_FLOOR } from '../src/app/layouts/dock-model.ts';
+import { readLiqLevels } from '../src/app/liq-url.ts';
+import { FREE_VIEW, narrowView, splitPair } from '../src/app/liq-view.ts';
+import { narrowNote, pairDescription, pairSummary, splitChoiceName, splitName, subNames, takesOf } from '../src/app/liq-words.ts';
+import { createLevelsControl, pressSplit, shownSplit, type LevelsModel } from '../src/app/levels-control.ts';
+import { Store, initialState, type AppState } from '../src/app/store.ts';
+import { gutter, gutterAt, leftGutter, liqSplitDrawn, setCompactGutters } from '../src/app/panes/heat-pane.ts';
+import { plus } from '../src/app/plus/pass.ts';
+import type { LiqLevelSettings } from '../src/app/liq-url.ts';
+import { FakeElement, FakePage } from './fake-dom.mts';
+
+const DAY = 86_400_000;
+const standInPass = (exp: number): string => `v1.${Buffer.from(JSON.stringify({ sub: 'standin', exp })).toString('base64url')}.sig`;
+/** Plus on for the length of `run` (the page's shared membership, held in memory in Node). */
+function withPlus<T>(run: () => T): T {
+  const now = Date.now();
+  plus().accept({ key: 'standin-key-0123456789', pass: standInPass(now + 23 * 3_600_000), until: now + 20 * DAY });
+  try { return run(); } finally { plus().forget(); }
+}
+const measure = (text: string): number => text.length * 6;
+
+test('a split column is two 100 px sub-columns; it is drawn only where the plot keeps the desktop\'s floor, never on a compact map', () => {
+  assert.equal(SPLIT_COLUMN_W, 2 * SPLIT_SUB_W);
+  assert.ok(SPLIT_SUB_W >= 90, 'two readable sub-columns: about 90 px each at least');
+  const base = { shown: true, compact: false, strip: 16, column: 128, split: true, floor: MAP_PLOT_FLOOR };
+  // The plot the unsplit column leaves must keep the floor once the column grows by 72 px.
+  assert.equal(liqColumnWidth({ ...base, plotUnsplit: MAP_PLOT_FLOOR + 72 }), SPLIT_COLUMN_W, 'just room: split');
+  assert.equal(liqColumnWidth({ ...base, plotUnsplit: MAP_PLOT_FLOOR + 71 }), 128, 'a pixel short: the column stays one');
+  assert.equal(liqColumnWidth({ ...base, plotUnsplit: Infinity }), 128, 'a pane not laid out yet: one column');
+  assert.equal(liqColumnWidth({ ...base, split: false, plotUnsplit: 5_000 }), 128, 'no split: one column');
+  assert.equal(liqColumnWidth({ ...base, compact: true, plotUnsplit: 5_000 }), 16, 'a compact map keeps its strip');
+  assert.equal(liqColumnWidth({ ...base, shown: false, plotUnsplit: 5_000 }), 0);
+  assert.equal(splitFits(MAP_PLOT_FLOOR + 72, 128, MAP_PLOT_FLOOR), true); assert.equal(splitFits(NaN, 128, MAP_PLOT_FLOOR), false);
+  assert.deepEqual(subColumns(400, SPLIT_COLUMN_W), [{ x0: 400, w: 100 }, { x0: 500, w: 100 }]);
+  // The phone's Liq tab splits its ladder in halves of at least LADDER_SUB_MIN.
+  assert.equal(ladderSplitFits(2 * LADDER_SUB_MIN + 8), true); assert.equal(ladderSplitFits(2 * LADDER_SUB_MIN + 7), false);
+});
+
+test('liquidations beside stops share one scale (a bar compares across the divider); everyone beside the profitable traders each its own', () => {
+  const everyone = { maxLevel: 40e6, maxCum: 400e6 }, profitable = { maxLevel: 2e6, maxCum: 9e6 };
+  assert.deepEqual(splitScales(everyone, profitable, false), [everyone, profitable], 'own scales: the profitable traders\' bars are not a few pixels');
+  assert.deepEqual(splitScales(everyone, profitable, true), [everyone, everyone], 'shared: the larger of each');
+  assert.deepEqual(splitScales({ maxLevel: 0, maxCum: 0 }, { maxLevel: 0, maxCum: 0 }, false), [{ maxLevel: 1, maxCum: 1 }, { maxLevel: 1, maxCum: 1 }], 'never divided by zero');
+});
+
+test('the split column\'s heading: each caption over its column, the maxima under each where they have their own scale, once across where shared; nothing cut', () => {
+  const kinds = splitHeads(measure, { captions: ['Liquidations', 'Stops'], shared: true, subRoom: 89, wholeRoom: 189, maxima: ['LEVEL MAX $12.3M', 'CUM MAX $120.0M'] });
+  assert.deepEqual(kinds.subs.map(s => s.scale), [[], []], 'shared: no scale per column');
+  assert.deepEqual(kinds.across, ['LEVEL MAX $12.3M', 'CUM MAX $120.0M']);
+  assert.equal(kinds.rows, 1 + 2);
+  const groups = splitHeads(measure, { captions: ['Everyone', 'Profitable'], shared: false, subRoom: 89, wholeRoom: 189,
+    maxima: [['LEVEL MAX $12.3M', 'CUM MAX $120.0M'], ['LEVEL MAX $1.2M', 'CUM MAX $9.0M']] });
+  assert.deepEqual(groups.across, []);
+  // At 6 px a letter "LEVEL MAX $12.3M" (96 px) does not fit 89 px: it wraps under itself, the value whole on the next line.
+  assert.deepEqual(groups.subs[0].scale, ['LEVEL MAX', '$12.3M', 'CUM MAX', '$120.0M']);
+  assert.deepEqual(groups.subs[1].scale, ['LEVEL MAX', '$1.2M', 'CUM MAX $9.0M']);
+  assert.equal(groups.rows, 1 + 4);
+  for (const line of [...groups.subs.flatMap(s => [...s.caption, ...s.scale]), ...kinds.across]) assert.ok(!line.includes('…'), `never cut: ${line}`);
+});
+
+test('the stripe\'s lanes for liquidations beside stops: the take profits by the live edge, then liquidations, then stops beside the column; captions never overlap', () => {
+  const lanes = kindLanes(100, 400, true);
+  assert.ok(lanes.takes && lanes.takes.x0 === 100 && lanes.takes.x1 === 190, 'three tenths for the take profits');
+  assert.ok(lanes.liq.x0 === 192 && lanes.liq.x1 <= lanes.stops.x0 - 2 && lanes.stops.x1 === 400, 'liquidations, 2 px, stops to the column');
+  const none = kindLanes(100, 400, false);
+  assert.equal(none.takes, null); assert.equal(none.liq.x0, 100); assert.equal(none.stops.x1, 400);
+  const narrow = kindLanes(380, 400, true);
+  for (const l of [narrow.takes!, narrow.liq, narrow.stops]) assert.ok(l.x1 >= l.x0 && l.x0 >= 380 && l.x1 <= 400, 'never outside the stripe');
+  // Three plates where two would overlap: the second goes a row down, the third stays up where it is clear.
+  assert.deepEqual(stackCaptions([{ x: 10, w: 80 }, { x: 60, w: 80 }, { x: 200, w: 50 }], 6, 15), [6, 23, 6]);
+});
+
+test('too narrow to split: liquidations beside stops fall back to the two added up, everyone beside the profitable traders to everyone\'s; Traders never written', () => {
+  const kinds = splitPair(readLiqLevels({ liq: true, stops: true, takes: true, group: 'profitable', split: 'kinds' }), true)!;
+  assert.deepEqual(narrowView(kinds), { liq: true, stops: true, takes: true, group: 'profitable' }, 'nothing switched on disappears');
+  const groups = splitPair(readLiqLevels({ liq: true, stops: false, takes: false, group: 'profitable', split: 'groups' }), true)!;
+  assert.deepEqual(narrowView(groups), { liq: true, stops: false, takes: false, group: 'all' }, 'everyone\'s, derived: the saved group stays profitable');
+  assert.equal(narrowNote('Liq + stops'), 'Too narrow to split: Liq + stops');
+});
+
+test('the Split choice: liquidations beside stops turns both kinds on, everyone beside the profitable traders turns liquidations on only where neither is, and none is none', () => {
+  const s = { liq: true, stops: false, takes: true, group: 'profitable' as const };
+  assert.deepEqual(pressSplit(s, 'kinds', true), { change: { split: 'kinds', liq: true, stops: true } });
+  assert.deepEqual(pressSplit(s, 'groups', true), { change: { split: 'groups' } }, 'no Traders written, no kind changed');
+  assert.deepEqual(pressSplit({ liq: false, stops: false, takes: true, group: 'all' }, 'groups', true), { change: { split: 'groups', liq: true } }, 'take profits alone: liquidations come on');
+  assert.deepEqual(pressSplit(s, 'none', true), { change: { split: 'none' } });
+  assert.equal(pressSplit(s, 'kinds', false), 'plus'); assert.equal(pressSplit(s, 'groups', false), 'plus');
+  assert.deepEqual(pressSplit(s, 'none', false), { change: { split: 'none' } }, 'none is free');
+  assert.equal(shownSplit({ ...s, split: 'groups' }, true), 'groups'); assert.equal(shownSplit({ ...s, split: 'groups' }, false), 'none', 'nothing split for a visitor');
+  assert.equal(shownSplit({ ...s, split: 'kinds' }, true), 'none', 'liquidations beside stops with stops off is none');
+  // Through the page's store every write is read: a kind switched off returns the split to none, the group untouched by a split.
+  const store = new Store(initialState());
+  store.set({ liqLevels: { ...store.state.liqLevels, group: 'profitable' } });
+  store.set({ liqLevels: { ...store.state.liqLevels, ...(pressSplit(store.state.liqLevels, 'groups', true) as { change: Partial<LiqLevelSettings> }).change } });
+  assert.equal(store.state.liqLevels.split, 'groups'); assert.equal(store.state.liqLevels.group, 'profitable', 'Traders kept for when the split goes');
+  store.set({ liqLevels: { ...store.state.liqLevels, ...(pressSplit(store.state.liqLevels, 'kinds', true) as { change: Partial<LiqLevelSettings> }).change } });
+  assert.deepEqual([store.state.liqLevels.split, store.state.liqLevels.liq, store.state.liqLevels.stops], ['kinds', true, true]);
+  store.set({ liqLevels: { ...store.state.liqLevels, liq: false } });
+  assert.equal(store.state.liqLevels.split, 'none', 'either kind off: none');
+});
+
+/** A levels model over a plain choice (no store's reader), recording what the control writes. */
+function model(choice: LiqLevelSettings, member: boolean): LevelsModel & { writes: Partial<LiqLevelSettings>[] } {
+  let c = choice; const listeners = new Set<() => void>(), writes: Partial<LiqLevelSettings>[] = [];
+  return { writes, get: () => c, set: change => { writes.push(change); c = readLiqLevels({ ...c, ...change }); for (const l of listeners) l(); }, subscribe: l => { listeners.add(l); return () => { listeners.delete(l); }; }, member: () => member };
+}
+
+test('the levels control shows Split as one of three, locked without Plus, left out where asked (the demo), and hides Traders beside the profitable traders\' column', () => {
+  const done = new FakePage().install();
+  try {
+    const m = model(readLiqLevels({ liq: true, stops: false, group: 'profitable' }), true);
+    const c = createLevelsControl(m, { locked: () => { throw new Error('no lock for a member'); } });
+    const root = c.root as unknown as FakeElement, opts = root.querySelectorAll('.lv-opt');
+    assert.deepEqual(opts.map(o => o.dataset.split), ['none', 'kinds', 'groups']);
+    assert.deepEqual(opts.map(o => o.getAttribute('aria-checked')), ['true', 'false', 'false']);
+    const traders = root.querySelectorAll('.lv-sec').find(sec => sec.querySelector('.lv-seg'))!;
+    assert.equal(traders.hidden, false);
+    opts[2]!.click();
+    assert.deepEqual(m.writes.at(-1), { split: 'groups' });
+    assert.equal(traders.hidden, true, 'Traders has no say beside the profitable traders\' column');
+    assert.deepEqual(opts.map(o => o.getAttribute('aria-checked')), ['false', 'false', 'true']);
+    assert.match(root.querySelector('.lv-sum')!.textContent, /Left: Everyone · Right: Profitable · Curve: Liquidations/);
+    opts[1]!.click();
+    assert.deepEqual(m.writes.at(-1), { split: 'kinds', liq: true, stops: true });
+    assert.equal(traders.hidden, false);
+    assert.match(root.querySelector('.lv-sum')!.textContent, /Left: Liquidations · Right: Stops · Profitable/);
+    c.destroy();
+    // Without Plus: both splits locked, pressing one opens the presentation and writes nothing.
+    const v = model(readLiqLevels({ liq: true }), false), locked: unknown[] = [];
+    const lc = createLevelsControl(v, { locked: from => { locked.push(from); } });
+    const vopts = (lc.root as unknown as FakeElement).querySelectorAll('.lv-opt');
+    vopts[1]!.click(); vopts[2]!.click();
+    assert.equal(locked.length, 2); assert.equal(v.writes.length, 0);
+    assert.ok(vopts[1]!.classList.contains('locked') && !vopts[0]!.classList.contains('locked'));
+    lc.destroy();
+    // The demo's control has no Split.
+    const demo = createLevelsControl(model(readLiqLevels({}), true), { locked: () => {}, hideSplit: true });
+    assert.equal((demo.root as unknown as FakeElement).querySelectorAll('.lv-opt').length, 0);
+    demo.destroy();
+  } finally { done(); }
+});
+
+test('the words of a split: its name on the button, its name in the control, each column\'s caption, the take profits\' whose, the summary and the description', () => {
+  const kinds = splitPair(readLiqLevels({ liq: true, stops: true, takes: true, group: 'profitable', split: 'kinds' }), true)!;
+  const groups = splitPair(readLiqLevels({ liq: true, stops: true, split: 'groups' }), true)!;
+  assert.equal(splitName('kinds'), 'Liq | Stops'); assert.equal(splitName('groups'), 'Everyone | Profitable');
+  assert.deepEqual(['none', 'kinds', 'groups'].map(s => splitChoiceName(s as 'none')), ['None', 'Liquidations | Stops', 'Everyone | Profitable']);
+  assert.deepEqual(subNames(kinds), ['Liquidations', 'Stops']); assert.deepEqual(subNames(groups), ['Everyone', 'Profitable']);
+  assert.equal(takesOf('profitable'), 'Take profits · Profitable');
+  assert.equal(pairSummary(kinds), 'Left: Liquidations · Right: Stops · TP bars on the left · Profitable');
+  assert.equal(pairSummary(groups), 'Left: Everyone · Right: Profitable · Curve: Liq + stops');
+  assert.equal(pairDescription(groups), 'Left column: All traders. Right column: Profitable traders. Curve: Liquidation and stop levels.');
+  assert.match(pairDescription(kinds), /^Left column: Liquidation levels\. Right column: Stop levels\. Take-profit bars shown on the left\. Traders: Profitable\.$/);
+  assert.equal(splitPair({ ...FREE_VIEW, split: 'groups' }, false), null, 'nothing split without Plus');
+});
+
+test('the layout asks the same width of the map as the map takes, with a split chosen: split where it fits, one column where it does not', () => {
+  const state = { ...initialState(), show: { ...initialState().show, traded: false, profile: true }, liqLevels: readLiqLevels({ liq: true, stops: true, split: 'kinds' }) } as AppState;
+  withPlus(() => {
+    try {
+      const widths = [300, 519, 520, 560, 640, 700, 760, 800, 1000, 1400];
+      for (const paneW of widths) {
+        setCompactGutters(false, 2000);
+        const asked = gutterAt(paneW, state);
+        setCompactGutters(paneW < 520, paneW);
+        assert.equal(asked, gutter(state) + leftGutter(state), `${paneW}`);
+        // Split exactly where the plot keeps the floor with the wider column.
+        const plot = paneW - asked;
+        if (liqSplitDrawn(state)) assert.ok(plot >= MAP_PLOT_FLOOR, `${paneW}: split keeps the floor (${plot})`);
+      }
+      setCompactGutters(false, 1400); assert.equal(liqSplitDrawn(state), true, 'a wide desktop: split');
+      setCompactGutters(false, 600); assert.equal(liqSplitDrawn(state), false, 'too narrow: one column');
+      setCompactGutters(true, 400); assert.equal(liqSplitDrawn(state), false, 'a phone\'s map: never');
+    } finally { setCompactGutters(false, 2000); }
+  });
+  // Without Plus nothing is split, however wide.
+  setCompactGutters(false, 1400);
+  try { assert.equal(liqSplitDrawn(state), false); } finally { setCompactGutters(false, 2000); }
+});
+
+test('the split\'s pieces are where the page draws them: the map\'s split painter, the stripe\'s lanes, the Liq tab\'s halves, the Depth pane\'s note', () => {
+  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8'), tab = fs.readFileSync('src/app/panes/liq-pane.ts', 'utf8'), depth = fs.readFileSync('src/app/panes/lower-panes.ts', 'utf8');
+  assert.match(heat, /if \(pair && W === SPLIT_COLUMN_W\) \{ this\.#paintLiqSplit\(ctx, state, pw, ph, pair\); return; \}/);
+  assert.match(heat, /const set: LiqSet = pair\?\.split === 'kinds' \? src\.setOf\(narrowView\(pair\)\) : src;/, 'too narrow: the sum, or everyone\'s');
+  assert.match(heat, /kindLanes\(x0, pw, !!takes\)/); assert.match(heat, /this\.#paintLaneCaptions\(ctx, \[/);
+  assert.match(heat, /splitScales\(\{ maxLevel: Math\.max\(profs\[0\]\?\.maxLevel \?\? 0, tprof\?\.maxLevel \?\? 0\), maxCum: profs\[0\]\?\.maxCum \?\? 0 \},\n\s+\{ maxLevel: profs\[1\]\?\.maxLevel \?\? 0, maxCum: profs\[1\]\?\.maxCum \?\? 0 \}, pair\.split === 'kinds'\)/);
+  assert.match(tab, /halves = !!pair && ladderSplitFits\(W - AXIS\)/); assert.match(tab, /#paintHalves\(/);
+  assert.match(depth, /Under a split the Depth pane draws its left column\./);
+});

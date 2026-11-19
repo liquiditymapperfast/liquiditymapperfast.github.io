@@ -733,6 +733,8 @@ async function main(): Promise<void> {
     if (['markets', 'marketId', 'timeframe', 'layer', 'show', 'heat', 'theme', 'status', 'connected', 'disabledVenues', 'heatmapSource', 'levels', 'scope', 'sounds', 'soundState', 'lastSound', 'waveStrength', 'timeZone', 'absorption', 'highlight', 'range', 'rangeTool', 'liquidations', 'keyLevels', 'vwap', 'tpo', 'footprint', 'tabPrice', 'tabIcon', 'chartType', 'phoneHistory'].some(k => changed.has(k as never))) toolbar.sync(state, heat.window);
   });
 
+  // Plus coming or going changes what the liquidation column can be (a split is Plus's, and widens it): the columns are laid out again.
+  plus().subscribe(() => layout());
   for (const p of themed) p.setPalette(store.state.theme);
   layout(); ladder.syncControls(); lt.refresh();
   layouts.seedDefault();

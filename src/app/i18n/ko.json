@@ -3263,5 +3263,17 @@
  "Liquidations, stops and take profits as three separate layers": "청산, 손절, 익절을 세 개의 별도 레이어로",
  "Everyone and profitable traders: liquidation and stop levels at each price, on one dollar scale": "전체와 수익을 내는 트레이더: 가격마다 청산과 손절 레벨, 같은 달러 눈금으로",
  "Play again": "다시 재생",
- "With Plus, the button at the top of the liquidation column opens the Levels control (the Liq levels panel, the Depth pane's levels button and the phone's Liq tab title open the same one): three switches, liquidations, stops and take profits, any of them together and one always on, and whose levels they are, everyone's or the profitable traders': the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit. Take profits are always dashed: beside the others a lane of their own next to the newest candle and bars from the column's right edge, on alone a curve of their own. Where the profitable traders' stops and take profits are not on the server yet, the page says they are not available yet and draws nothing in their place. The Depth pane's history follows the same choice.": "Plus가 있으면 청산 열 위쪽의 버튼으로 수준 창이 열립니다(청산 레벨 패널, 뎁스 패널의 레벨 버튼, 스마트폰 청산 탭의 제목으로도 같은 창이 열립니다). 청산, 손절, 익절 세 가지 스위치가 있으며 어떤 조합이든 켤 수 있고 하나는 항상 켜져 있습니다. 누구의 레벨인지도 고릅니다. 모두, 또는 수익을 내는 트레이더입니다. 수익을 내는 트레이더는 HyperTracker가 수익을 내고 있다고 보는 지갑, 즉 전체 기간 무기한 선물 수익이 플러스인 4개 코호트입니다. 익절은 항상 점선입니다. 다른 것과 함께 켜면 가장 최근 캔들 옆의 전용 칸과 열 오른쪽 가장자리에서 뻗는 막대로, 익절만 켜면 별도의 곡선으로 표시됩니다. 수익을 내는 트레이더의 손절과 익절이 아직 서버에 없으면 페이지가 아직 사용할 수 없다고 알리고 그 자리에 아무것도 그리지 않습니다. 뎁스 패널의 기록도 같은 선택을 따릅니다."
+ "With Plus, the button at the top of the liquidation column opens the Levels control (the Liq levels panel, the Depth pane's levels button and the phone's Liq tab title open the same one): three switches, liquidations, stops and take profits, any of them together and one always on, and whose levels they are, everyone's or the profitable traders': the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit. Take profits are always dashed: beside the others a lane of their own next to the newest candle and bars from the column's right edge, on alone a curve of their own. Where the profitable traders' stops and take profits are not on the server yet, the page says they are not available yet and draws nothing in their place. The Depth pane's history follows the same choice.": "Plus가 있으면 청산 열 위쪽의 버튼으로 수준 창이 열립니다(청산 레벨 패널, 뎁스 패널의 레벨 버튼, 스마트폰 청산 탭의 제목으로도 같은 창이 열립니다). 청산, 손절, 익절 세 가지 스위치가 있으며 어떤 조합이든 켤 수 있고 하나는 항상 켜져 있습니다. 누구의 레벨인지도 고릅니다. 모두, 또는 수익을 내는 트레이더입니다. 수익을 내는 트레이더는 HyperTracker가 수익을 내고 있다고 보는 지갑, 즉 전체 기간 무기한 선물 수익이 플러스인 4개 코호트입니다. 익절은 항상 점선입니다. 다른 것과 함께 켜면 가장 최근 캔들 옆의 전용 칸과 열 오른쪽 가장자리에서 뻗는 막대로, 익절만 켜면 별도의 곡선으로 표시됩니다. 수익을 내는 트레이더의 손절과 익절이 아직 서버에 없으면 페이지가 아직 사용할 수 없다고 알리고 그 자리에 아무것도 그리지 않습니다. 뎁스 패널의 기록도 같은 선택을 따릅니다.",
+ "Split": "분할",
+ "Liq | Stops": "청산 | 손절",
+ "Everyone | Profitable": "전체 | 수익",
+ "Liquidations | Stops": "청산 | 손절",
+ "Left: {what}": "왼쪽: {what}",
+ "Right: {what}": "오른쪽: {what}",
+ "TP bars on the left": "익절 막대는 왼쪽",
+ "Left column: {what}.": "왼쪽 열: {what}.",
+ "Right column: {what}.": "오른쪽 열: {what}.",
+ "Take-profit bars shown on the left.": "익절 막대는 왼쪽에 표시됨.",
+ "Too narrow to split: {what}": "너무 좁아 분할할 수 없음: {what}",
+ "Under a split the Depth pane draws its left column.": "분할 중에는 뎁스 패널에 왼쪽 열이 표시됩니다."
 }
