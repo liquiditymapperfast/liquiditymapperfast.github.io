@@ -3484,12 +3484,12 @@
  "Paste your key": "Вставьте ключ",
  "Activate": "Активировать",
  "Enter your key once on each browser and address you use.": "Введите ключ один раз в каждом браузере и по каждому адресу, которыми вы пользуетесь.",
- "Remove your key from this browser? This doesn't cancel a subscription.": "Убрать ключ из этого браузера? Подписка при этом не отменяется.",
+ "Remove your key from this browser? This doesn't cancel a subscription.": "Удалить ключ из этого браузера? Подписка при этом не отменяется.",
  "Plus ended on {date}. Everything free stays.": "Plus закончился {date}. Всё бесплатное остаётся.",
  "Plus has ended in this browser. Everything free stays.": "Plus в этом браузере больше не действует. Всё бесплатное остаётся.",
- "Key removed from this browser.": "Ключ убран из этого браузера.",
+ "Key removed from this browser.": "Ключ удалён из этого браузера.",
  "Replace key": "Заменить ключ",
- "Remove from this browser": "Убрать из этого браузера",
+ "Remove from this browser": "Удалить из этого браузера",
  "Keep": "Оставить",
  "Your key, hidden": "Ваш ключ, скрыт",
  "Key selected. Copy it now.": "Ключ выделен. Скопируйте его сейчас.",
@@ -3522,7 +3522,7 @@
  "Add stop losses to the curve.": "Добавьте стоп-лоссы в кривую.",
  "Take profits get their own lane.": "У тейк-профитов своя дорожка.",
  "Choose each kind on its own.": "Выбирайте каждый вид отдельно.",
- "Take profits alone get a dashed curve.": "Тейк-профиты отдельно получают пунктирную кривую.",
+ "Take profits alone get a dashed curve.": "Когда включены только тейк-профиты, у них пунктирная кривая.",
  "Profitable traders, at each price.": "Прибыльные трейдеры, на каждой цене.",
  "Scroll back through the whole history.": "Прокрутите назад всю историю.",
  "Each alone": "Отдельно",
@@ -3554,5 +3554,5 @@
  "Take-profit bars shown on the left.": "Полоски тейк-профитов показаны слева.",
  "Too narrow to split: {what}": "Слишком узко для разделения: {what}",
  "Under a split the Depth pane draws its left column.": "При разделении панель «Глубина» показывает левую колонку.",
- "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. Too narrow for two, it draws liquidations and stops added up, or everyone's levels, and says so. The phone's Liq tab splits into halves when it is wide enough; the Depth pane draws the left column.": "Разделение (Plus) рисует колонку как две: ликвидации рядом со стопами на одной шкале или все рядом с прибыльными трейдерами, каждая на своей. Если для двух слишком узко, она рисует ликвидации и стопы вместе или уровни всех и сообщает об этом. Вкладка «Ликв.» на телефоне делится на половины, если она достаточно широкая; панель «Глубина» рисует левую колонку."
+ "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. Too narrow for two, it draws liquidations and stops added up, or everyone's levels, and says so. The phone's Liq tab splits into halves when it is wide enough; the Depth pane draws the left column.": "Разделение (Plus) рисует колонку как две: ликвидации рядом со стопами на одной шкале или все рядом с прибыльными трейдерами, каждая на своей. Если для двух слишком узко, она рисует сумму ликвидаций и стопов или уровни всех и сообщает об этом. Вкладка «Ликв.» на телефоне делится на половины, если она достаточно широкая; панель «Глубина» рисует левую колонку."
 }
