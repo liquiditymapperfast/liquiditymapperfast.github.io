@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LiqLevelsSource, binsIn, parseTriggerGroups, combineTaken, laneRows, liqCurves, liqProfile, liqRows, onTheWay, parseLiqGroups, parseLiqLevels, parseTriggers, partsBetween, partsOnTheWay, standingBelow, sumLevels, takenByCandles, liqStanding, type LaneRows, type LiqLevels, type LiqRow, type LiqStanding } from '../src/app/liq-levels.ts';
-import { DAY_MS, LIQ_HOLD_MS, LiqHistory, MAX_DAYS, bandOnEdge, dayText, familiesFor, readHistRows, readRollup, type LiqAnswer } from '../src/app/liq-history.ts';
+import { DAY_MS, LIQ_HOLD_MS, LiqHistory, MAX_DAYS, bandOnEdge, dayText, familiesFor, readHistRows, readRollup, retryAfterSeconds, webFetch, type LiqAnswer } from '../src/app/liq-history.ts';
 import { readLiqLevels, plusUrls } from '../src/app/liq-url.ts';
 import { FREE_VIEW, curveOf, effectiveView, heldBack, isFreeChoice, levelsDescription, levelsSummary, takesBeside, viewKey, type LiqView } from '../src/app/liq-view.ts';
 import { PRESET_BANDS } from '../src/app/depth-settings.ts';
@@ -1237,4 +1237,68 @@ test('a wide view whose rollup could not be read says so instead of loading, kee
   await ask(f.now + 122_000);
   assert.equal(h.shape(both).failed, null); assert.ok(h.shape(both).edges);
   assert.equal(h.series(f.wideFrom, f.now, both).rows.at(-1)!.long[9], 200, 'their liquidations and stops added');
+});
+
+/** The page's `fetch` answering each address as `answer` says (a status, a JSON body, a Retry-After header), each ask counted, until `restore`. */
+function stubFetch(answer: (url: string) => { status: number; body?: unknown; retryAfter?: string }) {
+  const real = globalThis.fetch, asks = new Map<string, number>();
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input instanceof Request ? input.url : input);
+    asks.set(url, (asks.get(url) ?? 0) + 1);
+    const a = answer(url);
+    return new Response(a.body === undefined ? 'not there' : JSON.stringify(a.body), { status: a.status, headers: a.retryAfter === undefined ? {} : { 'retry-after': a.retryAfter } });
+  }) as typeof fetch;
+  return { asks: (url: string): number => asks.get(url) ?? 0, restore: (): void => { globalThis.fetch = real; } };
+}
+const inMinutes = (m: number): string => new Date(Date.now() + m * MIN).toUTCString();
+
+test('a Retry-After header is read as delta-seconds or an HTTP date, and anything else as none (Sol, round 3)', async () => {
+  let header: string | undefined;
+  const stub = stubFetch(() => ({ status: 503, ...(header === undefined ? {} : { retryAfter: header }) }));
+  try {
+    const read = async (h: string | undefined): Promise<number | undefined> => { header = h; return (await webFetch('https://levels.hiverust.dev/v1/plus/btc/triggers-groups.json')).retryAfter; };
+    const near = (got: number | undefined, want: number, what: string): void => assert.ok(got !== undefined && Math.abs(got - want) <= 2, `${what}: ${got} for ${want}`);
+    near(await read(inMinutes(10)), 600, 'an HTTP date ten minutes on');
+    near(await read('120'), 120, 'delta-seconds');
+    near(await read(' 300 '), 300, 'delta-seconds with spaces around');
+    assert.equal(await read('0'), 0, 'now: the caller\'s shortest wait applies');
+    assert.equal(await read(new Date(Date.now() - 60_000).toUTCString()), 0, 'a date already past: now');
+    near(await read(new Date(Date.now() + 600_000).toUTCString().replace(/^(\w{3}), (\d{2}) (\w{3}) (\d{4}) (.+) GMT$/, (_m, d, n, mo, y, t) => `${({ Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' } as Record<string, string>)[d]}, ${n}-${mo}-${String(y).slice(2)} ${t} GMT`)), 600, 'the obsolete RFC 850 form');
+    for (const bad of ['0x10', '1e3', '10.5', '-5', '1 2', 'soon', '', 'Wed, 21 Oct 2015 07:28:00']) assert.equal(await read(bad), undefined, `${JSON.stringify(bad)} is not a Retry-After`);
+    assert.equal(await read(undefined), undefined, 'none said');
+    assert.equal(retryAfterSeconds('Wed Oct 21 07:28:00 2015', Date.UTC(2015, 9, 21, 7, 18)), 600, 'asctime, read as GMT');
+  } finally { stub.restore(); }
+});
+
+test('the profitable traders\' live orders, days and rollup wait what an HTTP-date Retry-After says, not the five-minute fallback (Sol, round 3)', async () => {
+  const day = Date.UTC(2026, 10, 15), wideFrom = day + 12 * 3_600_000 - (MAX_DAYS + 10) * DAY_MS;
+  const tooBusy = (url: string): boolean => /triggers-groups|trigger-history-groups/.test(url);
+  const stub = stubFetch(url => tooBusy(url) ? { status: 503, retryAfter: inMinutes(10) }
+    : /liquidation-history\.json$/.test(url) ? { status: 200, body: { edges: EDGES, first: day - 3 * DAY_MS, last: day + 12 * 3_600_000 } }
+    : /liquidation-history-groups-4h/.test(url) ? { status: 200, body: { hours: 4, edges: ROLLUP_EDGES, groups: ['profitable'], rows: [] } }
+    : /liquidation-history-groups\//.test(url) ? { status: 200, body: { groups: ['profitable'], rows: [] } } : { status: 404 });
+  try {
+    // Live: the source's own read (`webFetch`), its clock moved by the test.
+    let now = AS_OF + 45 * MIN;
+    const src = new LiqLevelsSource(async url => url.includes('hyperliquid') ? [] : free(FAM.all.liq), () => now, () => LEVELS_URL, undefined, { pass: () => 'v1.pass.sig', refused: () => {} });
+    const mine = view({ liq: false, stops: true, group: 'profitable' }), live = (): number => stub.asks(U.triggersGroups);
+    for (let i = 0; i < 3; i++) { src.ensure(BTC, () => {}, mine); await tick(); await tick(); }
+    assert.equal(live(), 1); assert.ok(src.ordersAbsent());
+    now += 5 * MIN + 1_000; src.ensure(BTC, () => {}, mine); await tick();
+    assert.equal(live(), 1, 'live: not asked again at the fallback\'s five minutes');
+    now += 5 * MIN; src.ensure(BTC, () => {}, mine); await tick();
+    assert.equal(live(), 2, 'live: asked again once the ten minutes are over');
+    // Days and the rollup: the history's own read.
+    for (const [from, url] of [[day, `https://levels.hiverust.dev/v1/plus/btc/trigger-history-groups/${dayText(day)}.json`], [wideFrom, 'https://levels.hiverust.dev/v1/plus/btc/trigger-history-groups-4h.json']] as const) {
+      const h = new LiqHistory(undefined, { freeFrom: () => day - 7 * DAY_MS, pass: () => 'v1.member.sig', refused: () => {} }), at = day + 12 * 3_600_000;
+      const ask = async (when: number): Promise<void> => { for (let i = 0; i < 3; i++) { h.ensure(from, day + 12 * 3_600_000, when, () => {}, mine); await tick(); await tick(); await tick(); } };
+      await ask(at);
+      const asked = stub.asks(url);
+      assert.ok(asked >= 1 && h.ordersAbsent(mine, from, day + 12 * 3_600_000), url);
+      await ask(at + 5 * MIN + 1_000);
+      assert.equal(stub.asks(url), asked, `${url}: not asked again at five minutes`);
+      await ask(at + 10 * MIN + 2_000);
+      assert.equal(stub.asks(url), asked + 1, `${url}: asked again after ten`);
+    }
+  } finally { stub.restore(); }
 });

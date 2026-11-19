@@ -49,9 +49,27 @@ export const webFetch: LiqFetch = async (url, pass) => {
   const answer = await fetch(url, { cache: 'no-cache', signal: AbortSignal.timeout(READ_TIMEOUT_MS), ...(pass ? { headers: { authorization: `Bearer ${pass}` } } : {}) });
   let body: unknown = null;
   try { body = await answer.json(); } catch { /* a body that is not JSON (a 503's plain text) says nothing more than its status */ }
-  const wait = Number(answer.headers.get('retry-after'));
-  return { status: answer.status, body, ...(Number.isFinite(wait) && wait > 0 ? { retryAfter: wait } : {}) };
+  const wait = retryAfterSeconds(answer.headers.get('retry-after'), Date.now());
+  return { status: answer.status, body, ...(wait !== undefined ? { retryAfter: wait } : {}) };
 };
+/**
+ * A `Retry-After` header as seconds from `now` (RFC 9110): delta-seconds, digits alone, or an HTTP date (IMF-fixdate, or the obsolete RFC 850
+ * and asctime forms, all GMT), a date already past being 0. Anything else (`0x10`, `1e3`, `10.5`, words, none) is undefined, so the caller's
+ * own wait applies; the callers keep a wait said within their bounds. One reader for the live files, the days and the rollups (Sol, review
+ * 2026-11-19, round 3: an HTTP date was read as none and fell back to five minutes, `0x10` as sixteen seconds).
+ */
+export function retryAfterSeconds(header: string | null | undefined, now: number): number | undefined {
+  const text = header?.trim();
+  if (!text) return undefined;
+  if (/^\d+$/.test(text)) return Number(text);
+  const at = HTTP_DATE.test(text) ? Date.parse(text) : ASCTIME.test(text) ? Date.parse(`${text} GMT`) : NaN;
+  return Number.isFinite(at) ? Math.max(0, (at - now) / 1_000) : undefined;
+}
+const WEEKDAY = '(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)', MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', TIME = '\\d{2}:\\d{2}:\\d{2}';
+/** IMF-fixdate (`Sun, 06 Nov 1994 08:49:37 GMT`) or the obsolete RFC 850 form (`Sunday, 06-Nov-94 08:49:37 GMT`). */
+const HTTP_DATE = new RegExp(`^(?:${WEEKDAY}, \\d{2} ${MONTH} \\d{4} ${TIME}|(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day, \\d{2}-${MONTH}-\\d{2} ${TIME}) GMT$`);
+/** The obsolete asctime form (`Sun Nov  6 08:49:37 1994`), which carries no zone and is GMT. */
+const ASCTIME = new RegExp(`^${WEEKDAY} ${MONTH} [ \\d]\\d ${TIME} \\d{4}$`);
 /** Whether an answer is the gate's refusal of a Plus file: a 403 whose body is `{"error":"plus_required"}`. */
 export const isRefusal = (answer: LiqAnswer): boolean =>
   answer.status === 403 && !!answer.body && typeof answer.body === 'object' && (answer.body as { error?: unknown }).error === LIQ_REFUSED;
@@ -103,7 +121,7 @@ const ABSENT_WAIT_MS = 5 * 60_000;
 const absentAnswer = (family: LiqFamily, error: unknown): boolean => family === 'orderGroups' && (statusOf(error) === 404 || statusOf(error) === 503);
 const absentUntil = (error: unknown, now: number): number => {
   const wait = (error as { retryAfter?: unknown } | null)?.retryAfter;
-  return now + (typeof wait === 'number' && wait > 0 ? Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000)) : ABSENT_WAIT_MS);
+  return now + (typeof wait === 'number' && wait >= 0 ? Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000)) : ABSENT_WAIT_MS);
 };
 /** What a day or a rollup not on the server holds: no rows (one array, so the memos keep what they made of it). */
 const NONE: HistRow[] = [];
@@ -548,7 +566,7 @@ export class LiqHistory {
       const missing = answeredMissing(error);
       if (probe) this.#probed(missing, now);
       const wait = (error as { retryAfter?: unknown } | null)?.retryAfter;
-      if (typeof wait === 'number' && wait > 0) entry.wait = now + Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000));
+      if (typeof wait === 'number' && wait >= 0) entry.wait = now + Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000));
       if (missing) { entry.missing = true; entry.wait = Math.max(entry.wait, now + REFUSAL_HOLDS_MS); this.version++; changed(); return; }
       if (!(error instanceof Error) || error.message !== LIQ_REFUSED) return;
       // Refused by the gate. With a pass: that pass is no good any more (it is asked for again, and the day with it). Without one: the
@@ -596,7 +614,7 @@ export class LiqHistory {
       const missing = answeredMissing(error);
       if (probe) this.#probed(missing, now);
       const wait = (error as { retryAfter?: unknown } | null)?.retryAfter;
-      if (typeof wait === 'number' && wait > 0) entry.wait = now + Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000));
+      if (typeof wait === 'number' && wait >= 0) entry.wait = now + Math.min(WAIT_MAX_MS, Math.max(WAIT_MIN_MS, wait * 1_000));
       if (missing) entry.wait = Math.max(entry.wait, now + REFUSAL_HOLDS_MS);
       if (entry.at === -Infinity && !entry.unreadable) { entry.unreadable = true; this.version++; changed(); }
       if (error instanceof Error && error.message === LIQ_REFUSED) { this.access.refused(pass); this.version++; changed(); }
