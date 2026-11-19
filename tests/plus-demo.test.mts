@@ -674,17 +674,46 @@ test('the feature pictures: three still pictures, each labelled as illustrative,
   } finally { page.uninstall(); }
 });
 
+/**
+ * A fake page for a test that builds the numbers cold. What the body leaves behind (the mounts it tracked, a build under way) is taken down
+ * while the page's globals are still installed, and only then are they removed: an assertion that fails in the middle of a build is the
+ * error the test reports, not a teardown that reaches for a `window` already gone. The numbers are warm again for the tests after.
+ */
+function coldPage(body: (page: FakePage, track: <T extends { destroy(): void }>(handle: T) => T) => void, page = new FakePage()): void {
+  const handles: { destroy(): void }[] = [];
+  page.install();
+  try {
+    body(page, handle => { handles.push(handle); return handle; });
+  } finally {
+    for (const handle of handles) handle.destroy();
+    forgetData();
+    page.uninstall();
+    demoData();
+  }
+}
+
+test('a cold test that fails while the numbers are being built reports its own failure, not its teardown', () => {
+  const page = new FakePage();
+  assert.throws(() => coldPage((p, track) => {
+    forgetData();
+    track(mountDemo(new FakeElement('div', p) as unknown as HTMLElement));
+    assert.equal(p.idles.size, 1, 'a build under way');
+    assert.fail('the body failed in the middle of the build');
+  }, page), (error: unknown) => error instanceof assert.AssertionError && /the body failed in the middle of the build/.test(error.message));
+  assert.equal(page.idles.size, 0, 'the build was stopped before the page went');
+  assert.equal(typeof (globalThis as Record<string, unknown>).window, 'undefined', 'and the page is gone');
+  assert.ok(demoData(), 'the numbers are warm again');
+});
+
 test('cold: the demo paints its frame first and builds the numbers in idle turns; warm mounts have them at once; destroy() stops the build', () => {
   const same = (a: DemoData, b: DemoData): boolean => (['price', 'liqL', 'liqS', 'stopL', 'stopS', 'tpL', 'tpS', 'pfLiq', 'pfStop', 'pfTp', 'band'] as const).every(k => Buffer.from(a[k].buffer).equals(Buffer.from(b[k].buffer)));
   const reference = createData(SEED);
   forgetData();
-  const page = new FakePage();
-  page.install();
-  try {
+  coldPage((page, track) => {
     // A cold mount: the frame, the controls and the scrubber at once, the chart's room kept, nothing drawn and nothing played yet.
     const host = new FakeElement('div', page);
     const states: DemoLevels[] = [];
-    const handle = mountDemo(host as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states.push(x)); return { destroy() {} }; } });
+    const handle = track(mountDemo(host as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states.push(x)); return { destroy() {} }; } }));
     const stage = byClass(host, 'pd-stage'), svg = byClass(host, 'pd-ch');
     assert.equal(stage.getAttribute('aria-busy'), 'true', 'the stage says it is getting ready');
     assert.equal(svg.children.length, 0, 'the chart waits for the numbers');
@@ -701,7 +730,7 @@ test('cold: the demo paints its frame first and builds the numbers in idle turns
     // A second cold mount picks the build up and finishes it in further turns: then the chart is drawn and the tour plays.
     const host2 = new FakeElement('div', page);
     const states2: DemoLevels[] = [];
-    const handle2 = mountDemo(host2 as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states2.push(x)); return { destroy() {} }; } });
+    const handle2 = track(mountDemo(host2 as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states2.push(x)); return { destroy() {} }; } }));
     assert.ok(page.idle() > 0);
     assert.ok(same(demoData(), reference), 'built in turns, the same numbers as all at once');
     assert.equal(byClass(host2, 'pd-stage').getAttribute('aria-busy'), null, 'ready');
@@ -712,7 +741,7 @@ test('cold: the demo paints its frame first and builds the numbers in idle turns
     handle2.destroy();
     // A warm mount: drawn in its first frame, nothing left to build.
     const host3 = new FakeElement('div', page);
-    const handle3 = mountDemo(host3 as unknown as HTMLElement);
+    const handle3 = track(mountDemo(host3 as unknown as HTMLElement));
     page.run(20);
     assert.equal(page.idles.size, 0, 'nothing to build');
     assert.ok(byClass(host3, 'pd-ch').all().length > 60, 'drawn at once');
@@ -720,7 +749,7 @@ test('cold: the demo paints its frame first and builds the numbers in idle turns
     // The pictures: frames at once (their room kept by their size), drawn when the numbers are here.
     forgetData();
     const hosts = { history: new FakeElement('div', page), layers: new FakeElement('div', page), groups: new FakeElement('div', page) };
-    const v = mountVisuals(hosts as unknown as { history: HTMLElement; layers: HTMLElement; groups: HTMLElement });
+    const v = track(mountVisuals(hosts as unknown as { history: HTMLElement; layers: HTMLElement; groups: HTMLElement }));
     for (const h of Object.values(hosts)) {
       const pic = byClass(h, 'pd-vis');
       assert.equal(pic.children.length, 0, 'a frame, not yet drawn');
@@ -736,7 +765,7 @@ test('cold: the demo paints its frame first and builds the numbers in idle turns
     assert.equal(got, demoData());
     assert.equal(page.idles.size, 0);
     assert.deepEqual(page.network, []);
-  } finally { page.uninstall(); demoData(); }
+  });
 });
 
 test('the scenes keep targets of 44 px at every width: six in a row while 294 px hold them, then two rows of three', () => {
@@ -779,15 +808,13 @@ test('the Depth strip\'s dates: three where there is room; on a narrow strip the
 });
 
 test('cold: Play or Play again pressed while the numbers are built shows Pause, waits, and starts the tour at its first scene when they arrive', () => {
-  const page = new FakePage();
-  page.install();
-  try {
+  coldPage((page, track) => {
     for (const button of ['Play', 'Play again'] as const) {
       for (const then of ['arrive', 'Pause', 'destroy'] as const) {
         forgetData();
         const host = new FakeElement('div', page);
         const states: DemoLevels[] = [];
-        const handle = mountDemo(host as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states.push(x)); return { destroy() {} }; } });
+        const handle = track(mountDemo(host as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => states.push(x)); return { destroy() {} }; } }));
         const label = `${button}, then ${then}`;
         page.view(0.9);
         byLabel(host, button).fire('click');
@@ -812,13 +839,11 @@ test('cold: Play or Play again pressed while the numbers are built shows Pause, 
         assert.equal(page.idles.size + page.timers.size + page.frames.size, 0, `${label}: nothing left behind`);
       }
     }
-  } finally { page.uninstall(); demoData(); }
+  });
 });
 
 test('cold: when the numbers arrive, a waiter that an earlier one stopped is not called (a mount destroyed by the first one stays quiet)', () => {
-  const page = new FakePage();
-  page.install();
-  try {
+  coldPage((page, track) => {
     // whenData itself: the first waiter's call stops the second; the second is never called, and a third still is.
     forgetData();
     const called: string[] = [];
@@ -833,8 +858,8 @@ test('cold: when the numbers arrive, a waiter that an earlier one stopped is not
     const hostA = new FakeElement('div', page), hostB = new FakeElement('div', page);
     const statesB: DemoLevels[] = [];
     let handleB: { destroy(): void } | null = null;
-    const handleA = mountDemo(hostA as unknown as HTMLElement, { control: (_h, st) => { const stop = st.subscribe(() => { handleB?.destroy(); stop(); }); return { destroy() { stop(); } }; } });
-    handleB = mountDemo(hostB as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => statesB.push(x)); return { destroy() {} }; } });
+    const handleA = track(mountDemo(hostA as unknown as HTMLElement, { control: (_h, st) => { const stop = st.subscribe(() => { handleB?.destroy(); stop(); }); return { destroy() { stop(); } }; } }));
+    handleB = track(mountDemo(hostB as unknown as HTMLElement, { control: (_h, st) => { st.subscribe(x => statesB.push(x)); return { destroy() {} }; } }));
     page.view(0.9);
     page.idle();
     page.run(5000);
@@ -848,12 +873,12 @@ test('cold: when the numbers arrive, a waiter that an earlier one stopped is not
     let v: { destroy(): void } | null = null;
     let drawnAfter = -1;
     whenData(() => { const svg = byClass(hosts.history, 'pd-vis'); v?.destroy(); drawnAfter = svg.children.length; });
-    v = mountVisuals(hosts as unknown as { history: HTMLElement; layers: HTMLElement; groups: HTMLElement });
+    v = track(mountVisuals(hosts as unknown as { history: HTMLElement; layers: HTMLElement; groups: HTMLElement }));
     const svg = byClass(hosts.history, 'pd-vis');
     page.idle();
     assert.equal(drawnAfter, 0);
     assert.equal(svg.children.length, 0, 'the pictures taken away before their turn draw nothing');
-  } finally { page.uninstall(); demoData(); }
+  });
 });
 
 /* ==== no network, no app settings ======================================================================================================= */
