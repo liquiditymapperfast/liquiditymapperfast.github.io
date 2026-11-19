@@ -954,6 +954,38 @@ test('cold: Play pressed while loading, then the tab hidden or the demo under 45
   });
 });
 
+test('cold: Play queued, the demo at 40 % in view, and a store listener that throws once in the first scene: the tour is still held for the view', () => {
+  coldPage((page, track) => {
+    forgetData();
+    const host = new FakeElement('div', page);
+    const states: DemoLevels[] = [];
+    let threw = false;
+    track(mountDemo(host as unknown as HTMLElement, { control: (_h, st) => {
+      st.subscribe(x => { states.push(x); if (!threw) { threw = true; throw new Error('the listener failed once'); } });
+      return { destroy() {} };
+    } }));
+    page.view(0.9);
+    byLabel(host, 'Play').fire('click');
+    page.view(0.4);
+    page.idle();
+    assert.deepEqual(page.microtasks().map(e => (e as Error).message), ['the listener failed once'], 'the error is reported, not swallowed');
+    page.run(16);
+    assert.deepEqual(states.map(x => [+x.liq, +x.stops, +x.takes]), [[1, 0, 0]], 'the tour started at its first scene');
+    const held = chartPicture(host);
+    page.run(48);
+    assert.equal(page.frames.size, 0, 'no frame is asked for while it is held for the view');
+    page.run(10_000);
+    assert.equal(chartPicture(host), held, 'the chart holds still');
+    assert.equal(states.length, 1, 'and no scene goes by under 45 % in view');
+    assert.equal(byLabel(host, 'Play').getAttribute('aria-label'), 'Play', 'the button says it is paused');
+    page.view(0.9);
+    page.run(300);
+    assert.notEqual(chartPicture(host), held, 'back in view, the chart moves on');
+    page.run(4000);
+    assert.equal(states.length, 2, 'and the tour goes on to its next scene');
+  });
+});
+
 /* ==== no network, no app settings ======================================================================================================= */
 
 test('the module asks nothing of the network and touches none of the app\'s settings: its files and what they import', () => {
