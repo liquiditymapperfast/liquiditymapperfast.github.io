@@ -1302,3 +1302,28 @@ test('the profitable traders\' live orders, days and rollup wait what an HTTP-da
     }
   } finally { stub.restore(); }
 });
+
+// Sol's review, round 4.
+
+test('the phone\'s Liq tab draws the view in force when a frame\'s ask for a Plus file finds the membership let go in another tab (Sol, round 4)', async () => {
+  const page = standInPage(), now = Date.now();
+  plus().accept({ key: 'standin-key-0123456789', pass: standInPass(now + 23 * 3_600_000), until: now + 20 * DAY_MS });
+  try {
+    // The groups file holds an older snapshot than the free file, so it is asked for again two minutes on, by whichever frame comes first; that
+    // ask reads the membership again (Plus.pass) and finds it gone.
+    let letGo = false;
+    const access = { get value(): string { if (letGo) { letGo = false; plus().forget(); } return 'v1.pass.sig'; } };
+    const s = service({ [U.groups]: { status: 200, body: groups(NEAR.profitable.liq, null, AS_OF) } }, access, () => free(NEAR.all.liq, AS_OF + 30 * MIN));
+    const store = new Store(initialState());
+    store.set({ liqLevels: { ...store.state.liqLevels, liq: true, stops: false, takes: false, group: 'profitable' } });
+    const pane = new LiqPane(page.parent as never, store, { liqLevels: s.src } as never);
+    pane.setShown(true);
+    for (let i = 0; i < 3; i++) { page.tick(); await tick(); }
+    page.frames();
+    assert.equal(page.text('liq-sub'), 'Profitable traders · BTC · Hyperliquid'); assert.equal(page.text('liq-usd long'), '$10');
+    letGo = true; s.at(s.now() + 2 * MIN + 1_000); pane.invalidate(); page.frames();
+    assert.equal(page.text('liq-sub'), 'BTC · Hyperliquid', 'Plus gone: the free view');
+    assert.equal(page.text('liq-usd long'), '$100', 'and everyone\'s levels under it in that same frame, never the profitable traders\'');
+    pane.setShown(false);
+  } finally { plus().forget(); page.restore(); }
+});

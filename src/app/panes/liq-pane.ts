@@ -11,7 +11,7 @@ import { niceStep } from '../view.ts';
 import { paintInfoBox } from '../infobox.ts';
 import { ratioText } from '../mirror.ts';
 import { binsIn, dollarPriceOf, liqProfile, standingBelow, TAKE_DASH, type LiqLevels, type LiqProfile, type LiqStanding } from '../liq-levels.ts';
-import { curveOf, groupTitle, heldBack, kindTitle, liveView, plusOn } from '../liq-view.ts';
+import { curveOf, groupTitle, heldBack, kindTitle, liveView, plusOn, viewKey, type LiqView } from '../liq-view.ts';
 import { liqNote, liqWhy, sideTitle } from '../liq-words.ts';
 import { probeBoxLines } from '../liq-box.ts';
 import { toggleLevels } from '../levels-control.ts';
@@ -128,8 +128,8 @@ export class LiqPane {
   }
 
   /** The title says what is shown (a lock while a Plus choice is held back), the line beside it whose levels and where. */
-  #syncHead(): void {
-    const s = this.store.state.liqLevels, view = liveView(s), title = kindTitle(curveOf(view));
+  #syncHead(view: LiqView = liveView(this.store.state.liqLevels)): void {
+    const s = this.store.state.liqLevels, title = kindTitle(curveOf(view));
     if (this.#title.textContent !== title) this.#title.textContent = title;
     this.#title.classList.toggle('locked', heldBack(s, plusOn()));
     const sub = view.group !== 'all' ? `${groupTitle(view.group)} · ${t('BTC · Hyperliquid')}` : t('BTC · Hyperliquid');
@@ -141,7 +141,13 @@ export class LiqPane {
    * for a change of the setting reads the new choice's levels, not those the last tick left (Sol, review 2026-11-19, round 3: the profitable
    * traders' caption stood over everyone's levels until the next tick).
    */
-  #ensure(): void { this.hub.liqLevels.ensure(currentCoin(), () => this.invalidate(), liveView(this.store.state.liqLevels)); }
+  #ensure(): LiqView {
+    const ask = (view: LiqView): LiqView => { this.hub.liqLevels.ensure(currentCoin(), () => this.invalidate(), view); return view; };
+    // Asking for a Plus file reads the membership again and can find it let go in another tab: the source is then turned to the view in force
+    // now, and the frame draws that one view throughout (Sol, review 2026-11-19, round 4).
+    const asked = ask(liveView(this.store.state.liqLevels)), now = liveView(this.store.state.liqLevels);
+    return viewKey(now) === viewKey(asked) ? asked : ask(now);
+  }
 
   #tick(): void {
     const src = this.hub.liqLevels;
@@ -194,9 +200,9 @@ export class LiqPane {
     if (!this.#shown || W < 80 || H < 80) return;
     ctx.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0);
     ctx.fillStyle = p.bg; ctx.fillRect(0, 0, W, H);
-    this.#ensure();
+    const view = this.#ensure();
     const src = this.hub.liqLevels, levels = src.levels, state = this.store.state;
-    this.#syncHead();
+    this.#syncHead(view);
     const why = replaying() ? t('Liquidation levels show the live market only.') : src.state === 'other-coin' ? t('Liquidation levels are for BTC only for now.')
       : !levels || src.state !== 'ready' ? liqWhy(src, src.asOfs().liq) || t('Liquidation levels are loading.') : '';
     const s = why ? null : src.standing();
@@ -213,7 +219,7 @@ export class LiqPane {
     const ts = src.takesState === 'ready' ? src.takesStanding() : null, tprof = ts ? liqProfile(ts, step, lo, hi, price) : null;
     this.#frame = { price, span };
 
-    this.#paintSummary(s, levels, price, lo, hi);
+    this.#paintSummary(s, levels, price, lo, hi, view);
     this.#paintGrid(ctx, p, price, lo, hi, span, yOf, xR, W);
     this.#paintMountains(ctx, p, prof, step, price, yOf, xR, plotW, mid);
     const placed = this.#paintMilestones(ctx, p, s, price, yOf, plotW);
@@ -223,7 +229,7 @@ export class LiqPane {
   }
 
   /** The summary: the longs that would go below and the shorts above within the range, weighed against each other. */
-  #paintSummary(s: LiqStanding, levels: LiqLevels, price: number, lo: number, hi: number): void {
+  #paintSummary(s: LiqStanding, levels: LiqLevels, price: number, lo: number, hi: number, view: LiqView): void {
     const longs = Math.max(0, standingBelow(s, 'long', price) - standingBelow(s, 'long', lo));
     const shorts = Math.max(0, standingBelow(s, 'short', hi) - standingBelow(s, 'short', price));
     this.#longUsd.textContent = `$${usd(longs)}`; this.#shortUsd.textContent = `$${usd(shorts)}`;
@@ -239,7 +245,7 @@ export class LiqPane {
     this.#ratio.textContent = big > 0 ? `${longs >= shorts ? alone ? t('bids') : t('Longs') : alone ? t('asks') : t('Shorts')} ${ratioText(small > 0 ? big / small : Infinity)}` : '';
     this.#ratio.className = `liq-ratio ${longs >= shorts ? 'long' : 'short'}`;
     const src = this.hub.liqLevels, late = src.candlesLate() ? ` · ${t('Hyperliquid\'s candles could not be read, so a level price has passed may still show.')}` : '';
-    this.#foot.textContent = `${liqNote(src, liveView(this.store.state.liqLevels), levels.asOf)}${late}`;
+    this.#foot.textContent = `${liqNote(src, view, levels.asOf)}${late}`;
   }
 
   /** Nothing to draw: the reason, in the middle, and no summary. */
