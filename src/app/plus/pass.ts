@@ -133,6 +133,11 @@ export class Plus {
   #renewing: string | null = null;
   /** Whether Plus was in force when the listeners were last told (`tick`). */
   #wasOn = false;
+  /**
+   * The last renewal did not reach the server or found it busy or down (no answer, a 5xx, a 429): the membership could not be verified, which
+   * says nothing about the key. Cleared by any answer of the server's own and by `retry`.
+   */
+  #unverified = false;
   constructor(private storage: Kept | null = kept(), private post: Post = webPost, private now: () => number = Date.now, private api: () => string = () => plusApi()) {
     this.#held = this.#read() ?? null;
     this.#wasOn = this.#valid(this.now());
@@ -179,16 +184,31 @@ export class Plus {
   get renews(): boolean | null { return this.#held?.renews ?? null; }
   /** The key, for its owner to copy to another device. */
   get key(): string | null { return this.#held?.key ?? null; }
+  /** Whether a renewal is under way for the key held. */
+  get renewing(): boolean { return this.#held !== null && this.#renewing === this.#held.key; }
+  /** Whether the last renewal could not reach the server (or found it busy or down): Plus could not be verified, the key may be fine. */
+  get unverified(): boolean { return this.#unverified; }
+  /** "Try again": a renewal now, whatever wait the last one left (one at a time still: none while one is under way). */
+  retry(): void {
+    const held = this.#held;
+    if (!held || this.#renewing === held.key) return;
+    this.#held = { ...held, next: 0 }; this.#write();
+    if (this.#unverified) { this.#unverified = false; this.#changed(); }
+    this.renew();
+  }
+  /** Tell the listeners when the verification's state changes (it changes no pass). */
+  #verified(unverified: boolean): void { if (this.#unverified !== unverified) { this.#unverified = unverified; this.#changed(); } }
 
   /** A checkout, a restore or a key typed in gave this browser a membership. False when the browser would not keep it (it lasts as long as this tab). */
   accept(grant: { key: string; pass: string; until: number; renews?: boolean; now?: number }): boolean {
     const now = this.now();
     this.#held = { key: grant.key, pass: parsePass(grant.pass) ? grant.pass : '', until: grant.until, ended: false, why: '', renews: grant.renews ?? null, skew: skewOf(grant.now, now), next: 0 };
+    this.#unverified = false;
     const stored = this.#write(); this.#changed();
     return stored;
   }
   /** This browser lets its membership go (the subscription itself is not touched). */
-  forget(): void { if (!this.#held) return; this.#held = null; this.#write(); this.#changed(); }
+  forget(): void { if (!this.#held) return; this.#held = null; this.#unverified = false; this.#write(); this.#changed(); }
   /**
    * The server refused a pass it was sent (`pass`: which one; a late answer about a pass since replaced says nothing about the new one).
    * It is dropped and a new one asked for, within the one-a-minute rule: a server that refuses even the pass it has just given (its two
@@ -242,23 +262,26 @@ export class Plus {
         // and an hour (a membership paid again meanwhile is seen before the pass runs out); one that comes already run out, in an hour.
         const wait = left >= RENEW_BEFORE_MS + CLOCK_SLACK_MS ? RETRY_MS : left > 0 ? Math.min(LONG_RETRY_MS, Math.max(SHORT_PASS_RETRY_MS, left / 2)) : LONG_RETRY_MS;
         this.#held = { key, pass: grant.pass, until: grant.until, ended: false, why: '', renews: grant.renews ?? null, skew, next: at + wait };
+        this.#unverified = false;
         this.#write(); this.#changed(); return;
       }
       // The server's refusal: the subscription is not in good standing, or the key was replaced. The key stays (a subscription paid again
       // may renew with it); the pass goes. Any other 403 (a firewall's page, a challenge) says nothing about the membership.
       if (answer.status === 403 && errorOf(answer.body) === 'not_active') {
         if (newer) return;
-        const why = reason((answer.body as { status?: unknown }).status), news = cur.pass !== '' || !cur.ended || cur.why !== why;
+        const why = reason((answer.body as { status?: unknown }).status), news = cur.pass !== '' || !cur.ended || cur.why !== why || this.#unverified;
         this.#held = { ...cur, pass: '', ended: true, why, next: at + LONG_RETRY_MS };
+        this.#unverified = false;
         this.#write(); if (news) this.#changed();
         return;
       }
       // Busy or down (429, 5xx): again when it said, within a minute and an hour. Turned down for another reason (another 4xx, a page that
-      // is not the server's): the pass is kept and the server asked again in an hour.
+      // is not the server's): the pass is kept and the server asked again in an hour. Either way Plus could not be verified.
       const busy = answer.status === 429 || answer.status >= 500;
       const wait = busy ? Math.min(LONG_RETRY_MS, Math.max(RETRY_MS, (answer.retryAfter ?? 0) * 1_000)) : LONG_RETRY_MS;
       this.#held = { ...cur, next: Math.max(cur.next, at + wait) }; this.#write();
-    }, () => { /* not reached (or given up): the minute already set stands */ }).finally(() => { if (this.#renewing === key) this.#renewing = null; });
+      this.#verified(true);
+    }, () => { if (this.#held?.key === key) this.#verified(true); /* not reached (or given up): the minute already set stands */ }).finally(() => { if (this.#renewing === key) this.#renewing = null; });
   }
   /** Told whenever the membership here changes (a pass came, went, or was replaced). */
   subscribe(listener: () => void): () => void { this.#listeners.add(listener); return () => { this.#listeners.delete(listener); }; }

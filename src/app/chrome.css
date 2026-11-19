@@ -693,5 +693,5 @@ html[data-material="glass"] :is(.toolbar, .statusbar, .dock) { position: relativ
 html[data-material="glass"] main .splitter { z-index: 52; }
 html[data-material="glass"] main .splitter:not(:hover):not(.active) { background: transparent; border-color: transparent; }
 html[data-material="glass"] :is(.panel, .menu):not(.glass-over) { background: transparent; }
-html[data-material="glass"] :is(.toolbar, .statusbar, .dock, .panel, .menu) :is(button:not(.on):not(.help):not(.menu-item):not(.chip):not(.dock-tab):not(.tour-btn):not(.tour-invite-go):not(.install:hover):not(:active), select) { background-color: color-mix(in srgb, var(--face) 82%, transparent); }
+html[data-material="glass"] :is(.toolbar, .statusbar, .dock, .panel, .menu) :is(button:not(.on):not(.help):not(.menu-item):not(.chip):not(.dock-tab):not(.tour-btn):not(.tour-invite-go):not(.key-go):not(.install:hover):not(:active), select) { background-color: color-mix(in srgb, var(--face) 82%, transparent); }
 html[data-material="glass"] .panel-tools { background: color-mix(in srgb, var(--face) 70%, transparent); }

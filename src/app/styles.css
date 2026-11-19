@@ -8,6 +8,7 @@
   /* The question mark of every "?" (chrome.css button.help, and a script's row button): drawn, so it sits in the middle of its box whatever the font. */
   --mark-help: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8.2 8.6a3.9 3.9 0 1 1 5.9 3.3c-1.3.8-2.1 1.5-2.1 3'/%3E%3Cpath d='M12 19.6h.01'/%3E%3C/svg%3E");
   --mark-more: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Ccircle cx='5' cy='12' r='2.2'/%3E%3Ccircle cx='12' cy='12' r='2.2'/%3E%3Ccircle cx='19' cy='12' r='2.2'/%3E%3C/svg%3E");
+  --mark-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.5v5.5M12 16.5v.01'/%3E%3C/svg%3E");
   --mark-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12.5l5 5L20 6.5'/%3E%3C/svg%3E");
   /* A list's arrow, as heavy as the settings key's sliders (the same stroke in the same box), so the two read as one column of marks. */
   --mark-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 9l6.5 6.5L18.5 9'/%3E%3C/svg%3E");
@@ -830,6 +831,49 @@ table.keys td:first-child { width: 34%; white-space: nowrap; }
 .panel .seg.liq-choice button { flex: 1 1 auto; white-space: nowrap; }
 /* The Plus panel's second tile is a button where it opens the Guide: it looks like the link beside it. */
 button.author-link.plus-tile { align-items: flex-start; height: auto; background: none; text-align: left; font: inherit; cursor: pointer; }
+/* The Plus pop-up by the toolbar's button (plus/panel.ts, a browser with a key): a status line with its mark, the key masked with Reveal and Copy,
+   Replace key and Remove (which asks first, in a box of its own), and See what Plus adds across its foot. Words wrap; nothing is cut. */
+.pp-body { display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 1.45; }
+.pp-status { display: flex; align-items: flex-start; gap: 8px; margin: 0; }
+.pp-status.error { color: var(--warn); }
+.pp-mark, .key-mark { flex: none; width: 15px; height: 15px; margin-top: 2px; background: currentColor; -webkit-mask: var(--mark-check) center / contain no-repeat; mask: var(--mark-check) center / contain no-repeat; }
+.pp-status.ok .pp-mark, .key-msg.ok .key-mark { color: var(--bid); }
+.pp-status.error .pp-mark, .key-msg.err .key-mark { -webkit-mask-image: var(--mark-alert); mask-image: var(--mark-alert); }
+.spin { display: inline-block; flex: none; width: 13px; height: 13px; margin-top: 3px; box-sizing: border-box; border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; border-radius: 50%; animation: pp-spin .8s linear infinite; }
+@keyframes pp-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2.4s; } }
+.pp-label { margin: 0 0 6px; color: var(--muted); font-size: 12px; }
+.pp-keyrow { display: flex; align-items: center; gap: 6px; }
+.pp-key { flex: 1 1 auto; min-width: 0; height: 28px; box-sizing: border-box; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--text); font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: .02em; }
+.pp-key:focus-visible, .key-in:focus-visible { outline: 2px solid var(--ui); outline-offset: 1px; }
+.pp-small { flex: none; min-height: 28px; white-space: nowrap; }
+.pp-small.danger { border-color: var(--warn); color: var(--warn); }
+.pp-hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.pp-hint:empty { display: none; }
+.pp-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pp-confirm, .pp-replace { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+.pp-confirm p { margin: 0; }
+.pp-see { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 34px; padding: 0 12px; text-align: left; }
+.pp-arrow { flex: none; }
+/* The key form (plus/key.ts), in the pop-up and the presentation: a field and Activate on one row, what the server said under it, and that a key is
+   entered once per browser and address. */
+.key-form { display: flex; flex-direction: column; margin: 0; }
+/* Read by a screen reader, not shown (a field's name where its placeholder shows the same). */
+.vh { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+.key-row { display: flex; gap: 8px; }
+.key-in { flex: 1 1 auto; min-width: 0; height: 32px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--text); font: 13px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.key-in::placeholder { color: var(--muted); font-family: ui-sans-serif, system-ui, sans-serif; }
+.key-in[aria-invalid="true"] { border-color: var(--warn); }
+.key-go { flex: none; min-height: 32px; padding: 0 14px; border-color: var(--ui); background: var(--ui); color: var(--on-ui, #fff); font-weight: 600; white-space: nowrap; }
+.key-go:hover:not(:disabled) { border-color: color-mix(in srgb, var(--ui) 86%, var(--text)); background: color-mix(in srgb, var(--ui) 86%, var(--text)); }
+.key-go:disabled { opacity: .5; cursor: default; }
+.key-msg { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 8px; margin: 8px 0 0; font-size: 12.5px; line-height: 1.4; }
+.key-msg:empty { display: none; }
+.key-msg.err { color: var(--warn); }
+.key-msg > span:not([class]) { flex: 1 1 0; min-width: 0; }
+.key-more { flex-basis: 100%; color: var(--warn); }
+.key-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+@media (pointer: coarse) { .pp-small, .pp-see, .key-go { min-height: 44px; } .pp-key, .key-in { height: 44px; } }
 /* The invitation to the tour (tour/invite.ts), a notice: its text takes the room, the buttons wrap under it on a narrow screen. */
 .toolbar .tour-invite { flex-wrap: wrap; row-gap: 6px; }
 .tour-invite-text { flex: 1 1 220px; min-width: 0; }

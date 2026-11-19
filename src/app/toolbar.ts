@@ -15,7 +15,7 @@ import { alignRows } from './ui/fit-grid.ts';
 import { setTip } from './tip.ts';
 import { InstallButton } from './install.ts';
 import { toggleAuthor } from './author.ts';
-import { PLUS_NAME, togglePlus } from './plus/panel.ts';
+import { PLUS_NAME, pressPlus } from './plus/panel.ts';
 import { plus } from './plus/pass.ts';
 import { HELP, helpButton, setTourStarter, showGuide, showTour, type HelpId } from './help.ts';
 import { openVenueDialog } from './venue-dialog.ts';
@@ -170,7 +170,7 @@ export class Toolbar {
    * breaking into two rows on a 1,366 px screen; the Tour is the Guide's first button and the first visit's invitation). Lit while this
    * browser has Plus; it opens what Plus is, and the way to it.
    */
-  #plus = el('button', { type: 'button', class: 'plus-btn', textContent: PLUS_NAME, tip: t('Plus: the liquidation levels\' whole history, the liquidations of HyperTracker\'s profitable traders, and stop and take-profit levels, for a monthly price that pays for the servers behind this page. Everything else stays free.'), onclick: () => { togglePlus(this.#plus); } });
+  #plus = el('button', { type: 'button', class: 'plus-btn', textContent: PLUS_NAME, tip: t('Plus: the liquidation levels\' whole history, the liquidations of HyperTracker\'s profitable traders, and stop and take-profit levels, for a monthly price that pays for the servers behind this page. Everything else stays free.'), onclick: () => { pressPlus(this.#plus); } });
   /** Says when the site serves a newer build than this tab runs (update-notice.ts): in the status bar on a computer, under the bar otherwise. */
   readonly #update = new UpdateNotice();
   #shot = el('button', { type: 'button', class: 'icon-btn', ariaLabel: t('Screenshot'), tip: t('Take a picture of the chart (keyboard: S): select an area or click a pane, draw on it, hide anything private with pixelate or blur, then copy or save it.'), onclick: () => { void lazy(() => import('./screenshot/editor.ts')).then(m => m?.startScreenshot()); } });
