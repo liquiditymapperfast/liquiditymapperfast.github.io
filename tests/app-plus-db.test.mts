@@ -767,3 +767,53 @@ test('C1-7 (the exception): a tab whose reservation write fails still renews, at
     for (let i = 1; i < times.length; i++) assert.ok(times[i]! - times[i - 1]! >= 60_000, `${tab}: ${times[i]! - times[i - 1]!} ms apart`);
   }
 });
+
+// ---- Sol's code review C3 (round 2, 2026-11-20) ----
+
+test('C3-1: Try again after renewals whose writes failed (the last answered 429 Retry-After 600) asks at once and stores no memory wait', async () => {
+  const { b, a } = await idbBrowser();
+  assert.equal(await take(a, KEY_A, [], NOW + 2 * HOUR), 'kept');
+  const server = slowPost();
+  const r = b.open({ post: server.post });
+  await until(() => r.mode === 'idb' && r.key === KEY_A);
+  r.pass();
+  await until(() => server.asked.length === 1);
+  // Writes fail from here: the renewal's pass is kept in memory only.
+  b.idb.fail(info => info.op === 'put', 'QuotaExceededError', 1e9);
+  const kept = passOf('gift_aaaa', NOW + 3 * HOUR);
+  server.asked[0]!.answer({ status: 200, body: { pass: kept, paidUntil: UNTIL, now: NOW } });
+  await until(() => r.pass() === kept);
+  b.clock.t += 2 * HOUR;
+  r.pass();
+  await until(() => server.asked.length === 2);
+  server.asked[1]!.answer({ status: 429, body: { error: 'rate_limited' }, retryAfter: 600 });
+  await until(() => r.unverified);
+  // Writes recover; Try again.
+  b.idb.clearFailures();
+  r.retry();
+  await until(() => server.asked.length === 3);
+  const stored = memberIn(b.idb).held!;
+  assert.equal(stored.pass, kept, 'the memory pass stored');
+  assert.ok(stored.next <= b.clock.t + 60_000, `no memory wait written back (next ${stored.next - b.clock.t} ms ahead)`);
+});
+
+test('C3-3: a removal in another tab reaches this one through its storage event alone (no BroadcastChannel)', async () => {
+  const b = browser();
+  b.channel = false;
+  const a = b.open();
+  await until(() => a.mode === 'idb');
+  await readSeed(new PlusDb(b.idb.factory));
+  assert.equal(await take(a, KEY_A), 'kept');
+  const c = b.open();
+  await until(() => c.mode === 'idb' && c.key === KEY_A);
+  assert.equal(c.state, 'on');
+  assert.equal(await a.forget(), 'kept');
+  await until(() => c.key === null);
+  assert.equal(c.state, 'none', 'no longer on');
+  // A value the candidate check rejects (another key) also leaves this tab holding what is stored.
+  assert.equal(await take(a, KEY_B), 'kept');
+  await until(() => c.key === KEY_B);
+  c.mirrorChanged(JSON.stringify({ v: 1, key: KEY_C, pass: passOf('gift_cccc', NOW + 24 * HOUR), until: UNTIL }));
+  await settleTasks();
+  assert.equal(c.key, KEY_B);
+});

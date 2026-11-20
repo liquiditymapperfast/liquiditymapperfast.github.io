@@ -42,6 +42,8 @@ export interface Browser {
   unreadable: boolean;
   /** Whether `storage` events reach the other tabs (on by default). */
   events: boolean;
+  /** Whether the tabs have a BroadcastChannel (on by default; off: only storage events tell them). */
+  channel: boolean;
   tabs: Plus[];
   /** Each tab's own `PlusDb` (null for a tab without one), by the tab's place in `tabs`. */
   dbs: (PlusDb | null)[];
@@ -54,7 +56,7 @@ export interface Browser {
 export function browser(idb: FakeIdb = new FakeIdb()): Browser {
   const data = new Map<string, string>(), writes: string[] = [];
   const b: Browser = {
-    idb, data, writes, clock: { t: NOW }, refuse: null, unreadable: false, events: true, tabs: [], dbs: [],
+    idb, data, writes, clock: { t: NOW }, refuse: null, unreadable: false, events: true, channel: true, tabs: [], dbs: [],
     open: (o = {}) => {
       const index = b.tabs.length;
       const emit = (key: string): void => {
@@ -72,7 +74,7 @@ export function browser(idb: FakeIdb = new FakeIdb()): Browser {
         },
         removeItem: k => { if (!data.has(k)) return; data.delete(k); writes.push(k); emit(k); },
       };
-      const channel = { postMessage: (): void => { setImmediate(() => { b.tabs.forEach((t, j) => { if (j !== index) t.heard(); }); }); } };
+      const channel = b.channel ? { postMessage: (): void => { setImmediate(() => { b.tabs.forEach((t, j) => { if (j !== index) t.heard(); }); }); } } : null;
       // The open's wait is short here (3 s in the page), so a held open turns a marked tab not ready quickly.
       const db = o.db === false ? null : new PlusDb(idb.factory, undefined, OPEN_WAIT_MS);
       const tab = new Plus(storage, o.post ?? noPost, () => b.clock.t, () => API, { db, channel });

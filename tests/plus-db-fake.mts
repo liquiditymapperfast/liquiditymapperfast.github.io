@@ -291,6 +291,8 @@ export class FakeIdb {
     f.left--;
     return f.name;
   }
+  /** Every planned failure (`fail`) given up: requests succeed again. */
+  clearFailures(): void { this.#failures.length = 0; }
   /** The tab number of the connection opened last (requests carry it as `tab`). */
   get lastTab(): number { return this.#tabs; }
   takePutFailure(): boolean { if (this.#putFailure === null) return false; this.lastPutFailure = this.#putFailure; this.#putFailure = null; return true; }

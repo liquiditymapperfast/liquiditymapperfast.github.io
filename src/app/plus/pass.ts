@@ -658,9 +658,11 @@ export class Plus {
    */
   mirrorChanged(value?: string | null): void {
     if (this.#mode !== 'idb') { this.reload(); return; }
-    let seen: Held | null;
-    try { seen = readHeld(value !== undefined ? value : this.storage?.getItem(PLUS_STORE) ?? null); } catch { return; }
-    if (!seen) return;
+    let seen: Held | null = null;
+    try { seen = readHeld(value !== undefined ? value : this.storage?.getItem(PLUS_STORE) ?? null); } catch { seen = null; }
+    // No candidate (another tab removed the membership, or a value that is not one): the stored membership is read and adopted, so this tab
+    // ends holding what is stored (Sol, code review C3-3). A candidate's commit adopts it too, whether it takes the candidate or not.
+    if (!seen) { void this.#enqueue(() => this.#refresh()); return; }
     const candidate = seen;
     // Never over a stored refusal (no pass): an event may carry a value a tab of this build wrote before that refusal, and a stored pass of
     // one key only ever moves later otherwise.
@@ -733,10 +735,12 @@ export class Plus {
     if (!this.#overlay) {
       const was = this.#held, next = stored.held;
       let held = next && was && next.key === was.key ? { ...next, next: op.resetWait ? next.next : Math.max(next.next, was.next) } : next;
-      // A renewal this tab got and could not store that runs out later survives (and is written by one more commit).
+      // A renewal this tab got and could not store that runs out later survives (and is written by one more commit). After Try again the
+      // reset wait stands, in memory and in that write: the memory pass keeps no wait of its own (Sol, code review C3-1).
       if (held && was && held.key === was.key && this.#memoryPass !== null && was.pass === this.#memoryPass && expOf(was.pass) > expOf(held.pass)) {
-        held = withPass(held, was);
-        void this.#adoptPass(was);
+        const from = op.resetWait ? { ...was, next: held.next } : was;
+        held = withPass(held, from);
+        void this.#adoptPass(from);
       }
       this.#held = held;
       if ((op.kind === 'operation' && had) || !sameHeld(this.#held, was)) this.#changed();
