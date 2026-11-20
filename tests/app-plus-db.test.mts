@@ -591,3 +591,27 @@ test('plain mode stays as it was: synchronous key entry, Remove and renewal, and
   b.data.set(PLUS_IDB_MARKER, '1');
   assert.equal(b.open({ db: false }).mode, 'unusable');
 });
+
+test('a refusal another tab stored stands: a pass this tab only read from the store is never written back over it', async () => {
+  for (const how of ['ended', 'refused'] as const) {
+    const { b, a } = await idbBrowser();
+    assert.equal(await take(a, KEY_A, [], NOW + 2 * HOUR), 'kept');
+    const server = slowPost();
+    const x = b.open({ post: server.post }), y = b.open();
+    await until(() => x.mode === 'idb' && y.mode === 'idb' && x.key === KEY_A && y.key === KEY_A);
+    if (how === 'ended') {
+      x.pass();
+      await until(() => server.asked.length === 1);
+      server.asked[0]!.answer({ status: 403, body: { error: 'not_active', status: 'canceled' } });
+      await until(() => memberIn(b.idb).held?.ended === true);
+    } else {
+      x.refused(passOf('gift_aaaa', NOW + 2 * HOUR));
+      await until(() => memberIn(b.idb).held?.pass === '');
+    }
+    await settleTasks(); await settleTasks();
+    assert.equal(memberIn(b.idb).held?.pass, '', `${how}: the stored refusal stands`);
+    if (how === 'ended') { assert.equal(memberIn(b.idb).held?.ended, true); await until(() => y.state === 'ended' && a.state === 'ended'); }
+    else await until(() => y.pass() === null && a.pass() === null);
+    assert.equal(b.mirrorKey(), KEY_A);
+  }
+});

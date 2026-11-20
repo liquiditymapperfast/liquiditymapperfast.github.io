@@ -248,6 +248,12 @@ export class Plus {
   /** This tab's revision: increased whenever an overlay is taken, replaced or dropped; never decreased or reset (spec 2.2). */
   #rev = 0;
   #overlay: Overlay | null = null;
+  /**
+   * The pass this tab got from a renewal and could not store (not ready or unusable here, or its commit failed): the only pass of its own that
+   * may win over the stored one (spec 2.4). A pass this tab merely read from the store or the mirror never does: a refusal another tab
+   * stored (no pass, ended) stands.
+   */
+  #memoryPass: string | null = null;
   /** The membership commits of this tab, one at a time. */
   #queue: Promise<unknown> = Promise.resolve();
   constructor(private storage: Kept | null = kept(), private post: Post = webPost, private now: () => number = Date.now, private api: () => string = () => plusApi(), options: PlusOptions = {}) {
@@ -409,7 +415,7 @@ export class Plus {
     this.#seenGen = this.#readGen();
     if (next && was && next.key === was.key) next.next = Math.max(next.next, was.next);
     // A tab without its database keeps a renewal it could not store (memory only) over an older pass of the same key in the mirror.
-    if (this.#mode !== 'plain' && next && was && next.key === was.key && expOf(was.pass) > expOf(next.pass)) Object.assign(next, withPass(next, was));
+    if (this.#mode !== 'plain' && next && was && next.key === was.key && this.#memoryPass !== null && was.pass === this.#memoryPass && expOf(was.pass) > expOf(next.pass)) Object.assign(next, withPass(next, was));
     this.#held = next;
     if (next?.key === was?.key && next?.pass === was?.pass && next?.until === was?.until && next?.ended === was?.ended && next?.renews === was?.renews && next?.why === was?.why) return;
     this.#changed();
@@ -581,15 +587,18 @@ export class Plus {
     const was = this.#held;
     let next = stored.held;
     if (next && was && next.key === was.key) {
-      if (expOf(was.pass) > expOf(next.pass)) { const memory = was; next = withPass(next, memory); void this.#adoptPass(memory); }
+      if (this.#memoryPass !== null && was.pass === this.#memoryPass && expOf(was.pass) > expOf(next.pass)) { const memory = was; next = withPass(next, memory); void this.#adoptPass(memory); }
+      else this.#memoryPass = null;
       next = { ...next, next: Math.max(next.next, was.next) };
     }
     this.#held = next;
     if (told || !sameHeld(next, was)) this.#changed();
   }
   /** A later pass for the key the database holds (kept in memory here), written by one commit if it is still later. */
-  #adoptPass(from: Held): Promise<Committed> {
-    return this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [], change: cur => cur && cur.key === from.key && expOf(from.pass) > expOf(cur.pass) ? withPass(cur, from) : NOCHANGE });
+  async #adoptPass(from: Held): Promise<Committed> {
+    const out = await this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [], change: cur => cur && cur.key === from.key && expOf(from.pass) > expOf(cur.pass) ? withPass(cur, from) : NOCHANGE });
+    if (out.kind !== 'failed' && this.#memoryPass === from.pass) this.#memoryPass = null;
+    return out;
   }
   /** The mirror, a function of the stored membership alone; written only where it differs (so tabs answering each other's events stop). */
   #writeMirror(stored: StoredMember): void {
@@ -775,7 +784,11 @@ export class Plus {
         if (out.kind === 'stale') return;
       }
       const r = renewed(this.#held, key, sent, answer, at);
-      if (r) { this.#memory(r.held); this.#verified(r.unverified); }
+      if (r) {
+        // A pass the server gave and this tab could not store: kept, and applied to the store when it opens (or the next commit runs).
+        this.#memoryPass = r.held.pass !== '' && r.held.pass !== sent ? r.held.pass : r.held.pass === '' ? null : this.#memoryPass;
+        this.#memory(r.held); this.#verified(r.unverified);
+      }
     } finally { if (this.#renewing === key) this.#renewing = null; }
   }
   /** "Try again" outside plain mode: the stored wait cleared for the key held (never another tab's), then a renewal. */
