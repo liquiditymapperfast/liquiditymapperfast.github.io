@@ -512,6 +512,12 @@ export interface LiqColors { long: string; short: string; text: string; muted: s
 export const TAKE_DASH: readonly number[] = [4, 3];
 /** The dash offset that puts a stroke starting at `x` on the pattern anchored at `anchor`, so dashes line up from row to row. */
 export const dashPhase = (x: number, anchor = 0): number => { const n = TAKE_DASH.reduce((a, b) => a + b, 0); return (((x - anchor) % n) + n) % n; };
+/**
+ * The dash offset of a take profits' lane from `x0`, `w` wide: on the plot's one pattern (`dashPhase`), except a lane narrower than the
+ * pattern, which starts on a dash, so a thin lane is never all gap (Sol, review 2026-11-19: a 2 px lane at phase 5 drew nothing and still
+ * answered the pointer).
+ */
+export const takeDashOffset = (x0: number, w: number): number => (w < TAKE_DASH.reduce((a, b) => a + b, 0) ? 0 : dashPhase(x0));
 
 /** A lane of the stripe, [x0, x1). */
 export interface Lane { x0: number; x1: number }
@@ -571,7 +577,7 @@ export function paintLiqStripe(ctx: CanvasRenderingContext2D, view: View, x0: nu
   ctx.save();
   // Take profits (`dashed`): each row a dashed stroke as tall as the row, the dashes on one pattern from the plot's left edge, never weaker
   // than a third so a small one still reads as dashes, not as a faint level.
-  if (dashed) { ctx.setLineDash(TAKE_DASH as number[]); ctx.lineDashOffset = dashPhase(x0); }
+  if (dashed) { ctx.setLineDash(TAKE_DASH as number[]); ctx.lineDashOffset = takeDashOffset(x0, w); }
   for (const r of rows) {
     const y0 = view.yOf(r.p1, ph), y1 = view.yOf(r.p0, ph);
     if (y1 < 0 || y0 > ph) continue;

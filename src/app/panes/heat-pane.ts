@@ -58,7 +58,7 @@ import { liqLevelsUrl } from '../liq-url.ts';
 import { curveOf, groupName, groupTitle, heldBack, kindName, kindTitle, levelsDescription, liveAsk, liveSplit, liveView, narrowView, pairKey, plusOn, viewKey, viewParts, type LiqPair, type LiqView } from '../liq-view.ts';
 import { columnNotes, liqWhy, narrowNote, ordersAbsent, pairDescription, sideTitle, splitName, subNames, takesLeftOut } from '../liq-words.ts';
 import { mirrorSplits, readingTexts, setBoxLines, stripeBoxLines } from '../liq-box.ts';
-import { noteLines, paintStripe, stripeNote, stripeStands, type StripeHeld, type StripePainted } from '../liq-stripe.ts';
+import { noteLines, noteMostLines, paintStripe, stripeNote, stripeStands, type StripeHeld, type StripePainted } from '../liq-stripe.ts';
 import { toggleLevels } from '../levels-control.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
@@ -2238,12 +2238,14 @@ export class HeatPane {
     const stands = stripeStands(src, plan);
     if (stands && src.candlesLate()) note = `${note} · ${t('Hyperliquid\'s candles could not be read, so a level price has passed may still show.')}`;
     // The note's lines first, so the captions keep clear of them: on a narrow map what it says last (stops as of, the take profits, the other
-    // group's times) goes to the next line, never cut: the parts are whole phrases (`noteLines`).
+    // group's times) goes to the next line, cut only where a short map leaves no room for another: the parts are whole phrases (`noteLines`).
     ctx.save();
     ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
-    const measure = (words: string): number => ctx.measureText(words).width, lines = noteLines(measure, note, Math.max(40, pw - 24)), w = measure(lines[0] ?? '');
-    // Under the legend, a line lower where the "depth recorded from" note already stands there.
-    const h = this.#historyNote, under = this.#legendBox.bottom + 6, below = h && Math.abs(h.top - under) < 12 && h.x0 < 8 + w + 6 && h.x1 > 2, top = below ? under + 13 : under;
+    // Under the legend, a line lower where the "depth recorded from" note already stands there; on a short map in fewer lines, so the
+    // captions keep their room below it (`noteMostLines`).
+    const under = this.#legendBox.bottom + 6, measure = (words: string): number => ctx.measureText(words).width;
+    const lines = noteLines(measure, note, Math.max(40, pw - 24), noteMostLines(ph, under)), w = measure(lines[0] ?? '');
+    const h = this.#historyNote, below = h && Math.abs(h.top - under) < 12 && h.x0 < 8 + w + 6 && h.x1 > 2, top = below ? under + 13 : under;
     ctx.restore();
     this.#liqNoteBox = { x0: 8, x1: 8 + Math.max(0, ...lines.map(measure)), top, bottom: top + 13 * lines.length };
     if (stands) {

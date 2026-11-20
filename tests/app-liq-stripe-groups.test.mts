@@ -5,8 +5,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { LANE_MIN_W, LiqLevelsSource, stripeLanes, type Lane, type LiqRow, type LiqSet } from '../src/app/liq-levels.ts';
-import { noteLines, paintStripe, stripeNote, type StripeHeld } from '../src/app/liq-stripe.ts';
+import { LANE_MIN_W, LiqLevelsSource, TAKE_DASH, dashPhase, stripeLanes, takeDashOffset, type Lane, type LiqRow, type LiqSet } from '../src/app/liq-levels.ts';
+import { noteLines, noteMostLines, paintStripe, stripeNote, type StripeHeld } from '../src/app/liq-stripe.ts';
 import { clock } from '../src/app/format.ts';
 import { View } from '../src/app/view.ts';
 import type { LiqAnswer } from '../src/app/liq-history.ts';
@@ -407,4 +407,31 @@ test('the note\'s lines: whole parts as far as each line goes, the old two lines
   }
   assert.equal(noteLines(measure, note, 290).length, 4, 'four lines where needed');
   assert.ok(noteLines(measure, note, 60).at(-1)!.endsWith('…'), 'a part wider than the room alone is cut');
+});
+
+test('a short map gives the note fewer lines, so the stripe\'s captions keep their room below it (Sol, review 2026-11-19)', () => {
+  assert.equal(noteMostLines(138, 48), 2, 'the 138 px phone map: two lines, as the note always had');
+  assert.equal(noteMostLines(800, 48), 4, 'a tall map: four');
+  for (let ph = 60; ph <= 900; ph++) for (let under = 20; under <= 90; under += 7) {
+    const most = noteMostLines(ph, under);
+    assert.ok(most >= 2 && most <= 4, `${ph}/${under}: two to four lines`);
+    // Past the two lines the note always had, a line is given only where the history note's line, the note and three captions still fit.
+    if (most > 2) assert.ok(under + 13 + 13 * most + 3 + 3 * 17 <= ph, `${ph}/${under}: ${most} lines leave the captions their room`);
+  }
+  const pane = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
+  assert.match(pane, /noteLines\(measure, note, Math\.max\(40, pw - 24\), noteMostLines\(ph, under\)\)/, 'the pane lays the note out by the map\'s height');
+});
+
+test('a thin take profits\' lane starts on a dash, so it is never all gap; a wider one keeps the plot\'s one pattern (Sol, review 2026-11-19)', () => {
+  const period = TAKE_DASH.reduce((a, b) => a + b, 0), on = TAKE_DASH[0]!;
+  // Canvas dashes: the pattern starts `offset` into itself at the stroke's start, so a pixel `d` from the start is inked where (d + offset) mod period < on.
+  const inked = (offset: number, w: number): number => { let n = 0; for (let d = 0; d < w; d++) if ((d + offset) % period < on) n++; return n; };
+  for (let x0 = 0; x0 < 60; x0++) for (let w = LANE_MIN_W; w <= 20; w++) {
+    const offset = takeDashOffset(x0, w);
+    assert.ok(inked(offset, w) > 0, `x0 ${x0}, w ${w}: some of the lane is inked`);
+    if (w >= period) assert.equal(offset, dashPhase(x0), `x0 ${x0}, w ${w}: on the plot's pattern`);
+  }
+  assert.equal(inked(dashPhase(390), 2), 0, 'the case Sol found: on the plot\'s pattern a 2 px lane at 390 would be all gap');
+  const levels = fs.readFileSync('src/app/liq-levels.ts', 'utf8');
+  assert.match(levels, /ctx\.lineDashOffset = takeDashOffset\(x0, w\)/, 'the stripe\'s painter takes that offset');
 });

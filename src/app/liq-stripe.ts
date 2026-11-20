@@ -116,3 +116,12 @@ export function noteLines(measure: (words: string) => number, note: string, room
   if (lines.length > most) lines.splice(most - 1, lines.length, lines.slice(most - 1).join(' · '));
   return lines.map(l => fitText(measure, l, room));
 }
+
+/**
+ * How many lines the note under the legend may take on a plot `ph` tall whose note starts at `under`: what leaves room below it, under the
+ * line the "depth recorded from" note may take, for the stripe's captions (three at most, 17 px each), two at least (as the note always had)
+ * and four at most (Sol, review 2026-11-19: on a 138 px phone map a four-line note pushed the last caption under the time axis).
+ */
+export function noteMostLines(ph: number, under: number): number {
+  return Math.max(2, Math.min(4, Math.floor((ph - under - 13 - 3 - 3 * 17) / 13)));
+}
