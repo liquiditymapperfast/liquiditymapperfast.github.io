@@ -16,7 +16,7 @@
  * server decides. A pass the server refuses is dropped and asked for again.
  */
 import { plusApi } from './config.ts';
-import { PAID_PREFIX, PlusDbUnavailable, SEED_KEY, SEED_SHAPE, plusDbIfAny, type PlusDb } from './plus-db.ts';
+import { PAID_PREFIX, PlusDbUnavailable, SEED_KEY, SEED_SHAPE, plusDbIfAny, seedIn, type PlusDb } from './plus-db.ts';
 import { withTimeout } from './request-timeout.ts';
 
 /** Where the membership is kept (`{ v, key, pass, until, ended, why, renews, skew, next }`). */
@@ -174,8 +174,14 @@ type Change = (current: Held | null) => Held | null | typeof NOCHANGE;
  * A commit: an operation (it takes or removes a key, guarded by its baseline and revision; a grant may use the same-key exception) or a
  * renewal's write (guarded by its own change, which checks the key).
  */
-interface CommitOp { kind: 'operation' | 'renewal'; expect: Baseline | null; rev: number | null; change: Change; settle: readonly string[]; grant?: Held }
-type Committed = { kind: 'ok'; stored: StoredMember; seed: string | null } | { kind: 'stale' } | { kind: 'failed'; error: unknown };
+interface CommitOp {
+  kind: 'operation' | 'renewal'; expect: Baseline | null; rev: number | null; change: Change; settle: readonly string[]; grant?: Held;
+  /** A renewal's result: where this tab does not store (an overlay's key, no database open) it is applied in memory at the queue's head. */
+  local?: boolean;
+  /** "Try again": the stored wait is the tab's too (not merged with a later wait this tab held). */
+  resetWait?: boolean;
+}
+type Committed = { kind: 'ok'; stored: StoredMember; seed: string | null } | { kind: 'stale' } | { kind: 'failed'; error: unknown } | { kind: 'local' };
 
 /** The stored membership, checked (anything malformed reads as none, at generation 0). */
 export function storedMember(value: unknown): StoredMember {
@@ -254,6 +260,13 @@ export class Plus {
    * stored (no pass, ended) stands.
    */
   #memoryPass: string | null = null;
+  /**
+   * The first open's wait ran out without an answer (an unmarked browser stays opening): the key shown renews in memory only from then on,
+   * as a tab not ready does, until the open answers (Sol, code review C1-1, 2026-11-20: renewal must not stop for an open that hangs).
+   */
+  #openWaited = false;
+  /** A renewal asked while the tab was still within its first open's wait: run once the mode settles. */
+  #renewWanted = false;
   /** The membership commits of this tab, one at a time. */
   #queue: Promise<unknown> = Promise.resolve();
   constructor(private storage: Kept | null = kept(), private post: Post = webPost, private now: () => number = Date.now, private api: () => string = () => plusApi(), options: PlusOptions = {}) {
@@ -424,7 +437,11 @@ export class Plus {
   tick(): void { if (this.on !== this.#wasOn) this.#changed(); }
   /** Ask the server for a fresh pass with the key, unless one is being asked for or the last was asked too recently. */
   renew(): void {
-    if (this.#mode !== 'plain') { if (this.#mode !== 'opening') void this.#renewHere(); return; }
+    if (this.#mode !== 'plain') {
+      // Within the first open's wait the renewal waits for the mode (and is then asked once); after it, it runs in memory.
+      if (this.#mode === 'opening' && !this.#openWaited) { this.#renewWanted = true; return; }
+      void this.#renewHere(); return;
+    }
     if (this.#plainBlocked()) return;
     // What another tab wrote counts first: a frozen tab waking up must not write its old pass over a newer one.
     this.reload();
@@ -486,7 +503,16 @@ export class Plus {
   get unstored(): boolean { return this.#overlay !== null; }
   /** Whether storing it failed for another reason than a full storage: then Try again (`keepAgain`) is offered. */
   get saveFailed(): boolean { return this.#overlay !== null && !this.#overlay.quota; }
-  #setMode(mode: PlusMode): void { if (this.#mode !== mode) { this.#mode = mode; this.#changed(); } }
+  #setMode(mode: PlusMode): void {
+    if (this.#mode !== mode) { this.#mode = mode; this.#changed(); }
+    if (mode !== 'opening') this.#runWanted();
+  }
+  /** A renewal asked while the first open was awaited runs once the mode has settled (or the wait ran out), if it is still due. */
+  #runWanted(): void {
+    if (!this.#renewWanted) return;
+    this.#renewWanted = false;
+    queueMicrotask(() => { this.renew(); });
+  }
   #marker(): boolean { try { return this.storage?.getItem(PLUS_IDB_MARKER) === '1'; } catch { return false; } }
   #setMarker(): boolean {
     try {
@@ -518,7 +544,9 @@ export class Plus {
     const outcome = await db.open();
     if (outcome === 'error') { this.#setMode(this.#marker() ? 'unusable' : 'plain'); return; }
     if (outcome === 'timeout') {
+      this.#openWaited = true;
       if (this.#marker()) this.#setMode('notready');
+      else this.#runWanted();
       await new Promise<void>(resolve => {
         const off = db.subscribe(state => { if (state === 'open' || state === 'failed') { off(); resolve(); } });
         if (db.state === 'open' || db.state === 'failed') { off(); resolve(); }
@@ -549,8 +577,11 @@ export class Plus {
         }, COMMIT_WAIT_MS);
       } catch { this.#setMode('unusable'); return; }
     }
-    // What is stored is adopted before the tab says it is in IDB mode.
-    await this.#enqueue(() => this.#refresh(true));
+    // What is stored is adopted before the tab says it is in IDB mode, and only once it has been read: a read that fails is tried again,
+    // then the tab is unusable here (it shows the mirror) rather than showing no membership over a stored one (Sol, code review C1-2).
+    let read = false;
+    for (let attempt = 0; attempt < 3 && !read; attempt++) read = await this.#enqueue(() => this.#refresh(true));
+    if (!read) { this.#setMode('unusable'); return; }
     this.#setMode('idb');
   }
 
@@ -562,13 +593,14 @@ export class Plus {
     this.#queue = next.catch(() => undefined);
     return next;
   }
-  /** The stored membership read again and adopted (another tab's commit, the page shown again). */
-  async #refresh(entering = false): Promise<void> {
+  /** The stored membership read again and adopted (another tab's commit, the page shown again). Whether it was read. */
+  async #refresh(entering = false): Promise<boolean> {
     const db = this.#db;
-    if ((this.#mode !== 'idb' && !entering) || !db) return;
+    if ((this.#mode !== 'idb' && !entering) || !db) return false;
     let read: { stored: StoredMember; seed: string | null };
-    try { read = await db.tx('readonly', async kv => ({ stored: storedMember(await kv.get('member')), seed: seedOf(await kv.get(SEED_KEY)) }), COMMIT_WAIT_MS); } catch { return; }
+    try { read = await db.tx('readonly', async kv => ({ stored: storedMember(await kv.get('member')), seed: seedOf(await kv.get(SEED_KEY)) }), COMMIT_WAIT_MS); } catch { return false; }
     this.#adopt(read.stored, read.seed);
+    return true;
   }
   /**
    * The stored membership is the one in force here, unless this tab holds an overlay over the very baseline it began with. Another tab's
@@ -614,15 +646,20 @@ export class Plus {
   /**
    * `lmf.plus` changed in another tab (its `storage` event). In IDB mode a previous build's write is never adopted on its counter: one commit
    * compares it with the stored membership inside the transaction, and takes only a later pass for the same key (an old tab renewed it);
-   * anything else leaves the database as it is and the mirror is written again from it (spec 2.3). Elsewhere the mirror is read.
+   * anything else leaves the database as it is and the mirror is written again from it (spec 2.3). Elsewhere the mirror is read. `value` is
+   * the event's own value (`newValue`), taken now: a mirror repair queued earlier can then not erase it before it is compared (Sol, code
+   * review C1-5); without one, the mirror is read now.
    */
-  mirrorChanged(): void {
+  mirrorChanged(value?: string | null): void {
     if (this.#mode !== 'idb') { this.reload(); return; }
-    void this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [], change: cur => {
-      let seen: Held | null;
-      try { seen = readHeld(this.storage?.getItem(PLUS_STORE) ?? null); } catch { return NOCHANGE; }
-      return cur && seen && seen.key === cur.key && expOf(seen.pass) > expOf(cur.pass) ? withPass(cur, seen) : NOCHANGE;
-    } });
+    let seen: Held | null;
+    try { seen = readHeld(value !== undefined ? value : this.storage?.getItem(PLUS_STORE) ?? null); } catch { return; }
+    if (!seen) return;
+    const candidate = seen;
+    // Never over a stored refusal (no pass): an event may carry a value a tab of this build wrote before that refusal, and a stored pass of
+    // one key only ever moves later otherwise.
+    void this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [],
+      change: cur => cur && cur.pass !== '' && !cur.ended && candidate.key === cur.key && expOf(candidate.pass) > expOf(cur.pass) ? withPass(cur, candidate) : NOCHANGE });
   }
   /** Another tab committed (its message on the channel): read again. */
   heard(): void { this.reload(); }
@@ -639,6 +676,15 @@ export class Plus {
   #commit(op: CommitOp): Promise<Committed> {
     return this.#enqueue(async (): Promise<Committed> => {
       if (op.rev !== null && op.rev !== this.#rev) return { kind: 'stale' };
+      if (op.local && !this.#stores()) {
+        // Serialised with the commits: an overlay's renewal never races its Try again (Sol, code review C1-3).
+        const next = op.change(this.#held);
+        if (next === NOCHANGE || next === null) return { kind: 'stale' };
+        const sent = this.#held?.pass ?? '';
+        this.#memoryPass = next.pass !== '' && next.pass !== sent ? next.pass : next.pass === '' ? null : this.#memoryPass;
+        this.#memory(next);
+        return { kind: 'local' };
+      }
       const db = this.#db;
       if (!db) return { kind: 'failed', error: new PlusDbUnavailable('error') };
       let out: { ok: boolean; stored: StoredMember; seed: string | null };
@@ -680,7 +726,13 @@ export class Plus {
     if (op.kind === 'operation' && had) { this.#overlay = null; this.#rev++; }
     if (!this.#overlay) {
       const was = this.#held, next = stored.held;
-      this.#held = next && was && next.key === was.key ? { ...next, next: Math.max(next.next, was.next) } : next;
+      let held = next && was && next.key === was.key ? { ...next, next: op.resetWait ? next.next : Math.max(next.next, was.next) } : next;
+      // A renewal this tab got and could not store that runs out later survives (and is written by one more commit).
+      if (held && was && held.key === was.key && this.#memoryPass !== null && was.pass === this.#memoryPass && expOf(was.pass) > expOf(held.pass)) {
+        held = withPass(held, was);
+        void this.#adoptPass(was);
+      }
+      this.#held = held;
       if ((op.kind === 'operation' && had) || !sameHeld(this.#held, was)) this.#changed();
     }
     try { this.#channel?.postMessage({ kind: 'member' }); } catch { /* the mirror's storage event still tells them */ }
@@ -691,15 +743,16 @@ export class Plus {
   /**
    * What an operation that may write the membership captures when it begins: in plain mode the generation (a number, synchronously); in IDB
    * mode the stored baseline read in a transaction (or the overlay's, while one is held) and this tab's revision; null where this tab takes
-   * no key (opening, not ready, unusable here) or the read failed.
+   * no key (opening, not ready, unusable here) or the transaction failed. The transaction makes the seed when there is none, so every
+   * operation has an epoch: a database cleared and made again while it runs has another seed (Sol, code review C1-6).
    */
   capture(): number | Promise<Capture | null> {
     if (this.#mode === 'plain') return this.generation();
     const db = this.#db;
     if (this.#mode !== 'idb' || !db) return Promise.resolve(null);
     const rev = this.#rev, overlay = this.#overlay;
-    return db.tx('readonly', async kv => ({
-      base: { seed: seedOf(await kv.get(SEED_KEY)), gen: storedMember(await kv.get('member')).gen },
+    return db.tx('readwrite', async kv => ({
+      base: { seed: await seedIn(kv), gen: storedMember(await kv.get('member')).gen },
       waiting: (await kv.keys()).filter(key => key.startsWith(PAID_PREFIX)).map(key => key.slice(PAID_PREFIX.length)),
     }), COMMIT_WAIT_MS).then(read => ({ base: overlay ? overlay.base : read.base, rev, waiting: read.waiting }), () => null);
   }
@@ -715,7 +768,7 @@ export class Plus {
     const out = await this.#commit({ kind: 'operation', expect: cap.base, rev: cap.rev, change: () => held, settle, grant: held });
     if (out.kind === 'ok') { if (this.#unverified) { this.#unverified = false; this.#changed(); } return 'kept'; }
     if (out.kind === 'stale') return 'stale';
-    this.#hold({ held, base: cap.base, settle, quota: isQuota(out.error) });
+    this.#hold({ held, base: cap.base, settle, quota: isQuota(out.kind === 'failed' ? out.error : null) });
     return 'unkept';
   }
   /** Remove: one commit against the baseline (an overlay's, which it drops; if that fails too, the overlay holds "none"). */
@@ -725,7 +778,7 @@ export class Plus {
     const out = await this.#commit({ kind: 'operation', expect: cap.base, rev: cap.rev, change: () => null, settle: [] });
     if (out.kind === 'ok') { if (this.#unverified) { this.#unverified = false; this.#changed(); } return 'kept'; }
     if (out.kind === 'stale') return 'stale';
-    this.#hold({ held: null, base: cap.base, settle: [], quota: isQuota(out.error) });
+    this.#hold({ held: null, base: cap.base, settle: [], quota: isQuota(out.kind === 'failed' ? out.error : null) });
     return 'unkept';
   }
   /**
@@ -737,10 +790,11 @@ export class Plus {
     const overlay = this.#overlay;
     if (!overlay) return 'stale';
     if (this.#mode !== 'idb') return 'refused';
-    const out = await this.#commit({ kind: 'operation', expect: overlay.base, rev: this.#rev, change: () => overlay.held, settle: overlay.settle });
+    // The overlay as it is when the commit runs (its renewal may have replaced its pass meanwhile, through the same queue).
+    const out = await this.#commit({ kind: 'operation', expect: overlay.base, rev: this.#rev, change: () => (this.#overlay ?? overlay).held, settle: overlay.settle });
     if (out.kind === 'ok') return 'kept';
     if (out.kind === 'stale') return 'stale';
-    if (this.#overlay === overlay) { this.#overlay = { ...overlay, quota: isQuota(out.error) }; this.#changed(); }
+    if (this.#overlay === overlay) { this.#overlay = { ...overlay, quota: isQuota(out.kind === 'failed' ? out.error : null) }; this.#changed(); }
     return 'unkept';
   }
 
@@ -756,9 +810,13 @@ export class Plus {
     if (!sameHeld(held, was)) this.#changed();
   }
   /**
-   * The renewal in IDB mode, not ready or unusable here. In IDB mode the wait is reserved inside a transaction (one renewal a minute across
-   * tabs, as the stored wait did before) and the result is one commit that checks the key; elsewhere (and when a commit fails) it is kept in
-   * memory only: no baseline, no overlay, no write (spec 2.4).
+   * The renewal in IDB mode, not ready, unusable here, or opening after its first wait. In IDB mode the wait is reserved inside a transaction
+   * (one renewal a minute across tabs, as the stored wait did before) and the result is one commit that checks the key; elsewhere (and when
+   * a commit fails) it is kept in memory only: no baseline, no overlay, no write (spec 2.4).
+   *
+   * THE EXCEPTION (Sol, code review C1-7): a tab whose reservation write fails (a full storage) still sends, on its own wait in memory, so
+   * Plus does not go off because the browser will not write. Such a tab sends at most one renewal a minute by itself, beside the one a minute
+   * the storing tabs share; it does not coordinate with them (tests/app-plus-db.test.mts pins the bound).
    */
   async #renewHere(): Promise<void> {
     const held = this.#held, now = this.now();
@@ -777,12 +835,12 @@ export class Plus {
       let answer: Awaited<ReturnType<Post>>;
       try { answer = await this.post(`${this.api()}/pass/renew`, { key }); } catch { if (this.#held?.key === key) this.#verified(true); return; }
       const at = this.now();
-      if (stores && this.#stores()) {
-        let unverified = false;
-        const out = await this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [], change: cur => { const r = renewed(cur, key, sent, answer, at); if (!r) return NOCHANGE; unverified = r.unverified; return r.held; } });
-        if (out.kind === 'ok') { this.#verified(unverified); return; }
-        if (out.kind === 'stale') return;
-      }
+      // One step of the queue: stored where this tab stores, else applied in memory at the queue's head (an overlay's key: never beside its
+      // Try again).
+      let unverified = false;
+      const out = await this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [], local: true, change: cur => { const r = renewed(cur, key, sent, answer, at); if (!r) return NOCHANGE; unverified = r.unverified; return r.held; } });
+      if (out.kind === 'ok' || out.kind === 'local') { this.#verified(unverified); return; }
+      if (out.kind === 'stale') return;
       const r = renewed(this.#held, key, sent, answer, at);
       if (r) {
         // A pass the server gave and this tab could not store: kept, and applied to the store when it opens (or the next commit runs).
@@ -796,7 +854,8 @@ export class Plus {
     const held = this.#held;
     if (!held || this.#renewing === held.key) return;
     if (this.#stores()) {
-      const out = await this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [], change: cur => cur?.key === held.key ? { ...cur, next: 0 } : NOCHANGE });
+      // The tab's own wait goes too (Sol, code review C1-4): not merged back from memory.
+      const out = await this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [], resetWait: true, change: cur => cur?.key === held.key ? { ...cur, next: 0 } : NOCHANGE });
       if (out.kind === 'stale') return;
       if (out.kind === 'failed') this.#memory({ ...held, next: 0 });
     } else this.#memory({ ...held, next: 0 });
@@ -834,7 +893,7 @@ export function plus(): Plus {
   shared = new Plus(kept(), webPost, Date.now, () => plusApi(), { db, channel: told });
   told?.addEventListener('message', () => { shared?.heard(); });
   if (typeof addEventListener === 'function') {
-    addEventListener('storage', event => { if (event.key === PLUS_STORE || event.key === null) shared?.mirrorChanged(); });
+    addEventListener('storage', event => { if (event.key === PLUS_STORE || event.key === null) shared?.mirrorChanged(event.key === PLUS_STORE ? event.newValue : undefined); });
     // A tab shown again after a long while may hold a pass that ran out meanwhile; one left open sees its pass run out without a word.
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { shared?.reload(); shared?.tick(); } });
     if (typeof setInterval === 'function') setInterval(() => { shared?.tick(); }, 60_000);

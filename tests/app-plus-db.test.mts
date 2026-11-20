@@ -233,10 +233,11 @@ const memberIn = (idb: FakeIdb): StoredMember => storedMember(idb.peek('member')
 const keyIn = (idb: FakeIdb): string | null => memberIn(idb).held?.key ?? null;
 const capOf = async (t: Plus): Promise<Capture> => { const c = await t.capture(); assert.ok(c !== null && typeof c !== 'number', 'a capture'); return c as Capture; };
 const take = async (t: Plus, key: string, settle: string[] = [], exp?: number): Promise<Taken> => t.acceptIf(await capOf(t), grantOf(key, exp), settle);
-/** A browser whose first tab is in IDB mode (the database opened, the marker written, the import run). */
-async function idbBrowser(): Promise<{ b: Browser; a: Plus }> {
+/** A browser whose first tab is in IDB mode (the database opened, the marker written, the import run), with its seed made unless not `seeded`. */
+async function idbBrowser(seeded = true): Promise<{ b: Browser; a: Plus }> {
   const b = browser(), a = b.open();
   await until(() => a.mode === 'idb');
+  if (seeded) await readSeed(new PlusDb(b.idb.factory));
   return { b, a };
 }
 
@@ -613,5 +614,156 @@ test('a refusal another tab stored stands: a pass this tab only read from the st
     if (how === 'ended') { assert.equal(memberIn(b.idb).held?.ended, true); await until(() => y.state === 'ended' && a.state === 'ended'); }
     else await until(() => y.pass() === null && a.pass() === null);
     assert.equal(b.mirrorKey(), KEY_A);
+  }
+});
+
+// ---- Sol's code review C1 (2026-11-20), each finding's scenario ----
+
+const giftMirror = (exp: number): string => JSON.stringify({ v: 1, key: KEY_A, pass: passOf('gift_aaaa', exp), until: UNTIL, ended: false, why: '', renews: false, skew: 0, next: 0 });
+const realWait = (ms: number): Promise<void> => new Promise(resolve => { setTimeout(resolve, ms); });
+
+test('C1-1: an unmarked tab whose open never answers renews the key it shows in memory after the open wait; a late open stores that pass', async () => {
+  const b = browser();
+  b.idb.opens = 'hang';
+  b.data.set(PLUS_STORE, giftMirror(NOW + 2 * HOUR));
+  const server = slowPost();
+  const t = b.open({ post: server.post });
+  await realWait(OPEN_WAIT_MS * 3);
+  assert.equal(t.mode, 'opening', 'no marker: still opening');
+  // (a) the pass near its end: a renewal goes, and Plus stays on.
+  t.pass();
+  await until(() => server.asked.length === 1);
+  const fresh = passOf('gift_aaaa', NOW + 24 * HOUR);
+  server.asked[0]!.answer({ status: 200, body: { pass: fresh, paidUntil: UNTIL, now: NOW } });
+  await until(() => t.pass() === fresh);
+  assert.equal(t.state, 'on');
+  assert.equal(JSON.parse(b.data.get(PLUS_STORE)!).pass, passOf('gift_aaaa', NOW + 2 * HOUR), 'nothing written');
+  assert.equal(t.takesKeys, false); assert.equal(t.issues, false);
+  assert.equal(await t.capture(), null, 'no key entry');
+  assert.equal(await t.forget(), 'refused', 'no Remove');
+  // (b) the open answers late: the memory pass lands in the database and the mirror.
+  b.idb.opens = 'answer'; b.idb.releaseOpens();
+  await until(() => t.mode === 'idb');
+  await until(() => memberIn(b.idb).held?.pass === fresh);
+  await until(() => JSON.parse(b.data.get(PLUS_STORE)!).pass === fresh);
+});
+
+test('C1-1: a renewal asked while the first open is awaited is honoured once the mode settles (the open answering, or its wait running out)', async () => {
+  for (const how of ['answers', 'hangs'] as const) {
+    const b = browser();
+    b.idb.opens = 'hang';
+    b.data.set(PLUS_STORE, giftMirror(NOW + 2 * HOUR));
+    const server = slowPost();
+    const t = b.open({ post: server.post });
+    t.pass();
+    await settleTasks();
+    assert.equal(server.asked.length, 0, `${how}: nothing yet`);
+    if (how === 'answers') { b.idb.opens = 'answer'; b.idb.releaseOpens(); await until(() => t.mode === 'idb'); } else await realWait(OPEN_WAIT_MS * 3);
+    await until(() => server.asked.length === 1);
+  }
+});
+
+test('C1-2: a membership read that fails while entering is tried again; it never shows "none" over a stored gift in IDB mode', async () => {
+  const { b, a } = await idbBrowser();
+  assert.equal(await take(a, KEY_A), 'kept');
+  b.data.delete(PLUS_STORE); b.data.delete(PLUS_GEN_STORE);
+  b.idb.fail(info => info.mode === 'readonly' && info.op === 'get' && info.key === 'member', 'UnknownError', 1);
+  const c = b.open();
+  await until(() => c.mode !== 'opening');
+  assert.equal(c.mode, 'idb');
+  assert.equal(c.key, KEY_A, 'the stored gift, read again');
+  // A read that keeps failing: unusable here, never IDB mode with nothing shown.
+  b.data.delete(PLUS_STORE);
+  b.idb.fail(info => info.mode === 'readonly' && info.op === 'get' && info.key === 'member', 'UnknownError', 10);
+  const d = b.open();
+  await until(() => d.mode !== 'opening');
+  assert.equal(d.mode, 'unusable');
+});
+
+test('C1-3: Try again on an overlay while its renewal answers keeps the fresh pass (stored, and Plus still on ten minutes later)', async () => {
+  const { b } = await idbBrowser();
+  const server = slowPost();
+  const r = b.open({ post: server.post });
+  await until(() => r.mode === 'idb');
+  b.idb.failNextCommit('UnknownError');
+  assert.equal(await take(r, KEY_A, [], NOW + 5 * 60_000), 'unkept', 'an overlay whose pass runs out in five minutes');
+  r.pass();
+  await until(() => server.asked.length === 1);
+  const paused = b.idb.hold(info => info.op === 'put' && info.key === 'member');
+  const saving = r.keepAgain();
+  await paused.reached;
+  const fresh = passOf('gift_aaaa', NOW + 2 * HOUR);
+  server.asked[0]!.answer({ status: 200, body: { pass: fresh, paidUntil: UNTIL, now: NOW } });
+  await settleTasks();
+  paused.release();
+  assert.equal(await saving, 'kept');
+  await until(() => memberIn(b.idb).held?.pass === fresh && r.pass() === fresh);
+  b.clock.t += 10 * 60_000;
+  assert.equal(r.state, 'on', 'ten minutes later Plus is on');
+  assert.equal(r.pass(), fresh);
+});
+
+test('C1-4: Try again after a renewal answered 429 Retry-After 600 asks again at once (the tab\'s wait cleared too)', async () => {
+  const { b, a } = await idbBrowser();
+  assert.equal(await take(a, KEY_A, [], NOW + 2 * HOUR), 'kept');
+  const server = slowPost();
+  const r = b.open({ post: server.post });
+  await until(() => r.mode === 'idb' && r.key === KEY_A);
+  r.pass();
+  await until(() => server.asked.length === 1);
+  server.asked[0]!.answer({ status: 429, body: { error: 'rate_limited' }, retryAfter: 600 });
+  await until(() => r.unverified);
+  r.retry();
+  await until(() => server.asked.length === 2);
+});
+
+test('C1-5: an old build\'s newer same-key pass is adopted even when a mirror repair was queued before its event', async () => {
+  const { b, a } = await idbBrowser();
+  assert.equal(await take(a, KEY_A, [], NOW + 2 * HOUR), 'kept');
+  const y = b.open();
+  await until(() => y.mode === 'idb' && y.key === KEY_A);
+  b.events = false;
+  const paused = b.idb.hold(info => info.mode === 'readonly' && info.op === 'get' && info.key === 'member');
+  y.reload();
+  await paused.reached;
+  const newer = giftMirror(NOW + 24 * HOUR);
+  b.data.set(PLUS_STORE, newer);
+  y.mirrorChanged(newer);
+  paused.release();
+  await until(() => memberIn(b.idb).held?.pass === passOf('gift_aaaa', NOW + 24 * HOUR));
+  await until(() => JSON.parse(b.data.get(PLUS_STORE)!).pass === passOf('gift_aaaa', NOW + 24 * HOUR));
+});
+
+test('C1-6: every operation has an epoch: a key answer captured before the site data was cleared is stale even where no seed existed', async () => {
+  const { b, a } = await idbBrowser(false);
+  assert.equal(b.idb.peek(SEED_KEY), undefined, 'no seed was ever made');
+  const cap = await capOf(a);
+  assert.match(String(b.idb.peek(SEED_KEY)), SEED_SHAPE, 'the capture made one');
+  b.idb.wipe();
+  await settleTasks();
+  assert.equal(await a.acceptIf(cap, grantOf(KEY_A)), 'stale');
+  assert.equal(keyIn(b.idb), null);
+});
+
+test('C1-7 (the exception): a tab whose reservation write fails still renews, at most once a minute, beside the storing tabs\' once a minute', async () => {
+  const { b, a } = await idbBrowser();
+  assert.equal(await take(a, KEY_A, [], NOW + 2 * HOUR), 'kept');
+  const asked: { tab: 'A' | 'B'; at: number }[] = [];
+  const postFor = (tab: 'A' | 'B') => async (): Promise<{ status: number; body: unknown; retryAfter: number }> => { asked.push({ tab, at: b.clock.t }); return { status: 503, body: { error: 'busy' }, retryAfter: 1 }; };
+  const A = b.open({ post: postFor('A') });
+  await until(() => A.mode === 'idb' && A.key === KEY_A);
+  const tabA = b.idb.lastTab;
+  b.idb.fail(info => info.tab === tabA && info.op === 'put', 'QuotaExceededError', 1e9);
+  const B = b.open({ post: postFor('B') });
+  await until(() => B.mode === 'idb' && B.key === KEY_A);
+  for (let step = 0; step <= 18; step++) {
+    A.pass(); B.pass();
+    await settleTasks();
+    b.clock.t += 10_000;
+  }
+  for (const tab of ['A', 'B'] as const) {
+    const times = asked.filter(x => x.tab === tab).map(x => x.at);
+    assert.ok(times.length >= 2, `${tab} renews`);
+    for (let i = 1; i < times.length; i++) assert.ok(times[i]! - times[i - 1]! >= 60_000, `${tab}: ${times[i]! - times[i - 1]!} ms apart`);
   }
 });

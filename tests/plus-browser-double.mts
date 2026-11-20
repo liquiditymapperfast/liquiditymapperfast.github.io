@@ -59,7 +59,9 @@ export function browser(idb: FakeIdb = new FakeIdb()): Browser {
       const index = b.tabs.length;
       const emit = (key: string): void => {
         if (!b.events) return;
-        setImmediate(() => { b.tabs.forEach((t, j) => { if (j !== index && key === PLUS_STORE) t.mirrorChanged(); }); });
+        // The event carries the value written (its `newValue`), as a browser's does.
+        const value = data.get(key) ?? null;
+        setImmediate(() => { b.tabs.forEach((t, j) => { if (j !== index && key === PLUS_STORE) t.mirrorChanged(value); }); });
       };
       const storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> = {
         getItem: k => { if (b.unreadable) throw new DOMException('denied', 'SecurityError'); return data.get(k) ?? null; },

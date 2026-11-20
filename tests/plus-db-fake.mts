@@ -103,7 +103,9 @@ class FakeTransaction implements DbTransaction {
     if (this.finished || pending.req.done) return;
     const { req, info } = pending;
     let failed: DOMException | null = null;
-    if (info.op === 'put' && this.idb.takePutFailure()) failed = dom(this.idb.lastPutFailure, 'the put request failed');
+    const planned = this.idb.takeFailure(info);
+    if (planned) failed = dom(planned, 'the request failed');
+    else if (info.op === 'put' && this.idb.takePutFailure()) failed = dom(this.idb.lastPutFailure, 'the put request failed');
     else if (info.op === 'get') req.result = this.#read(info.key!) as never;
     else if (info.op === 'put') { this.#writes.set(info.key!, { value: info.value }); req.result = info.key as never; }
     else if (info.op === 'delete') { this.#writes.set(info.key!, null); req.result = undefined as never; }
@@ -133,8 +135,8 @@ class FakeTransaction implements DbTransaction {
     });
   }
   #commit(): void {
-    // A quota or an abort at commit concerns a transaction that writes.
-    const failure = this.mode === 'readwrite' ? this.idb.takeCommitFailure() : null;
+    // A quota or an abort at commit concerns a transaction that wrote something.
+    const failure = this.mode === 'readwrite' && this.#writes.size > 0 ? this.idb.takeCommitFailure() : null;
     if (failure) { this.fail(dom(failure, 'the transaction could not commit')); return; }
     let store = this.db.stores.get(this.store);
     if (!store) { store = new Map(); this.db.stores.set(this.store, store); }
@@ -198,6 +200,7 @@ export class FakeIdb {
   #putFailure: string | null = null;
   #commitFailure: string | null = null;
   #tabs = 0;
+  #failures: { match: (info: RequestInfo) => boolean; name: string; left: number }[] = [];
   #txs = 0;
 
   /** The factory a `PlusDb` is given. */
@@ -280,8 +283,18 @@ export class FakeIdb {
   }
   /** The next `put` request fails with this error (and, unprevented, aborts its transaction). */
   failNextPut(name = 'QuotaExceededError'): void { this.#putFailure = name; }
+  /** The next `times` requests that `match` accepts fail with this error (and, unprevented, abort their transactions). */
+  fail(match: (info: RequestInfo) => boolean, name = 'UnknownError', times = 1): void { this.#failures.push({ match, name, left: times }); }
+  takeFailure(info: RequestInfo): string | null {
+    const f = this.#failures.find(x => x.left > 0 && x.match(info));
+    if (!f) return null;
+    f.left--;
+    return f.name;
+  }
+  /** The tab number of the connection opened last (requests carry it as `tab`). */
+  get lastTab(): number { return this.#tabs; }
   takePutFailure(): boolean { if (this.#putFailure === null) return false; this.lastPutFailure = this.#putFailure; this.#putFailure = null; return true; }
-  /** The next readwrite transaction that would commit aborts instead, with this error as its `error` (a quota found at commit, or `AbortError`). */
+  /** The next transaction that wrote something aborts at its commit instead, with this error as its `error` (a quota found at commit, or `AbortError`). */
   failNextCommit(name = 'QuotaExceededError'): void { this.#commitFailure = name; }
   takeCommitFailure(): string | null { const name = this.#commitFailure; this.#commitFailure = null; return name; }
 

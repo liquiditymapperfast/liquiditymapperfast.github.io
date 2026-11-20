@@ -90,7 +90,10 @@ export async function decode(data: string): Promise<string | null> {
   return null;
 }
 
-/** The items a hand-over carries (`{ v: 1, items: { key: value } }`), or null when it is malformed or carries a key it may not write. */
+/**
+ * The items a hand-over carries (`{ v: 1, items: { key: value } }`), or null when it is malformed or carries a key it may not write. A Plus
+ * key is left out, never written, and the rest is taken: the old address's page deployed before 2026-11-20 still sends `lmf.plus*`.
+ */
 export function itemsOf(text: string): Record<string, string> | null {
   let parsed: unknown;
   try { parsed = JSON.parse(text); } catch { return null; }
@@ -99,6 +102,7 @@ export function itemsOf(text: string): Record<string, string> | null {
   if (!items || typeof items !== 'object' || Array.isArray(items)) return null;
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(items)) {
+    if (plusKey(key) && typeof value === 'string') continue;
     if (!handedKey(key) || typeof value !== 'string') return null;
     out[key] = value;
   }

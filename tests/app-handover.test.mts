@@ -169,7 +169,14 @@ const PLUS_KEYS = ['lmf.plus', 'lmf.plus.gen', 'lmf.plus.paid', 'lmf.plus.paid.t
 test('no Plus key ever travels: the hand-over refuses lmf.plus and every lmf.plus.* (the checkout recovery, 2026-11-20)', () => {
   for (const key of PLUS_KEYS) { assert.equal(plusKey(key), true, key); assert.equal(handedKey(key), false, key); }
   for (const key of ['lmf.plusx', 'lmf.coin', 'hlm-plus']) { assert.equal(plusKey(key), false, key); assert.equal(handedKey(key), true, key); }
-  assert.equal(itemsOf(JSON.stringify({ v: 1, items: { 'hlm-app-v2': '{}', 'lmf.plus.gen': '3' } })), null, 'a hand-over carrying one is refused whole');
+  // The old address's page deployed before 2026-11-20 still sends Plus keys: they are left out, and the rest is taken (advisor H1).
+  assert.deepEqual(itemsOf(JSON.stringify({ v: 1, items: { 'hlm-app-v2': '{"tf":"5m"}', 'lmf.plus': '{}', 'lmf.plus.paid': '[]', 'lmf.plus.gen': '3' } })), { 'hlm-app-v2': '{"tf":"5m"}' });
+  assert.equal(itemsOf(JSON.stringify({ v: 1, items: { 'lmf.plus.gen': '3' } })), null, 'Plus keys alone: nothing to take');
+  const store = new Map<string, string>();
+  const handed = itemsOf(JSON.stringify({ v: 1, items: { 'hlm-app-v2': '{"tf":"5m"}', 'lmf.plus.gen': '3' } }));
+  assert.ok(handed && write({ getItem: k => store.get(k) ?? null, setItem: (k, v) => { store.set(k, v); }, removeItem: k => { store.delete(k); } }, handed, 1));
+  assert.equal(store.get('hlm-app-v2'), '{"tf":"5m"}', 'the setting is written');
+  assert.equal(store.has('lmf.plus.gen'), false, 'the Plus key is not');
 });
 
 test('the page at the old address leaves every Plus key out of what it sends, and sends nothing when they are all it holds', async () => {
