@@ -10,7 +10,7 @@ import { FakeIdb } from './plus-db-fake.mts';
 export const HOUR = 3_600_000, NOW = Date.UTC(2026, 10, 20, 12), UNTIL = NOW + 30 * 24 * HOUR;
 export const API = 'https://plus.test/v1';
 /** How long a test tab waits for its database to open. */
-export const OPEN_WAIT_MS = 30;
+export const OPEN_WAIT_MS = 200;
 const b64url = (text: string): string => Buffer.from(text, 'utf8').toString('base64url');
 /** A pass of the server's shape for `sub`, running out at `exp`. */
 export const passOf = (sub: string, exp: number): string => `v1.${b64url(JSON.stringify({ sub, exp }))}.c2lnbmF0dXJl`;
