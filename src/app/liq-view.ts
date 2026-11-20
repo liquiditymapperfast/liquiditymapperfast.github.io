@@ -5,9 +5,10 @@
  * the profitable traders' liquidations, stops and take profits each come from files of their own, never everyone's under their name.
  *
  * A split (2026-11-19) draws the liquidation column as two sub-columns (`splitPair`): liquidations beside stops, or everyone beside the
- * profitable traders. The stripe gives each column a lane of its own beside a drawn split (liq-split.ts `stripePlan`). Everywhere that draws
- * one series (the Depth pane, its history, the stripe beside a column too narrow to split everyone beside the profitable traders, such a
- * column itself, a phone's strip) draws the left column's set (`effectiveView`): the page's one series.
+ * profitable traders. The stripe gives each column a lane of its own beside a drawn split (liq-split.ts `stripePlan`). Everywhere else that
+ * draws one series (the stripe beside a column too narrow to split everyone beside the profitable traders, such a column itself, a phone's
+ * strip) draws the left column's set (`effectiveView`): the page's one series. The Depth pane is not split at all: it draws the choice as with
+ * no split (`depthView`, owner's rule of 2026-11-20).
  */
 import { t } from './i18n.ts';
 import { plus } from './plus/pass.ts';
@@ -59,13 +60,24 @@ export const ordersShown = (v: Pick<LiqView, 'stops' | 'takes'>): boolean => v.s
 export const isFreeChoice = (v: LiqChoice): boolean => v.liq && !v.stops && !v.takes && v.group === 'all' && splitFor(v.split ?? 'none', v) === 'none';
 
 /**
- * What is drawn as one series: the choice with Plus, the free view without it; under a split, the left column's set (`splitPair`), which the
- * Depth pane, a column too narrow to split and the stripe's left lane draw (its only lane beside such a column under everyone beside the
- * profitable traders).
+ * What is drawn as one series: the choice with Plus, the free view without it; under a split, the left column's set (`splitPair`), which a
+ * column too narrow to split and the stripe's left lane draw (its only lane beside such a column under everyone beside the profitable
+ * traders). Not the Depth pane's: `depthView`.
  */
 export function effectiveView(s: LiqChoice, plusOn: boolean): LiqView {
   if (!plusOn) return FREE_VIEW;
   return splitPair(s, plusOn)?.left ?? { liq: s.liq, stops: s.stops, takes: s.takes, group: s.group };
+}
+
+/**
+ * What the Depth pane draws (owner's rule, 2026-11-20): Split is the liquidation column's and the stripe's choice, never the Depth pane's, which
+ * draws the choice as with no split: Liquidations | Stops as Liq + stops (the kinds that are on, of the chosen traders), and Everyone |
+ * Profitable as everyone's levels of the chosen kinds (the saved Traders value is not drawn, nor written). Only the split in force counts: one
+ * kept while a kind it needs is off draws as none. The free view without Plus. Its bands, header, table, Range summary and levels button follow it.
+ */
+export function depthView(s: LiqChoice, plusOn: boolean): LiqView {
+  if (!plusOn) return FREE_VIEW;
+  return { liq: s.liq, stops: s.stops, takes: s.takes, group: effectiveSplit(s, plusOn) === 'groups' ? 'all' : s.group };
 }
 
 /** A saved Plus choice that is not drawn (no Plus here): the controls say it is kept and comes back with Plus. */
@@ -123,6 +135,8 @@ export function plusOn(): boolean {
 
 /** What the page draws for these settings now, as one series (the left column's set under a split). */
 export const liveView = (s: LiqChoice): LiqView => effectiveView(s, plusOn());
+/** What the Depth pane draws for these settings now (`depthView`). */
+export const liveDepthView = (s: LiqChoice): LiqView => depthView(s, plusOn());
 /** The split the page draws for these settings now, where the room allows it, or null. */
 export const liveSplit = (s: LiqChoice): LiqPair | null => splitPair(s, plusOn());
 /**

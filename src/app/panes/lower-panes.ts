@@ -24,7 +24,7 @@ import type { InfoLine } from '../infobox.ts';
 import { barAt, columnAt, depthCardLines, depthColumns, depthKey, liqCardLines, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
 import { LiqHistory, bandIndex, bandOnEdge, type LiqRow } from '../liq-history.ts';
 import { TAKE_DASH } from '../liq-levels.ts';
-import { curveOf, groupTitle, kindName, levelsDescription, liveSplit, liveView, viewKey, type LiqView } from '../liq-view.ts';
+import { curveOf, groupTitle, kindName, levelsDescription, liveDepthView, liveSplit, viewKey, type LiqView } from '../liq-view.ts';
 import { toggleLevels } from '../levels-control.ts';
 import { ordersAbsent, readFailed } from '../liq-words.ts';
 import { wrapText } from '../text-fit.ts';
@@ -424,7 +424,7 @@ export class DepthPane extends TimePane {
     if (state.depthSource !== 'liq') return depthHeldKey('book', bookIds(state), bandsOf(state.depthBands));
     // Liquidation levels: what they show, and the bands the pane draws: those within the history's reach once it is known, or as last drawn
     // for this view and these bands (the rollups have bands of their own: `#liqSeries`).
-    const reach = this.#liqReach, bands = bandsOf(state.liqBands), view = viewKey(liveView(state.liqLevels)), drawn = this.#liqDrawn;
+    const reach = this.#liqReach, bands = bandsOf(state.liqBands), view = viewKey(liveDepthView(state.liqLevels)), drawn = this.#liqDrawn;
     const radii = drawn?.key === `${view}|${bands.join(',')}` ? drawn.radii : reach === null ? bands : bands.filter(r => r <= reach * (1 + 1e-9));
     return depthHeldKey('liq', [], radii, view);
   }
@@ -555,12 +555,14 @@ export class DepthPane extends TimePane {
   #sync(): void {
     const liq = this.store.state.depthSource === 'liq', s = this.#settings();
     this.#source.value = liq ? 'liq' : 'book';
-    // The levels show what the page's one choice says (`liq-view.ts`): the button beside the Source names the curve and opens the choice.
-    const view = liveView(this.store.state.liqLevels), caption = kindName(curveOf(view));
+    // The levels show what the page's one choice says (`liq-view.ts`) as with no split (`depthView`): the button beside the Source names the
+    // curve and opens the choice.
+    const view = liveDepthView(this.store.state.liqLevels), caption = kindName(curveOf(view));
     this.#levelsButton.hidden = !liq;
     if (this.#levelsButton.textContent !== caption) this.#levelsButton.textContent = caption;
-    // Under a split the pane keeps one series, the split's left column (`liveView`), and its tip says so.
-    const split = liveSplit(this.store.state.liqLevels) ? `${t('Under a split the Depth pane draws its left column.')} ` : '';
+    // Split is the column's and the stripe's (owner's rule, 2026-11-20): Liquidations | Stops draws here as Liq + stops, and Everyone |
+    // Profitable as everyone's levels, which the tip says.
+    const split = liveSplit(this.store.state.liqLevels)?.split === 'groups' ? `${t("Under Everyone | Profitable the Depth pane draws everyone's levels.")} ` : '';
     setTip(this.#levelsButton, `${split}${levelsDescription(view)} ${t('Press to choose what the levels show.')}`);
     // The depth sound and the venues are the order book's: they have nothing to say about liquidation levels.
     if (this.#bellLabel) this.#bellLabel.hidden = liq;
@@ -620,7 +622,7 @@ export class DepthPane extends TimePane {
    */
   #liqSeries(pw: number, asked: readonly number[]): string | LiqSeries {
     let radii = asked;
-    const v = this.view, now = Date.now(), view = liveView(this.store.state.liqLevels), vk = viewKey(view);
+    const v = this.view, now = Date.now(), view = liveDepthView(this.store.state.liqLevels), vk = viewKey(view);
     this.#history.ensure(v.t0, v.t1, now, () => this.invalidate(), view);
     const index = this.#history.index, shape = this.#history.shape(view);
     if (!shape.wide) {

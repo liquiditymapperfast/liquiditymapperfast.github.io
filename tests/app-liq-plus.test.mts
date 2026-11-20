@@ -1318,23 +1318,29 @@ test('the profitable traders\' live orders, days and rollup wait what an HTTP-da
   } finally { stub.restore(); }
 });
 
-test('a split is saved with the levels: absent reads as none, liquidations beside stops needs both, everyone beside the profitable traders needs one of them, on every write', () => {
+test('a split is saved with the levels: absent reads as none, and kept while a kind it needs is off (drawn as none: liquidations beside stops needs both, everyone beside the profitable traders one of them), on every write', () => {
   const on = { on: true, column: true };
   assert.equal(readLiqLevels({ liq: true, stops: true }).split, 'none', 'a save from before the split');
   assert.equal(readLiqLevels({ liq: true, stops: true, split: 'sideways' }).split, 'none', 'anything else');
   assert.deepEqual(readLiqLevels({ liq: true, stops: true, takes: true, group: 'profitable', split: 'kinds' }), { ...on, liq: true, stops: true, takes: true, group: 'profitable', split: 'kinds' });
-  assert.equal(readLiqLevels({ liq: true, stops: false, split: 'kinds' }).split, 'none', 'liquidations beside stops with one of them off: none');
+  assert.equal(readLiqLevels({ liq: true, stops: false, split: 'kinds' }).split, 'kinds', 'liquidations beside stops with one of them off: kept (owner, 2026-11-20)');
+  assert.equal(effectiveSplit(readLiqLevels({ liq: true, stops: false, split: 'kinds' }), true), 'none', '... and drawn as none');
   assert.equal(readLiqLevels({ kind: 'both', split: 'kinds' }).split, 'kinds', 'an older form of both kinds keeps it');
   assert.equal(readLiqLevels({ liq: false, stops: true, split: 'groups' }).split, 'groups');
-  assert.equal(readLiqLevels({ liq: false, stops: false, takes: true, split: 'groups' }).split, 'none', 'take profits alone are never split');
+  assert.equal(readLiqLevels({ liq: false, stops: false, takes: true, split: 'groups' }).split, 'groups', 'take profits alone keep it too');
+  assert.equal(effectiveSplit(readLiqLevels({ liq: false, stops: false, takes: true, split: 'groups' }), true), 'none', 'take profits alone are never split');
   assert.equal(readLiqLevels({ liq: 'x', stops: true, split: 'kinds' }).split, 'none', 'a malformed choice is the free view');
-  // Every write goes through the reader: a kind switched off returns the split to none, whoever writes it.
+  // Every write goes through the reader: a kind switched off keeps the split, whoever writes it, and it is drawn again with the kind (until
+  // 2026-11-20 it was returned to none, so Stops off and on again lost Liquidations | Stops).
   const store = new Store(initialState());
   store.set({ liqLevels: { ...store.state.liqLevels, liq: true, stops: true, split: 'kinds' } });
   assert.equal(store.state.liqLevels.split, 'kinds');
   store.set({ liqLevels: { ...store.state.liqLevels, stops: false } });
-  assert.equal(store.state.liqLevels.split, 'none', 'stops off: none');
-  assert.equal(carriedSettings({ liqLevels: { liq: true, stops: false, split: 'kinds' } } as never).liqLevels?.split, 'none', 'nor through a layout');
+  assert.equal(store.state.liqLevels.split, 'kinds', 'stops off: kept');
+  assert.equal(effectiveSplit(store.state.liqLevels, true), 'none', 'stops off: drawn as none');
+  store.set({ liqLevels: { ...store.state.liqLevels, stops: true } });
+  assert.equal(effectiveSplit(store.state.liqLevels, true), 'kinds', 'stops on again: split again');
+  assert.equal(carriedSettings({ liqLevels: { liq: true, stops: false, split: 'kinds' } } as never).liqLevels?.split, 'kinds', 'kept through a layout too');
 });
 
 test('the pair a split draws, the one series everywhere else, and a split without Plus held back', () => {

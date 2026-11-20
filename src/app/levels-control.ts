@@ -41,13 +41,23 @@ export function pressPart(s: LiqChoice, part: LiqPart, member: boolean): { chang
   next[part] = on; change[part] = on;
   return next.liq || next.stops || next.takes ? { change } : 'last';
 }
-/** The split the control shows: the saved one where its kinds allow it, with Plus; none without (nothing is split for a visitor). */
-export const shownSplit = (s: LiqChoice, member: boolean): LiqSplit => member ? splitFor(s.split ?? 'none', s) : 'none';
+/**
+ * The split the control shows: the saved one with Plus, kept while a kind it needs is off (the column is then drawn as one, and the split
+ * comes back with the kind, as it does where the map is too narrow: `keptSplitNote` says so); none without (nothing is split for a visitor).
+ */
+export const shownSplit = (s: LiqChoice, member: boolean): LiqSplit => member ? s.split ?? 'none' : 'none';
+/** A split chosen but not drawn because a kind it needs is off: what brings it back, said under the choice; '' while it is drawn or none. */
+export function keptSplitNote(s: LiqChoice, member: boolean): string {
+  const shown = shownSplit(s, member);
+  if (shown === 'none' || splitFor(shown, s) === shown) return '';
+  const split = splitChoiceName(shown);
+  return shown === 'kinds' ? t('{split} comes back when liquidations and stops are both on.', { split }) : t('{split} comes back when liquidations or stops are on.', { split });
+}
 /**
  * What pressing a Split choice does: a change, or the presentation of Plus (a split without Plus: nothing changes). Liquidations beside stops
- * turns both kinds on (switching either off later returns it to none: `readLiqLevels`); everyone beside the profitable traders needs one of
- * the two, so with neither on (take profits alone) liquidations come on. The Traders choice is never written: it waits, hidden, for the split
- * to go back to none.
+ * turns both kinds on (switching either off later draws the column as one and keeps the split, which comes back with the kind: pressing it
+ * again turns both on); everyone beside the profitable traders needs one of the two, so with neither on (take profits alone) liquidations
+ * come on. The Traders choice is never written: it waits, hidden, for the split to go back to none.
  */
 export function pressSplit(s: LiqChoice, split: LiqSplit, member: boolean): { change: Partial<LiqLevelSettings> } | 'plus' {
   if (!member && split !== 'none') return 'plus';
@@ -208,6 +218,8 @@ export function createLevelsControl(source: Store | LevelsModel, o: LevelsOption
   const sum = el('p', { class: 'lv-sum' });
   sum.setAttribute('aria-live', 'polite');
   const kept = el('p', { class: 'lv-kept', textContent: t('Without Plus the page shows liquidations of all traders. Your choice is kept and comes back with Plus.'), hidden: true });
+  // A split kept while a kind it needs is off: what brings it back.
+  const splitKept = el('p', { class: 'lv-kept lv-split-kept', hidden: true });
   // What the curve adds up, and who the profitable traders are.
   const howText = el('div', { class: 'lv-how-text', id: howId, hidden: true }, el('p', { textContent: curveSentence() }),
     el('p', { textContent: t('Profitable traders: the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit.') }));
@@ -221,7 +233,7 @@ export function createLevelsControl(source: Store | LevelsModel, o: LevelsOption
     rowsEl,
     ...(splitSec ? [splitSec] : []),
     tradersSec,
-    el('div', { class: 'lv-foot' }, sum, kept, flash, how, howText));
+    el('div', { class: 'lv-foot' }, sum, splitKept, kept, flash, how, howText));
 
   const sync = (): void => {
     const member = model.member(), saved = model.get(), s = shownChoice(saved, member), on = LIQ_PARTS.filter(part => s[part]).length;
@@ -256,11 +268,16 @@ export function createLevelsControl(source: Store | LevelsModel, o: LevelsOption
       else { b.removeAttribute('role'); b.removeAttribute('aria-checked'); b.setAttribute('aria-pressed', String(chosen)); b.tabIndex = 0; }
       if (locked) b.setAttribute('aria-label', t('{name}, Plus required', { name: splitChoiceName(k) })); else b.removeAttribute('aria-label');
     }
-    tradersSec.hidden = split === 'groups';
-    const pair = split !== 'none' ? splitPair(saved, true) : null;
+    // What is drawn: a split kept while a kind it needs is off draws as none, so Traders has its say again (`keptSplitNote` says why).
+    const drawnSplit = splitFor(split, saved);
+    tradersSec.hidden = drawnSplit === 'groups';
+    const pair = drawnSplit !== 'none' ? splitPair(saved, true) : null;
     const text = pair ? pairSummary(pair) : levelsSummary(member ? s : FREE_VIEW);
     if (sum.textContent !== text) sum.textContent = text;
     kept.hidden = !heldBack(saved, member);
+    const note = o.hideSplit ? '' : keptSplitNote(saved, member);
+    if (splitKept.textContent !== note) splitKept.textContent = note;
+    splitKept.hidden = !note;
   };
   // Told of every change until it is dropped: whoever drops it calls `destroy` (Sol, review 2026-11-19: a guess from being on the page left
   // a panel's controls listening for good).
