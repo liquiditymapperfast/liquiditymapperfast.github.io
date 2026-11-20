@@ -1,13 +1,22 @@
 /**
  * A Plus membership as this browser holds it. There is no account: after the checkout the server gives the browser a **key** (kept here,
  * and shown to its owner so that another device can be given it) and a **pass**, a short-lived signed note the page sends with each request
- * for a Plus file. The key renews the pass while the subscription is paid. Both live in `localStorage` of the page's own origin, which the
- * app and the Plus page (`plus/`) share, so a tab of the app is unlocked the moment the Plus page stores them (a `storage` event).
+ * for a Plus file. The key renews the pass while the subscription is paid.
  *
- * The page cannot check a pass's signature (only the server has the secret) and does not need to: it reads the expiry to know when to ask
- * again, and the server decides. A pass the server refuses is dropped and asked for again.
+ * Where it is kept (the checkout recovery, page build spec section 2, 2026-11-20): in a browser whose Plus database opens (`plus-db.ts`), the
+ * database is the authority (IDB mode, marked by `lmf.plus.idb` in `localStorage`), and every write is one transaction that checks what the
+ * operation began with (`commit`): the stored baseline `{ seed, gen }` inside the transaction, the tab's revision `rev` before it. The
+ * membership is mirrored to `localStorage` (`lmf.plus`, `lmf.plus.gen`) after each commit, for the app's synchronous reads and for other tabs
+ * (a `storage` event). Where IndexedDB is missing or refuses to open and no marker is set (plain mode), the membership lives in
+ * `localStorage` as it always did, synchronously; such a tab never issues a key. A tab whose database is not open yet, or will not open,
+ * while the marker is set reads the mirror, renews in memory and takes no key. A membership this tab took but could not store is held as an
+ * overlay for as long as the tab lives, and Try again stores it (`keepAgain`).
+ *
+ * The page cannot check a pass's signature (only the server can) and does not need to: it reads the expiry to know when to ask again, and the
+ * server decides. A pass the server refuses is dropped and asked for again.
  */
 import { plusApi } from './config.ts';
+import { PlusDbUnavailable, SEED_KEY, SEED_SHAPE, type PlusDb } from './plus-db.ts';
 
 /** Where the membership is kept (`{ v, key, pass, until, ended, why, renews, skew, next }`). */
 export const PLUS_STORE = 'lmf.plus';
@@ -126,6 +135,86 @@ export const webPost: Post = async (url, body, given) => {
   return { status: answer.status, body: parsed, ...(Number.isFinite(wait) && wait > 0 ? { retryAfter: wait } : {}) };
 };
 
+/** Set (`'1'`) once the Plus database is this browser's authority for the membership: from then on every tab goes through it. */
+export const PLUS_IDB_MARKER = 'lmf.plus.idb';
+/** A commit waits this long for the database (reopening after an upgrade elsewhere, say); after that it has failed. */
+const COMMIT_WAIT_MS = 10_000;
+
+/**
+ * Where this tab stands (spec 2.1): opening its database (every tab with IndexedDB starts here), IDB mode (open: the database is the
+ * authority), not ready (the marker set, its database not open yet), unusable here (the marker set, its open failed), or plain (no marker,
+ * and no IndexedDB or its open failed: `localStorage` as before, nothing issued).
+ */
+export type PlusMode = 'opening' | 'idb' | 'notready' | 'unusable' | 'plain';
+/** The stored baseline: the database's seed (its epoch: a reset makes a new one; null while none was made) and the membership's generation. */
+export interface Baseline { readonly seed: string | null; readonly gen: number }
+/** What an operation captured when it began (`capture`): the stored baseline and this tab's revision. Opaque to its callers. */
+export interface Capture { readonly base: Baseline; readonly rev: number }
+/**
+ * How taking or removing a membership went: stored (`kept`), held by this tab only because the browser would not store it (`unkept`: the
+ * overlay), dropped because the membership changed since the operation began (`stale`), or not done because this tab takes no key (`refused`:
+ * its database is not open, or will not open, while the browser's membership lives there).
+ */
+export type Taken = 'kept' | 'unkept' | 'stale' | 'refused';
+/** The membership as the database keeps it (`member`): its generation and what is held, written together. */
+export interface StoredMember { gen: number; held: Held | null }
+/** A `BroadcastChannel('lmf.plus')`, or a test's stand-in: told after each commit. */
+export interface PlusChannel { postMessage(message: unknown): void }
+/** The database and the channel a membership works with (none: plain mode, as in Node). */
+export interface PlusOptions { db?: PlusDb | null; channel?: PlusChannel | null }
+/** A grant to take: the key, its pass and what the server said with it. */
+export interface GrantIn { key: string; pass: string; until: number; renews?: boolean; now?: number }
+
+/** A membership this tab holds but could not store (spec 2.4): what it holds, the baseline it began with, its settlement, and why it failed. */
+interface Overlay { held: Held | null; base: Baseline; settle: readonly string[]; quota: boolean }
+const NOCHANGE = Symbol('no change');
+/** What a commit writes, from what the database holds now (`NOCHANGE`: nothing, and the commit is stale). */
+type Change = (current: Held | null) => Held | null | typeof NOCHANGE;
+/**
+ * A commit: an operation (it takes or removes a key, guarded by its baseline and revision; a grant may use the same-key exception) or a
+ * renewal's write (guarded by its own change, which checks the key).
+ */
+interface CommitOp { kind: 'operation' | 'renewal'; expect: Baseline | null; rev: number | null; change: Change; settle: readonly string[]; grant?: Held }
+type Committed = { kind: 'ok'; stored: StoredMember; seed: string | null } | { kind: 'stale' } | { kind: 'failed'; error: unknown };
+
+/** The stored membership, checked (anything malformed reads as none, at generation 0). */
+export function storedMember(value: unknown): StoredMember {
+  if (!value || typeof value !== 'object') return { gen: 0, held: null };
+  const o = value as { gen?: unknown; held?: unknown };
+  const gen = typeof o.gen === 'number' && Number.isSafeInteger(o.gen) && o.gen >= 0 ? o.gen : 0;
+  const held = o.held && typeof o.held === 'object' ? readHeld(JSON.stringify({ ...(o.held as object), v: 1 })) : null;
+  return { gen, held };
+}
+const seedOf = (value: unknown): string | null => typeof value === 'string' && SEED_SHAPE.test(value) ? value : null;
+const isQuota = (error: unknown): boolean => error instanceof DOMException && error.name === 'QuotaExceededError';
+/** `held` with the later pass of `from` (the same key): its pass, end, renewal, clock and wait, and no end of its own any more. */
+const withPass = (held: Held, from: Held): Held => ({ ...held, pass: from.pass, until: from.until, renews: from.renews, skew: from.skew, next: from.next, ended: false, why: '' });
+/** Whether two memberships show the same (what the listeners are told about). */
+const sameHeld = (a: Held | null, b: Held | null): boolean => a?.key === b?.key && a?.pass === b?.pass && a?.until === b?.until && a?.ended === b?.ended && a?.renews === b?.renews && a?.why === b?.why;
+
+/**
+ * A renewal's answer applied to the membership `cur` (the key `key`, renewed from the pass `sent`) at `at`, by the rules of the plain renewal:
+ * the new membership and whether Plus could not be verified, or null when it changes nothing (another key held, or a newer pass got meanwhile).
+ */
+function renewed(cur: Held | null, key: string, sent: string, answer: { status: number; body: unknown; retryAfter?: number }, at: number): { held: Held; unverified: boolean } | null {
+  if (cur?.key !== key) return null;
+  const newer = cur.pass !== sent && expOf(cur.pass) - (at + cur.skew) > MARGIN_MS;
+  const grant = answer.status === 200 ? readGrant(answer.body) : null;
+  if (grant) {
+    if (newer && expOf(cur.pass) >= expOf(grant.pass)) return null;
+    const skew = skewOf(grant.now, at), left = expOf(grant.pass) - (at + skew);
+    const wait = left >= RENEW_BEFORE_MS + CLOCK_SLACK_MS ? RETRY_MS : left > 0 ? Math.min(LONG_RETRY_MS, Math.max(SHORT_PASS_RETRY_MS, left / 2)) : LONG_RETRY_MS;
+    return { held: { key, pass: grant.pass, until: grant.until, ended: false, why: '', renews: grant.renews ?? null, skew, next: at + wait }, unverified: false };
+  }
+  if (answer.status === 403 && errorOf(answer.body) === 'not_active') {
+    if (newer) return null;
+    return { held: { ...cur, pass: '', ended: true, why: reason((answer.body as { status?: unknown }).status), next: at + LONG_RETRY_MS }, unverified: false };
+  }
+  const busy = answer.status === 429 || answer.status >= 500;
+  const wait = busy ? Math.min(LONG_RETRY_MS, Math.max(RETRY_MS, (answer.retryAfter ?? 0) * 1_000)) : LONG_RETRY_MS;
+  return { held: { ...cur, next: Math.max(cur.next, at + wait) }, unverified: true };
+}
+
 /** `localStorage`, or nothing where the browser refuses it (a private window of some browsers): the page then simply has no membership. */
 function kept(): Kept | null {
   try { return typeof localStorage === 'undefined' ? null : localStorage; } catch { return null; }
@@ -149,10 +238,27 @@ export class Plus {
   /** The generation this tab last read (or wrote, with a key); where the browser keeps nothing, this tab's own count. */
   #seenGen = 0;
   #memGen = 0;
-  constructor(private storage: Kept | null = kept(), private post: Post = webPost, private now: () => number = Date.now, private api: () => string = () => plusApi()) {
+  /** The Plus database (null: plain mode, or unusable here when the marker is set) and the channel other tabs hear commits on. */
+  readonly #db: PlusDb | null;
+  readonly #channel: PlusChannel | null;
+  #mode: PlusMode;
+  #selecting: Promise<void> | null = null;
+  /** The stored baseline as this tab last read or wrote it (IDB mode). */
+  #known: Baseline | null = null;
+  /** This tab's revision: increased whenever an overlay is taken, replaced or dropped; never decreased or reset (spec 2.2). */
+  #rev = 0;
+  #overlay: Overlay | null = null;
+  /** The membership commits of this tab, one at a time. */
+  #queue: Promise<unknown> = Promise.resolve();
+  constructor(private storage: Kept | null = kept(), private post: Post = webPost, private now: () => number = Date.now, private api: () => string = () => plusApi(), options: PlusOptions = {}) {
     this.#held = this.#read() ?? null;
     this.#seenGen = this.#readGen();
     this.#wasOn = this.#valid(this.now());
+    this.#db = options.db ?? null;
+    this.#channel = options.channel ?? null;
+    // The mirror stands until the database answers; without a database the mode is known at once (plain, or unusable when marked).
+    this.#mode = this.#db ? 'opening' : this.#marker() ? 'unusable' : 'plain';
+    if (this.#db) void this.#reselect();
   }
   /** The generation as kept now (this tab's own count where the browser keeps nothing). */
   #readGen(): number {
@@ -165,8 +271,12 @@ export class Plus {
     this.#memGen = next; this.#seenGen = next;
     try { this.storage?.setItem(PLUS_GEN_STORE, String(next)); } catch { /* this tab's own count stands */ }
   }
-  /** The membership's generation now, read again from where it is kept: what a key sent now is checked against when its answer comes (`acceptIf`). */
-  generation(): number { return this.#readGen(); }
+  /**
+   * The membership's generation now, read again from where it is kept: what a key sent now is checked against when its answer comes
+   * (`acceptIf`), in plain mode. In IDB mode an operation captures its baseline with `capture` instead; this is the stored generation as last
+   * seen.
+   */
+  generation(): number { return this.#mode === 'plain' || !this.#known ? this.#readGen() : this.#known.gen; }
   /** What is kept: the membership, null for none, undefined when it could not be read (what this tab holds then stands). */
   #read(): Held | null | undefined {
     if (!this.storage) return null;
@@ -222,6 +332,8 @@ export class Plus {
    * a key another tab removed or replaced meanwhile is not tried again, nor written back (Sol, review 2026-11-19).
    */
   retry(): void {
+    if (this.#mode !== 'plain') { void this.#retryHere(); return; }
+    if (this.#plainBlocked()) return;
     const was = this.#held?.key ?? null;
     this.reload();
     const held = this.#held;
@@ -234,7 +346,8 @@ export class Plus {
   #verified(unverified: boolean): void { if (this.#unverified !== unverified) { this.#unverified = unverified; this.#changed(); } }
 
   /** A checkout, a restore or a key typed in gave this browser a membership. False when the browser would not keep it (it lasts as long as this tab). */
-  accept(grant: { key: string; pass: string; until: number; renews?: boolean; now?: number }): boolean {
+  accept(grant: GrantIn): boolean {
+    if (this.#mode === 'plain' && this.#plainBlocked()) return false;
     const now = this.now();
     this.#held = { key: grant.key, pass: parsePass(grant.pass) ? grant.pass : '', until: grant.until, ended: false, why: '', renews: grant.renews ?? null, skew: skewOf(grant.now, now), next: 0 };
     this.#unverified = false;
@@ -243,22 +356,41 @@ export class Plus {
     return stored;
   }
   /**
-   * A key's grant taken only while the membership is the one the key was sent under (`generation` when it was sent): a key another tab stored
-   * meanwhile, or the key here removed, wins, and the grant is dropped (`stale`). Else as `accept`: `kept`, or `unkept` (this tab only).
+   * A key's grant taken only while the membership is the one the key was sent under (what `capture` gave when it was sent): a key another tab
+   * stored meanwhile, or the key here removed, wins, and the grant is dropped (`stale`). In plain mode (a number from `generation`) it is
+   * synchronous, as `accept`: `kept`, or `unkept` (this tab only). In IDB mode (a `Capture`) it is one commit, settling the payments `settle`
+   * names in the same transaction: a promise of `kept`, `stale`, or `unkept` (held as the overlay). A tab that takes no key: `refused`.
    */
-  acceptIf(generation: number, grant: { key: string; pass: string; until: number; renews?: boolean; now?: number }): 'kept' | 'unkept' | 'stale' {
-    this.reload();
-    if (this.#readGen() !== generation) return 'stale';
-    return this.accept(grant) ? 'kept' : 'unkept';
+  acceptIf(generation: number | Capture | null, grant: GrantIn, settle: readonly string[] = []): Taken | Promise<Taken> {
+    if (typeof generation === 'number') {
+      if (this.#mode !== 'plain') return 'stale';
+      // The marker appeared (another tab moved the browser to its database): nothing is taken here; if this tab's database opens now, the
+      // grant is taken again as a new operation (its baseline read now).
+      if (this.#marker()) return this.#reselected(async () => { const cap = await this.capture(); return cap === null || typeof cap === 'number' ? 'refused' : this.#take(cap, grant, settle); });
+      this.reload();
+      if (this.#readGen() !== generation) return 'stale';
+      return this.accept(grant) ? 'kept' : 'unkept';
+    }
+    if (generation === null || this.#mode !== 'idb') return 'refused';
+    return this.#take(generation, grant, settle);
   }
-  /** This browser lets its membership go (the subscription itself is not touched). */
-  forget(): void { if (!this.#held) return; this.#held = null; this.#unverified = false; this.#bumpGen(); this.#write(true); this.#changed(); }
+  /**
+   * This browser lets its membership go (the subscription itself is not touched). Synchronous in plain mode; in IDB mode one commit (a
+   * promise of how it went), which also drops an overlay; a tab that takes no key removes nothing (`refused`).
+   */
+  forget(): void | Promise<Taken> {
+    if (this.#mode !== 'plain') return this.#mode === 'idb' ? this.#remove() : Promise.resolve<Taken>('refused');
+    if (this.#marker()) return this.#reselected(() => this.#remove());
+    if (!this.#held) return; this.#held = null; this.#unverified = false; this.#bumpGen(); this.#write(true); this.#changed();
+  }
   /**
    * The server refused a pass it was sent (`pass`: which one; a late answer about a pass since replaced says nothing about the new one).
    * It is dropped and a new one asked for, within the one-a-minute rule: a server that refuses even the pass it has just given (its two
    * halves disagreeing) is not asked in a circle, by this tab or by two tabs taking turns.
    */
   refused(pass?: string | null): void {
+    if (this.#mode !== 'plain') { void this.#refusedHere(pass); return; }
+    if (this.#plainBlocked()) return;
     this.reload();
     const held = this.#held;
     if (!held || held.pass === '' || (pass != null && pass !== held.pass)) return;
@@ -271,10 +403,13 @@ export class Plus {
    * be read leaves what this tab holds; another tab's wait is this tab's too, and this tab's own is not forgotten for it.
    */
   reload(): void {
+    if (this.#mode === 'idb') { void this.#enqueue(() => this.#refresh()); return; }
     const next = this.#read(), was = this.#held;
     if (next === undefined) return;
     this.#seenGen = this.#readGen();
     if (next && was && next.key === was.key) next.next = Math.max(next.next, was.next);
+    // A tab without its database keeps a renewal it could not store (memory only) over an older pass of the same key in the mirror.
+    if (this.#mode !== 'plain' && next && was && next.key === was.key && expOf(was.pass) > expOf(next.pass)) Object.assign(next, withPass(next, was));
     this.#held = next;
     if (next?.key === was?.key && next?.pass === was?.pass && next?.until === was?.until && next?.ended === was?.ended && next?.renews === was?.renews && next?.why === was?.why) return;
     this.#changed();
@@ -283,6 +418,8 @@ export class Plus {
   tick(): void { if (this.on !== this.#wasOn) this.#changed(); }
   /** Ask the server for a fresh pass with the key, unless one is being asked for or the last was asked too recently. */
   renew(): void {
+    if (this.#mode !== 'plain') { if (this.#mode !== 'opening') void this.#renewHere(); return; }
+    if (this.#plainBlocked()) return;
     // What another tab wrote counts first: a frozen tab waking up must not write its old pass over a newer one.
     this.reload();
     const held = this.#held, now = this.now();
@@ -328,8 +465,341 @@ export class Plus {
       this.#verified(true);
     }, () => { if (this.#held?.key === key) this.#verified(true); /* not reached (or given up): the minute already set stands */ }).finally(() => { if (this.#renewing === key) this.#renewing = null; });
   }
-  /** Told whenever the membership here changes (a pass came, went, or was replaced). */
+  /** Told whenever the membership here changes (a pass came, went, or was replaced), and when the mode or the overlay changes. */
   subscribe(listener: () => void): () => void { this.#listeners.add(listener); return () => { this.#listeners.delete(listener); }; }
+
+  // ---- The modes (spec 2.1) ----
+
+  /** Where this tab stands with its database. */
+  get mode(): PlusMode { return this.#mode; }
+  /** Whether this tab may issue (open a checkout, ask for a payment's key, send the receipt): only in IDB mode (spec 0, 4). */
+  get issues(): boolean { return this.#mode === 'idb'; }
+  /** Whether this tab takes a key typed in and removes one: in IDB mode and in plain mode (not while opening, not ready or unusable here). */
+  get takesKeys(): boolean { return this.#mode === 'idb' || this.#mode === 'plain'; }
+  /** Whether this tab holds a membership it could not store (the overlay): it lasts until the tab closes. */
+  get unstored(): boolean { return this.#overlay !== null; }
+  /** Whether storing it failed for another reason than a full storage: then Try again (`keepAgain`) is offered. */
+  get saveFailed(): boolean { return this.#overlay !== null && !this.#overlay.quota; }
+  #setMode(mode: PlusMode): void { if (this.#mode !== mode) { this.#mode = mode; this.#changed(); } }
+  #marker(): boolean { try { return this.storage?.getItem(PLUS_IDB_MARKER) === '1'; } catch { return false; } }
+  #setMarker(): boolean {
+    try {
+      if (!this.storage) return false;
+      if (this.storage.getItem(PLUS_IDB_MARKER) !== '1') this.storage.setItem(PLUS_IDB_MARKER, '1');
+      return true;
+    } catch { return false; }
+  }
+  /** A plain tab about to write finds the marker: it writes nothing and selects its mode again (spec 2.1). */
+  #plainBlocked(): boolean {
+    if (!this.#marker()) return false;
+    void this.#reselect();
+    return true;
+  }
+  #reselect(): Promise<void> {
+    this.#selecting ??= this.#select().finally(() => { this.#selecting = null; });
+    return this.#selecting;
+  }
+  /** After selecting the mode again: `run` as a new operation in IDB mode, else nothing (`refused`). */
+  async #reselected(run: () => Promise<Taken>): Promise<Taken> {
+    await this.#reselect();
+    return this.#mode === 'idb' ? run() : 'refused';
+  }
+  /** Opening: the database's answer within 3 s decides; a timeout leaves a marked tab not ready and an unmarked one opening, both waiting on. */
+  async #select(): Promise<void> {
+    const db = this.#db;
+    if (!db) { this.#setMode(this.#marker() ? 'unusable' : 'plain'); return; }
+    this.#setMode('opening');
+    const outcome = await db.open();
+    if (outcome === 'error') { this.#setMode(this.#marker() ? 'unusable' : 'plain'); return; }
+    if (outcome === 'timeout') {
+      if (this.#marker()) this.#setMode('notready');
+      await new Promise<void>(resolve => {
+        const off = db.subscribe(state => { if (state === 'open' || state === 'failed') { off(); resolve(); } });
+        if (db.state === 'open' || db.state === 'failed') { off(); resolve(); }
+      });
+      if (db.state !== 'open') { this.#setMode(this.#marker() ? 'unusable' : 'plain'); return; }
+    }
+    await this.#enter();
+  }
+  /** The database opened: the browser's already (`migrated`), or moved to it now, marker first, then the one-time import (spec 2.1, 2.3). */
+  async #enter(): Promise<void> {
+    const db = this.#db!;
+    let migrated: boolean;
+    try { migrated = await db.tx('readonly', async kv => (await kv.get('migrated')) === true, COMMIT_WAIT_MS); } catch { this.#setMode(this.#marker() ? 'unusable' : 'plain'); return; }
+    if (migrated) {
+      // `localStorage` cleared alone: the marker is written again (and again after each commit while it fails); never back to plain mode.
+      this.#setMarker();
+    } else {
+      // The marker first: a browser whose marker cannot be written stays in plain mode, and nothing is imported.
+      if (!this.#setMarker()) { this.#setMode('plain'); return; }
+      try {
+        await db.tx('readwrite', async kv => {
+          if ((await kv.get('member')) === undefined) {
+            // Read inside the transaction; a storage that cannot be read throws, and nothing is set (the next load runs it again).
+            const raw = this.storage ? this.storage.getItem(PLUS_STORE) : null, gen = Number(this.storage ? this.storage.getItem(PLUS_GEN_STORE) ?? 0 : 0);
+            await kv.put('member', { gen: Number.isSafeInteger(gen) && gen >= 0 ? gen : 0, held: readHeld(raw) } satisfies StoredMember);
+          }
+          await kv.put('migrated', true);
+        }, COMMIT_WAIT_MS);
+      } catch { this.#setMode('unusable'); return; }
+    }
+    // What is stored is adopted before the tab says it is in IDB mode.
+    await this.#enqueue(() => this.#refresh(true));
+    this.#setMode('idb');
+  }
+
+  // ---- IDB mode: reads, adoption and the mirror ----
+
+  /** One step of this tab's commits and reads, after the ones before it. */
+  #enqueue<T>(run: () => Promise<T>): Promise<T> {
+    const next = this.#queue.then(run, run);
+    this.#queue = next.catch(() => undefined);
+    return next;
+  }
+  /** The stored membership read again and adopted (another tab's commit, the page shown again). */
+  async #refresh(entering = false): Promise<void> {
+    const db = this.#db;
+    if ((this.#mode !== 'idb' && !entering) || !db) return;
+    let read: { stored: StoredMember; seed: string | null };
+    try { read = await db.tx('readonly', async kv => ({ stored: storedMember(await kv.get('member')), seed: seedOf(await kv.get(SEED_KEY)) }), COMMIT_WAIT_MS); } catch { return; }
+    this.#adopt(read.stored, read.seed);
+  }
+  /**
+   * The stored membership is the one in force here, unless this tab holds an overlay over the very baseline it began with. Another tab's
+   * commit (another generation or seed) drops the overlay. A renewal this tab could not store that runs out later than the stored pass of the
+   * same key is applied by one commit (the adoption rule, spec 2.3 and 2.4). The mirror is written from what is stored.
+   */
+  #adopt(stored: StoredMember, seed: string | null): void {
+    this.#known = { seed, gen: stored.gen };
+    this.#writeMirror(stored);
+    this.#ensureMarker();
+    let told = false;
+    if (this.#overlay) {
+      if (this.#overlay.base.gen === stored.gen && this.#overlay.base.seed === seed) return;
+      this.#overlay = null; this.#rev++; told = true;
+    }
+    const was = this.#held;
+    let next = stored.held;
+    if (next && was && next.key === was.key) {
+      if (expOf(was.pass) > expOf(next.pass)) { const memory = was; next = withPass(next, memory); void this.#adoptPass(memory); }
+      next = { ...next, next: Math.max(next.next, was.next) };
+    }
+    this.#held = next;
+    if (told || !sameHeld(next, was)) this.#changed();
+  }
+  /** A later pass for the key the database holds (kept in memory here), written by one commit if it is still later. */
+  #adoptPass(from: Held): Promise<Committed> {
+    return this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [], change: cur => cur && cur.key === from.key && expOf(from.pass) > expOf(cur.pass) ? withPass(cur, from) : NOCHANGE });
+  }
+  /** The mirror, a function of the stored membership alone; written only where it differs (so tabs answering each other's events stop). */
+  #writeMirror(stored: StoredMember): void {
+    if (!this.storage) return;
+    try {
+      const text = stored.held ? JSON.stringify({ v: 1, ...stored.held }) : null, gen = String(stored.gen);
+      if (this.storage.getItem(PLUS_STORE) !== text) { if (text === null) this.storage.removeItem(PLUS_STORE); else this.storage.setItem(PLUS_STORE, text); }
+      if (this.storage.getItem(PLUS_GEN_STORE) !== gen) this.storage.setItem(PLUS_GEN_STORE, gen);
+    } catch { /* repaired at the next load or commit */ }
+  }
+  #ensureMarker(): void { if (this.#db?.state === 'open' && !this.#marker()) this.#setMarker(); }
+
+  /**
+   * `lmf.plus` changed in another tab (its `storage` event). In IDB mode a previous build's write is never adopted on its counter: one commit
+   * compares it with the stored membership inside the transaction, and takes only a later pass for the same key (an old tab renewed it);
+   * anything else leaves the database as it is and the mirror is written again from it (spec 2.3). Elsewhere the mirror is read.
+   */
+  mirrorChanged(): void {
+    if (this.#mode !== 'idb') { this.reload(); return; }
+    void this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [], change: cur => {
+      let seen: Held | null;
+      try { seen = readHeld(this.storage?.getItem(PLUS_STORE) ?? null); } catch { return NOCHANGE; }
+      return cur && seen && seen.key === cur.key && expOf(seen.pass) > expOf(cur.pass) ? withPass(cur, seen) : NOCHANGE;
+    } });
+  }
+  /** Another tab committed (its message on the channel): read again. */
+  heard(): void { this.reload(); }
+
+  // ---- IDB mode: the commit (spec 2.2) ----
+
+  /**
+   * One readwrite transaction, after this tab's earlier commits: stale without a transaction when the tab's revision changed since the
+   * operation began; inside it, stale when the seed differs (an answer from before a reset), or the generation differs (save for a grant of
+   * the key already held, which keeps the stored membership and only applies a later pass); else `change` decides what is written, the
+   * generation moving on when the key changes, and the payments named in `settle` are removed in the same transaction. After it completes:
+   * the mirror, this tab's memory, its listeners and the other tabs. A transaction that fails writes nothing: `failed`.
+   */
+  #commit(op: CommitOp): Promise<Committed> {
+    return this.#enqueue(async (): Promise<Committed> => {
+      if (op.rev !== null && op.rev !== this.#rev) return { kind: 'stale' };
+      const db = this.#db;
+      if (!db) return { kind: 'failed', error: new PlusDbUnavailable('error') };
+      let out: { ok: boolean; stored: StoredMember; seed: string | null };
+      try {
+        out = await db.tx('readwrite', async kv => {
+          const seed = seedOf(await kv.get(SEED_KEY)), member = storedMember(await kv.get('member'));
+          const settle = async (): Promise<void> => { for (const id of op.settle) await kv.delete(`paid:${id}`); };
+          if (op.expect) {
+            if (seed !== op.expect.seed) return { ok: false, stored: member, seed };
+            if (member.gen !== op.expect.gen) {
+              if (!op.grant || !member.held || member.held.key !== op.grant.key) return { ok: false, stored: member, seed };
+              // Another tab took the same key: this grant counts as taken; the stored membership stays, with this grant's pass if it is later.
+              const held = expOf(op.grant.pass) > expOf(member.held.pass) ? withPass(member.held, op.grant) : member.held;
+              const stored: StoredMember = { gen: member.gen, held };
+              if (held !== member.held) await kv.put('member', stored);
+              await settle();
+              return { ok: true, stored, seed };
+            }
+          }
+          const next = op.change(member.held);
+          if (next === NOCHANGE) return { ok: false, stored: member, seed };
+          const stored: StoredMember = { gen: (next?.key ?? null) !== (member.held?.key ?? null) ? member.gen + 1 : member.gen, held: next };
+          await kv.put('member', stored);
+          await settle();
+          return { ok: true, stored, seed };
+        }, COMMIT_WAIT_MS);
+      } catch (error) { return { kind: 'failed', error }; }
+      if (!out.ok) { this.#adopt(out.stored, out.seed); return { kind: 'stale' }; }
+      this.#committed(op, out.stored, out.seed);
+      return { kind: 'ok', stored: out.stored, seed: out.seed };
+    });
+  }
+  /** After a commit: the mirror (best effort), memory (an operation replaces an overlay), the listeners and the other tabs. */
+  #committed(op: CommitOp, stored: StoredMember, seed: string | null): void {
+    this.#known = { seed, gen: stored.gen };
+    this.#writeMirror(stored);
+    this.#ensureMarker();
+    const had = this.#overlay !== null;
+    if (op.kind === 'operation' && had) { this.#overlay = null; this.#rev++; }
+    if (!this.#overlay) {
+      const was = this.#held, next = stored.held;
+      this.#held = next && was && next.key === was.key ? { ...next, next: Math.max(next.next, was.next) } : next;
+      if ((op.kind === 'operation' && had) || !sameHeld(this.#held, was)) this.#changed();
+    }
+    try { this.#channel?.postMessage({ kind: 'member' }); } catch { /* the mirror's storage event still tells them */ }
+  }
+
+  // ---- IDB mode: operations (spec 2.2, 2.4) ----
+
+  /**
+   * What an operation that may write the membership captures when it begins: in plain mode the generation (a number, synchronously); in IDB
+   * mode the stored baseline read in a transaction (or the overlay's, while one is held) and this tab's revision; null where this tab takes
+   * no key (opening, not ready, unusable here) or the read failed.
+   */
+  capture(): number | Promise<Capture | null> {
+    if (this.#mode === 'plain') return this.generation();
+    const db = this.#db;
+    if (this.#mode !== 'idb' || !db) return Promise.resolve(null);
+    const rev = this.#rev;
+    if (this.#overlay) return Promise.resolve({ base: this.#overlay.base, rev });
+    return db.tx('readonly', async kv => ({ seed: seedOf(await kv.get(SEED_KEY)), gen: storedMember(await kv.get('member')).gen }), COMMIT_WAIT_MS)
+      .then(base => ({ base, rev }), () => null);
+  }
+  /** A membership this tab could not store is held (spec 2.4): in force here, the revision moved on. */
+  #hold(overlay: Overlay): void {
+    this.#overlay = overlay; this.#rev++;
+    this.#held = overlay.held; this.#unverified = false;
+    this.#changed();
+  }
+  async #take(cap: Capture, grant: GrantIn, settle: readonly string[]): Promise<Taken> {
+    const now = this.now();
+    const held: Held = { key: grant.key, pass: parsePass(grant.pass) ? grant.pass : '', until: grant.until, ended: false, why: '', renews: grant.renews ?? null, skew: skewOf(grant.now, now), next: 0 };
+    const out = await this.#commit({ kind: 'operation', expect: cap.base, rev: cap.rev, change: () => held, settle, grant: held });
+    if (out.kind === 'ok') { if (this.#unverified) { this.#unverified = false; this.#changed(); } return 'kept'; }
+    if (out.kind === 'stale') return 'stale';
+    this.#hold({ held, base: cap.base, settle, quota: isQuota(out.error) });
+    return 'unkept';
+  }
+  /** Remove: one commit against the baseline (an overlay's, which it drops; if that fails too, the overlay holds "none"). */
+  async #remove(): Promise<Taken> {
+    const cap = this.#overlay ? { base: this.#overlay.base, rev: this.#rev } : await this.capture();
+    if (cap === null || typeof cap === 'number') return 'refused';
+    const out = await this.#commit({ kind: 'operation', expect: cap.base, rev: cap.rev, change: () => null, settle: [] });
+    if (out.kind === 'ok') { if (this.#unverified) { this.#unverified = false; this.#changed(); } return 'kept'; }
+    if (out.kind === 'stale') return 'stale';
+    this.#hold({ held: null, base: cap.base, settle: [], quota: isQuota(out.error) });
+    return 'unkept';
+  }
+  /**
+   * Try again for a membership this tab could not store: the overlay committed again against its own baseline, with its settlement, and no
+   * request to the server. Stored: the overlay goes. Stale (another tab changed the membership since): the overlay goes and the stored one is
+   * in force. Failed again: it stays.
+   */
+  async keepAgain(): Promise<Taken> {
+    const overlay = this.#overlay;
+    if (!overlay) return 'stale';
+    if (this.#mode !== 'idb') return 'refused';
+    const out = await this.#commit({ kind: 'operation', expect: overlay.base, rev: this.#rev, change: () => overlay.held, settle: overlay.settle });
+    if (out.kind === 'ok') return 'kept';
+    if (out.kind === 'stale') return 'stale';
+    if (this.#overlay === overlay) { this.#overlay = { ...overlay, quota: isQuota(out.error) }; this.#changed(); }
+    return 'unkept';
+  }
+
+  // ---- The renewal outside plain mode ----
+
+  /** Whether a renewal's writes go to the database: in IDB mode with no overlay (the overlay's key renews in memory only). */
+  #stores(): boolean { return this.#mode === 'idb' && !this.#overlay; }
+  /** A renewal's result kept in memory only (the overlay's key, a tab without its database, or a commit that failed). */
+  #memory(held: Held): void {
+    const was = this.#held;
+    if (this.#overlay && this.#overlay.held?.key === held.key) this.#overlay = { ...this.#overlay, held };
+    this.#held = held;
+    if (!sameHeld(held, was)) this.#changed();
+  }
+  /**
+   * The renewal in IDB mode, not ready or unusable here. In IDB mode the wait is reserved inside a transaction (one renewal a minute across
+   * tabs, as the stored wait did before) and the result is one commit that checks the key; elsewhere (and when a commit fails) it is kept in
+   * memory only: no baseline, no overlay, no write (spec 2.4).
+   */
+  async #renewHere(): Promise<void> {
+    const held = this.#held, now = this.now();
+    if (!held || this.#renewing === held.key || (now < held.next && held.next - now <= LONG_RETRY_MS)) return;
+    if (expOf(held.pass) - (now + held.skew) >= RENEW_BEFORE_MS) return;
+    const key = held.key, sent = held.pass, stores = this.#stores();
+    this.#renewing = key;
+    try {
+      if (stores) {
+        const reserved = await this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [],
+          change: cur => cur?.key === key && !(now < cur.next && cur.next - now <= LONG_RETRY_MS) && expOf(cur.pass) - (now + cur.skew) < RENEW_BEFORE_MS ? { ...cur, next: now + RETRY_MS } : NOCHANGE });
+        // Another tab renews it or renewed it, or the key changed: nothing is asked here.
+        if (reserved.kind === 'stale') return;
+        if (reserved.kind === 'failed') this.#memory({ ...held, next: now + RETRY_MS });
+      } else this.#memory({ ...held, next: now + RETRY_MS });
+      let answer: Awaited<ReturnType<Post>>;
+      try { answer = await this.post(`${this.api()}/pass/renew`, { key }); } catch { if (this.#held?.key === key) this.#verified(true); return; }
+      const at = this.now();
+      if (stores && this.#stores()) {
+        let unverified = false;
+        const out = await this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [], change: cur => { const r = renewed(cur, key, sent, answer, at); if (!r) return NOCHANGE; unverified = r.unverified; return r.held; } });
+        if (out.kind === 'ok') { this.#verified(unverified); return; }
+        if (out.kind === 'stale') return;
+      }
+      const r = renewed(this.#held, key, sent, answer, at);
+      if (r) { this.#memory(r.held); this.#verified(r.unverified); }
+    } finally { if (this.#renewing === key) this.#renewing = null; }
+  }
+  /** "Try again" outside plain mode: the stored wait cleared for the key held (never another tab's), then a renewal. */
+  async #retryHere(): Promise<void> {
+    const held = this.#held;
+    if (!held || this.#renewing === held.key) return;
+    if (this.#stores()) {
+      const out = await this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [], change: cur => cur?.key === held.key ? { ...cur, next: 0 } : NOCHANGE });
+      if (out.kind === 'stale') return;
+      if (out.kind === 'failed') this.#memory({ ...held, next: 0 });
+    } else this.#memory({ ...held, next: 0 });
+    if (this.#unverified) { this.#unverified = false; this.#changed(); }
+    this.renew();
+  }
+  /** A pass the server refused, outside plain mode: dropped (stored when it can be), then a renewal. */
+  async #refusedHere(pass?: string | null): Promise<void> {
+    const held = this.#held;
+    if (!held || held.pass === '' || (pass != null && pass !== held.pass)) return;
+    if (this.#stores()) {
+      const out = await this.#commit({ kind: 'renewal', expect: null, rev: null, settle: [], change: cur => cur && cur.key === held.key && cur.pass !== '' && (pass == null || pass === cur.pass) ? { ...cur, pass: '' } : NOCHANGE });
+      if (out.kind === 'stale') return;
+      if (out.kind === 'failed') this.#memory({ ...held, pass: '' });
+    } else this.#memory({ ...held, pass: '' });
+    this.renew();
+  }
 }
 
 let shared: Plus | null = null;
@@ -338,7 +808,7 @@ export function plus(): Plus {
   if (shared) return shared;
   shared = new Plus();
   if (typeof addEventListener === 'function') {
-    addEventListener('storage', event => { if (event.key === PLUS_STORE || event.key === null) shared?.reload(); });
+    addEventListener('storage', event => { if (event.key === PLUS_STORE || event.key === null) shared?.mirrorChanged(); });
     // A tab shown again after a long while may hold a pass that ran out meanwhile; one left open sees its pass run out without a word.
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { shared?.reload(); shared?.tick(); } });
     if (typeof setInterval === 'function') setInterval(() => { shared?.tick(); }, 60_000);

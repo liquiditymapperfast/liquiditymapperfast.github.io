@@ -133,7 +133,8 @@ class FakeTransaction implements DbTransaction {
     });
   }
   #commit(): void {
-    const failure = this.idb.takeCommitFailure();
+    // A quota or an abort at commit concerns a transaction that writes.
+    const failure = this.mode === 'readwrite' ? this.idb.takeCommitFailure() : null;
     if (failure) { this.fail(dom(failure, 'the transaction could not commit')); return; }
     let store = this.db.stores.get(this.store);
     if (!store) { store = new Map(); this.db.stores.set(this.store, store); }
@@ -280,7 +281,7 @@ export class FakeIdb {
   /** The next `put` request fails with this error (and, unprevented, aborts its transaction). */
   failNextPut(name = 'QuotaExceededError'): void { this.#putFailure = name; }
   takePutFailure(): boolean { if (this.#putFailure === null) return false; this.lastPutFailure = this.#putFailure; this.#putFailure = null; return true; }
-  /** The next transaction that would commit aborts instead, with this error as its `error` (a quota found at commit, or `AbortError`). */
+  /** The next readwrite transaction that would commit aborts instead, with this error as its `error` (a quota found at commit, or `AbortError`). */
   failNextCommit(name = 'QuotaExceededError'): void { this.#commitFailure = name; }
   takeCommitFailure(): string | null { const name = this.#commitFailure; this.#commitFailure = null; return name; }
 

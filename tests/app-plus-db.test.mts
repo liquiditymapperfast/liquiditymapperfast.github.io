@@ -6,6 +6,8 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { KV_STORE, OPEN_TIMEOUT_MS, PLUS_DB, PLUS_DB_VERSION, PlusDb, PlusDbUnavailable, SEED_KEY, SEED_SHAPE, newSeed, readSeed, seedIn, type DbState } from '../src/app/plus/plus-db.ts';
 import { FakeIdb, settle } from './plus-db-fake.mts';
+import { PLUS_GEN_STORE, PLUS_IDB_MARKER, PLUS_STORE, storedMember, type Capture, type Plus, type StoredMember, type Taken } from '../src/app/plus/pass.ts';
+import { HOUR, KEY_A, KEY_B, KEY_C, NOW, UNTIL, browser, grantOf, passOf, slowPost, until, type Browser } from './plus-browser-double.mts';
 
 const tab = (idb: FakeIdb): PlusDb => new PlusDb(idb.factory);
 const nameOf = (error: unknown): string => (error as { name?: string }).name ?? '';
@@ -223,4 +225,367 @@ test('the stand-in commits by itself when nothing is pending: a request after an
   // A chain of IDB requests through awaits keeps it active.
   await db.tx('readwrite', async kv => { for (let i = 0; i < 5; i++) await kv.put(`k${i}`, (await kv.get(`k${i - 1}`) as number | undefined ?? 0) + 1); });
   assert.equal(idb.peek('k4'), 5);
+});
+
+// ---- The membership on the database (src/app/plus/pass.ts, spec sections 2.1-2.4) ----
+
+const memberIn = (idb: FakeIdb): StoredMember => storedMember(idb.peek('member'));
+const keyIn = (idb: FakeIdb): string | null => memberIn(idb).held?.key ?? null;
+const capOf = async (t: Plus): Promise<Capture> => { const c = await t.capture(); assert.ok(c !== null && typeof c !== 'number', 'a capture'); return c as Capture; };
+const take = async (t: Plus, key: string, settle: string[] = [], exp?: number): Promise<Taken> => t.acceptIf(await capOf(t), grantOf(key, exp), settle);
+/** A browser whose first tab is in IDB mode (the database opened, the marker written, the import run). */
+async function idbBrowser(): Promise<{ b: Browser; a: Plus }> {
+  const b = browser(), a = b.open();
+  await until(() => a.mode === 'idb');
+  return { b, a };
+}
+
+test('a browser moves to its database once: the marker first, then the import of today\'s stored shape, a gift kept whole', async () => {
+  const b = browser();
+  const gift = { v: 1, key: KEY_A, pass: passOf('gift_aaaa', NOW + 20 * HOUR), until: UNTIL, ended: false, why: '', renews: false, skew: 120_000, next: NOW + 60_000 };
+  b.data.set(PLUS_STORE, JSON.stringify(gift)); b.data.set(PLUS_GEN_STORE, '7');
+  const a = b.open();
+  assert.equal(a.mode, 'opening', 'every tab starts by opening');
+  assert.equal(a.state, 'on', 'the mirror shows the membership at once');
+  await until(() => a.mode === 'idb');
+  assert.equal(b.data.get(PLUS_IDB_MARKER), '1');
+  assert.ok(b.writes.indexOf(PLUS_IDB_MARKER) === 0, 'the marker was the first write');
+  const { v: _v, ...held } = gift;
+  assert.deepEqual(memberIn(b.idb), { gen: 7, held }, 'imported whole: key, pass, until, ended, why, renews, skew, next');
+  assert.equal(b.idb.peek('migrated'), true);
+  assert.equal(a.state, 'on'); assert.equal(a.key, KEY_A); assert.equal(a.renews, false);
+  // A second tab finds the browser moved already and imports nothing again.
+  b.data.set(PLUS_STORE, JSON.stringify({ ...gift, key: KEY_C }));
+  const c = b.open();
+  await until(() => c.mode === 'idb');
+  assert.equal(c.key, KEY_A, 'the database is the authority, not the mirror');
+  assert.equal(b.mirrorKey(), KEY_A, 'and the mirror is repaired');
+});
+
+test('a marker that cannot be written leaves a tab in plain mode with nothing imported; once migrated, it never goes back to plain', async () => {
+  const b = browser();
+  b.data.set(PLUS_STORE, JSON.stringify({ v: 1, key: KEY_A, pass: passOf('gift_aaaa', NOW + 20 * HOUR), until: UNTIL }));
+  b.refuse = key => key === PLUS_IDB_MARKER;
+  const a = b.open();
+  await until(() => a.mode !== 'opening');
+  assert.equal(a.mode, 'plain');
+  assert.equal(b.idb.peek('migrated'), undefined, 'nothing imported');
+  assert.equal(b.idb.peek('member'), undefined);
+  assert.equal(a.issues, false); assert.equal(a.takesKeys, true, 'plain mode takes keys as today');
+
+  // Migrated, then `localStorage` cleared alone: IDB mode at once, the marker written again, and while it fails, retried at each commit.
+  b.refuse = null;
+  const { b: m, a: first } = await idbBrowser();
+  assert.equal(await take(first, KEY_B), 'kept');
+  m.data.clear();
+  m.refuse = key => key === PLUS_IDB_MARKER;
+  const again = m.open();
+  await until(() => again.mode !== 'opening');
+  assert.equal(again.mode, 'idb', 'a failed marker write never demotes a migrated browser');
+  assert.equal(again.key, KEY_B);
+  m.refuse = null;
+  assert.equal(await again.forget(), 'kept');
+  assert.equal(m.data.get(PLUS_IDB_MARKER), '1', 'written again after a commit');
+});
+
+test('both half-states: a marker with no finished import runs the import; a migrated browser with no marker writes it again', async () => {
+  const b = browser();
+  b.data.set(PLUS_IDB_MARKER, '1');
+  b.data.set(PLUS_STORE, JSON.stringify({ v: 1, key: KEY_A, pass: passOf('gift_aaaa', NOW + 20 * HOUR), until: UNTIL }));
+  b.data.set(PLUS_GEN_STORE, '2');
+  const a = b.open();
+  await until(() => a.mode === 'idb');
+  assert.deepEqual([memberIn(b.idb).gen, keyIn(b.idb), b.idb.peek('migrated')], [2, KEY_A, true]);
+
+  // A storage that cannot be read while importing: nothing is set (the next load runs it again).
+  const u = browser();
+  u.data.set(PLUS_STORE, JSON.stringify({ v: 1, key: KEY_A, pass: passOf('gift_aaaa', NOW + 20 * HOUR), until: UNTIL }));
+  const t = u.open();
+  u.unreadable = true;
+  await until(() => t.mode !== 'opening');
+  assert.notEqual(t.mode, 'idb');
+  assert.equal(u.idb.peek('migrated'), undefined, 'migrated is not set');
+  assert.equal(u.idb.peek('member'), undefined);
+});
+
+test('not ready and unusable here: the mirror shows Plus at once, renews in memory only, takes no key and writes nothing', async () => {
+  // Unusable here: the marker set, the open refused.
+  const b = browser();
+  b.idb.opens = 'refuse';
+  b.data.set(PLUS_IDB_MARKER, '1');
+  b.data.set(PLUS_STORE, JSON.stringify({ v: 1, key: KEY_A, pass: passOf('gift_aaaa', NOW + 2 * HOUR), until: UNTIL }));
+  const server = slowPost();
+  const a = b.open({ post: server.post });
+  assert.equal(a.state, 'on', 'Plus on at once from the mirror');
+  await until(() => a.mode === 'unusable');
+  assert.equal(a.issues, false); assert.equal(a.takesKeys, false);
+  assert.equal(await a.capture(), null, 'no operation begins');
+  assert.equal(await a.acceptIf(null, grantOf(KEY_B)), 'refused');
+  assert.equal(await a.acceptIf(0, grantOf(KEY_B)), 'stale', 'a plain capture is not taken here');
+  assert.equal(await a.forget(), 'refused', 'nor is the key removed');
+  const before = b.writes.length;
+  a.pass();
+  await until(() => server.asked.length === 1);
+  server.asked[0]!.answer({ status: 200, body: { pass: passOf('gift_aaaa', NOW + 24 * HOUR), paidUntil: UNTIL, now: NOW } });
+  await settleTasks();
+  assert.equal(a.state, 'on'); assert.equal(a.key, KEY_A);
+  assert.ok(a.pass()!.length > 0 && a.pass() !== passOf('gift_aaaa', NOW + 2 * HOUR), 'renewed in memory');
+  assert.equal(b.writes.length, before, 'nothing written, not even the mirror');
+  assert.equal(b.mirrorKey(), KEY_A);
+
+  // Not ready: the marker set, the open hangs; the late open adopts the stored membership and applies the later memory pass by one commit.
+  const n = browser();
+  const { a: seeded } = await (async () => { const t = n.open(); await until(() => t.mode === 'idb'); return { a: t }; })();
+  assert.equal(await take(seeded, KEY_A, [], NOW + 2 * HOUR), 'kept');
+  n.idb.opens = 'hang';
+  const late = slowPost();
+  const slow = n.open({ post: late.post });
+  await until(() => slow.mode === 'notready', 2_000);
+  slow.pass();
+  await until(() => late.asked.length === 1);
+  late.asked[0]!.answer({ status: 200, body: { pass: passOf('gift_aaaa', NOW + 24 * HOUR), paidUntil: UNTIL, now: NOW } });
+  await settleTasks();
+  assert.equal(memberIn(n.idb).held?.pass, passOf('gift_aaaa', NOW + 2 * HOUR), 'nothing stored while not ready');
+  n.idb.opens = 'answer'; n.idb.releaseOpens();
+  await until(() => slow.mode === 'idb');
+  await until(() => memberIn(n.idb).held?.pass === passOf('gift_aaaa', NOW + 24 * HOUR));
+  assert.equal(memberIn(n.idb).gen, 1, 'the same key: no new generation');
+});
+async function settleTasks(): Promise<void> { for (let i = 0; i < 60; i++) await new Promise(r => { setImmediate(r); }); }
+
+test('opening without a marker: a slow open keeps the tab opening (no key taken), and its late answer brings IDB mode', async () => {
+  const b = browser();
+  b.idb.opens = 'hang';
+  const a = b.open();
+  await settleTasks();
+  assert.equal(a.mode, 'opening');
+  assert.equal(a.takesKeys, false);
+  assert.equal(await a.capture(), null);
+  b.idb.opens = 'answer'; b.idb.releaseOpens();
+  await until(() => a.mode === 'idb');
+  assert.equal(b.data.get(PLUS_IDB_MARKER), '1');
+});
+
+test('a plain tab that finds the marker before a write writes nothing and selects its mode again (unusable here when its open fails)', async () => {
+  const b = browser();
+  b.idb.opens = 'refuse';
+  const a = b.open();
+  await until(() => a.mode === 'plain');
+  const gen = a.generation();
+  b.data.set(PLUS_IDB_MARKER, '1');
+  const before = b.writes.length;
+  const out = a.acceptIf(gen, grantOf(KEY_B));
+  assert.ok(out instanceof Promise, 'not taken at once');
+  assert.equal(await out, 'refused');
+  assert.equal(a.mode, 'unusable');
+  assert.equal(b.writes.length, before, 'nothing written');
+  assert.equal(a.key, null);
+  // Its database opening now: the grant is taken as a new operation.
+  const c = browser();
+  c.idb.opens = 'refuse';
+  const p = c.open();
+  await until(() => p.mode === 'plain');
+  c.data.set(PLUS_IDB_MARKER, '1');
+  c.idb.opens = 'answer';
+  assert.equal(await p.acceptIf(p.generation(), grantOf(KEY_B)), 'kept');
+  assert.equal(p.mode, 'idb');
+  assert.equal(keyIn(c.idb), KEY_B);
+});
+
+test('commit guards: an answer from before a reset is stale even for the same key; the same-key exception keeps the member and only a later pass', async () => {
+  const { b, a } = await idbBrowser();
+  await readSeed(new PlusDb(b.idb.factory));
+  const before = await capOf(a);
+  b.idb.wipe();
+  await settleTasks();
+  // The browser's data cleared while the answer was on its way: a new seed is made, and the old answer is never taken.
+  await readSeed(new PlusDb(b.idb.factory));
+  assert.equal(await a.acceptIf(before, grantOf(KEY_A)), 'stale');
+  assert.equal(keyIn(b.idb), null);
+
+  // Same seed, another generation: another tab took the same key meanwhile; this grant counts as taken and applies only a later pass.
+  const { b: s, a: one } = await idbBrowser();
+  const two = s.open();
+  await until(() => two.mode === 'idb');
+  const capOne = await capOf(one);
+  assert.equal(await take(two, KEY_A, [], NOW + 24 * HOUR), 'kept');
+  const genAfter = memberIn(s.idb).gen;
+  assert.equal(await one.acceptIf(capOne, grantOf(KEY_A, NOW + 20 * HOUR)), 'kept', 'the same key counts as taken');
+  assert.equal(memberIn(s.idb).held?.pass, passOf('gift_aaaa', NOW + 24 * HOUR), 'an earlier pass is not applied');
+  assert.equal(memberIn(s.idb).gen, genAfter, 'the member kept as it is');
+  const capLater = await capOf(one);
+  assert.equal(await take(two, KEY_B), 'kept');
+  assert.equal(await take(two, KEY_A), 'kept');
+  assert.equal(await one.acceptIf(capLater, grantOf(KEY_A, NOW + 30 * HOUR)), 'kept');
+  assert.equal(memberIn(s.idb).held?.pass, passOf('gift_aaaa', NOW + 30 * HOUR), 'a later pass is applied');
+  // A different key at another generation is stale.
+  const capOld = await capOf(one);
+  assert.equal(await take(two, KEY_C), 'kept');
+  assert.equal(await one.acceptIf(capOld, grantOf(KEY_B)), 'stale');
+  assert.equal(keyIn(s.idb), KEY_C);
+  await until(() => one.key === KEY_C);
+});
+
+test('commit: two grants at one generation, one kept and one stale; Remove against a grant either way; a renewal for an old key writes nothing over a newer one', async () => {
+  const { b, a } = await idbBrowser();
+  const c = b.open();
+  await until(() => c.mode === 'idb');
+  const [ca, cc] = [await capOf(a), await capOf(c)];
+  const outs = await Promise.all([a.acceptIf(ca, grantOf(KEY_A), ['txn_a']), c.acceptIf(cc, grantOf(KEY_B), ['txn_b'])]);
+  assert.deepEqual([...outs].sort(), ['kept', 'stale']);
+
+  // Remove between another tab's capture and its commit: the grant is stale and Remove holds; then the reverse.
+  const capGrant = await capOf(c);
+  assert.equal(await a.forget(), 'kept');
+  assert.equal(await c.acceptIf(capGrant, grantOf(KEY_C)), 'stale');
+  assert.equal(keyIn(b.idb), null);
+  assert.equal(await take(c, KEY_C), 'kept');
+  await until(() => a.key === KEY_C);
+  const capRemove = await capOf(a);
+  assert.equal(await take(c, KEY_B), 'kept');
+  void capRemove;
+  assert.equal(await a.forget(), 'kept', 'Remove captured after: it removes the key in force');
+  assert.equal(keyIn(b.idb), null);
+
+  // A renewal answer for the old key when a newer key was committed meanwhile.
+  const server = slowPost();
+  const r = b.open({ post: server.post });
+  await until(() => r.mode === 'idb');
+  assert.equal(await take(r, KEY_A, [], NOW + 2 * HOUR), 'kept');
+  r.pass();
+  await until(() => server.asked.length === 1);
+  assert.equal(await take(c, KEY_B), 'kept');
+  server.asked[0]!.answer({ status: 200, body: { pass: passOf('gift_aaaa', NOW + 24 * HOUR), paidUntil: UNTIL, now: NOW } });
+  await settleTasks();
+  assert.equal(keyIn(b.idb), KEY_B, 'never overwritten');
+  assert.equal(r.key, KEY_B);
+});
+
+test('settlement: a kept grant removes the payments it names in the same transaction; a failed one removes nothing', async () => {
+  const { b, a } = await idbBrowser();
+  b.idb.set('paid:txn_a', { at: NOW }); b.idb.set('paid:txn_b', { at: NOW });
+  assert.equal(await take(a, KEY_A, ['txn_a']), 'kept');
+  assert.deepEqual(b.idb.keys().filter(k => k.startsWith('paid:')), ['paid:txn_b']);
+  b.idb.failNextPut('UnknownError');
+  assert.equal(await take(a, KEY_B, ['txn_b']), 'unkept');
+  assert.deepEqual(b.idb.keys().filter(k => k.startsWith('paid:')), ['paid:txn_b'], 'kept with the membership that failed');
+});
+
+test('the overlay: a commit that fails holds the key in this tab; Try again stores it without a request and settles; quota or not', async () => {
+  const { b, a } = await idbBrowser();
+  b.idb.set('paid:txn_a', { at: NOW });
+  b.idb.failNextCommit('QuotaExceededError');
+  assert.equal(await take(a, KEY_A, ['txn_a']), 'unkept');
+  assert.equal(a.state, 'on'); assert.equal(a.key, KEY_A, 'the buyer sees Plus and the key');
+  assert.equal(a.unstored, true); assert.equal(a.saveFailed, false, 'a full storage: no Try again');
+  assert.equal(keyIn(b.idb), null, 'nothing stored');
+  assert.ok(b.idb.peek('paid:txn_a'), 'the record stays');
+  b.idb.failNextCommit('UnknownError');
+  assert.equal(await a.keepAgain(), 'unkept');
+  assert.equal(a.saveFailed, true, 'another failure: Try again offered');
+  assert.equal(await a.keepAgain(), 'kept');
+  assert.equal(a.unstored, false);
+  assert.equal(keyIn(b.idb), KEY_A);
+  assert.equal(b.idb.peek('paid:txn_a'), undefined, 'settled with it');
+  assert.equal(b.mirrorKey(), KEY_A);
+});
+
+test('the overlay\'s two guards: a key answer captured before the overlay changed is stale on the revision, which never resets', async () => {
+  const { b, a } = await idbBrowser();
+  const early = await capOf(a);
+  b.idb.failNextCommit('UnknownError');
+  assert.equal(await take(a, KEY_A), 'unkept');
+  assert.equal(await a.acceptIf(early, grantOf(KEY_B)), 'stale', 'captured before the overlay came');
+  // A key entered while the overlay exists commits against its baseline and replaces it.
+  assert.equal(await take(a, KEY_C), 'kept');
+  assert.equal(a.unstored, false);
+  assert.equal(keyIn(b.idb), KEY_C);
+  // An overlay that came and went: the store looks unchanged for a grant captured before it, yet the revision refuses it.
+  const { b: s, a: t } = await idbBrowser();
+  const before = await capOf(t);
+  s.idb.failNextCommit('UnknownError');
+  assert.equal(await t.forget(), 'unkept', 'an unstored Remove');
+  assert.equal(t.unstored, true); assert.equal(t.state, 'none', 'holds "none"');
+  assert.equal(await t.keepAgain(), 'kept');
+  assert.equal(await t.acceptIf(before, grantOf(KEY_B)), 'stale');
+  assert.equal(keyIn(s.idb), null);
+});
+
+test('the overlay goes when another tab commits; a renewal of the overlay\'s key writes nothing', async () => {
+  const { b, a } = await idbBrowser();
+  const server = slowPost();
+  const r = b.open({ post: server.post });
+  await until(() => r.mode === 'idb');
+  b.idb.failNextCommit('UnknownError');
+  assert.equal(await take(r, KEY_A, [], NOW + 2 * HOUR), 'unkept');
+  const writes = b.writes.length, puts = b.idb.log.filter(i => i.op === 'put').length;
+  r.pass();
+  await until(() => server.asked.length === 1);
+  server.asked[0]!.answer({ status: 200, body: { pass: passOf('gift_aaaa', NOW + 24 * HOUR), paidUntil: UNTIL, now: NOW } });
+  await settleTasks();
+  assert.equal(r.unstored, true); assert.equal(r.key, KEY_A);
+  assert.equal(r.pass(), passOf('gift_aaaa', NOW + 24 * HOUR), 'renewed in memory');
+  assert.equal(b.writes.length, writes); assert.equal(b.idb.log.filter(i => i.op === 'put').length, puts, 'no write at all');
+  assert.equal(await take(a, KEY_B), 'kept');
+  await until(() => !r.unstored);
+  assert.equal(r.key, KEY_B, 'the other tab\'s act was later');
+});
+
+test('a previous build\'s write to localStorage: another key or a removal is not adopted and the mirror is repaired; a later pass for the same key is', async () => {
+  const { b, a } = await idbBrowser();
+  const c = b.open();
+  await until(() => c.mode === 'idb');
+  assert.equal(await take(a, KEY_A, [], NOW + 2 * HOUR), 'kept');
+  await until(() => b.mirrorKey() === KEY_A && c.key === KEY_A);
+  const old = (held: object): void => { b.data.set(PLUS_STORE, JSON.stringify(held)); b.tabs.forEach(t => { t.mirrorChanged(); }); };
+  old({ v: 1, key: KEY_C, pass: passOf('gift_cccc', NOW + 24 * HOUR), until: UNTIL });
+  await until(() => b.mirrorKey() === KEY_A);
+  assert.equal(keyIn(b.idb), KEY_A); assert.equal(a.key, KEY_A);
+  b.data.delete(PLUS_STORE); b.tabs.forEach(t => { t.mirrorChanged(); });
+  await until(() => b.mirrorKey() === KEY_A);
+  assert.equal(keyIn(b.idb), KEY_A, 'a removal is not adopted either');
+  old({ v: 1, key: KEY_A, pass: passOf('gift_aaaa', NOW + 24 * HOUR), until: UNTIL + 1, ended: true, why: 'canceled' });
+  await until(() => memberIn(b.idb).held?.pass === passOf('gift_aaaa', NOW + 24 * HOUR));
+  assert.deepEqual([memberIn(b.idb).held?.ended, memberIn(b.idb).held?.why, memberIn(b.idb).held?.until], [false, '', UNTIL + 1], 'adopted, ended and why cleared');
+});
+
+test('the mirror stops: tabs answering each other\'s storage events write nothing more once it matches the database', async () => {
+  const { b, a } = await idbBrowser();
+  const c = b.open(), d = b.open();
+  await until(() => c.mode === 'idb' && d.mode === 'idb');
+  assert.equal(await take(a, KEY_A), 'kept');
+  await settleTasks();
+  const writes = b.writes.length;
+  await settleTasks();
+  assert.equal(b.writes.length, writes, 'no ping-pong');
+  assert.ok([a, c, d].every(t => t.key === KEY_A));
+});
+
+test('a renewal is reserved inside a transaction: two tabs renewing at once send one request', async () => {
+  const { b, a } = await idbBrowser();
+  assert.equal(await take(a, KEY_A, [], NOW + 2 * HOUR), 'kept');
+  const server = slowPost();
+  const x = b.open({ post: server.post }), y = b.open({ post: server.post });
+  await until(() => x.mode === 'idb' && y.mode === 'idb' && x.key === KEY_A && y.key === KEY_A);
+  x.pass(); y.pass();
+  await settleTasks();
+  assert.equal(server.asked.length, 1, 'one renewal a minute across tabs');
+  server.asked[0]!.answer({ status: 200, body: { pass: passOf('gift_aaaa', NOW + 24 * HOUR), paidUntil: UNTIL, now: NOW } });
+  await until(() => y.pass() === passOf('gift_aaaa', NOW + 24 * HOUR));
+  assert.equal(memberIn(b.idb).held?.pass, passOf('gift_aaaa', NOW + 24 * HOUR));
+});
+
+test('plain mode stays as it was: synchronous key entry, Remove and renewal, and no database is touched', async () => {
+  const b = browser();
+  const a = b.open({ db: false });
+  assert.equal(a.mode, 'plain');
+  assert.equal(a.capture(), 0, 'a number, at once');
+  assert.equal(a.acceptIf(a.generation(), grantOf(KEY_A)), 'kept', 'synchronous');
+  assert.equal(a.key, KEY_A); assert.equal(b.mirrorKey(), KEY_A);
+  assert.equal(a.forget(), undefined, 'Remove is synchronous');
+  assert.equal(a.key, null);
+  assert.equal(b.idb.opened, 0);
+  // Marked but without IndexedDB: unusable here at once.
+  b.data.set(PLUS_IDB_MARKER, '1');
+  assert.equal(b.open({ db: false }).mode, 'unusable');
 });

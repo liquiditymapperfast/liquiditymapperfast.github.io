@@ -99,7 +99,7 @@ export class PlusDb {
   #epoch = 0;
   #state: DbState = 'closed';
   #listeners = new Set<(state: DbState) => void>();
-  constructor(private readonly factory: DbFactory | null = browserFactory(), private readonly timers: Timers = realTimers) {}
+  constructor(private readonly factory: DbFactory | null = browserFactory(), private readonly timers: Timers = realTimers, private readonly openWaitMs: number = OPEN_TIMEOUT_MS) {}
 
   get state(): DbState { return this.#state; }
   /** Told whenever `state` changes: an open that answers late, a connection closed by an upgrade elsewhere or by the browser. */
@@ -155,7 +155,7 @@ export class PlusDb {
    * Opens the database unless it is open or opening. Resolves with the open's answer, or with `timeout` after `waitMs`; then the open goes on,
    * and its answer still changes `state` and tells the listeners.
    */
-  open(waitMs: number = OPEN_TIMEOUT_MS): Promise<OpenOutcome> {
+  open(waitMs: number = this.openWaitMs): Promise<OpenOutcome> {
     const started = this.#start();
     return new Promise<OpenOutcome>(resolve => {
       const timer = this.timers.set(() => { resolve('timeout'); }, waitMs);
@@ -175,7 +175,7 @@ export class PlusDb {
    * `fn`'s own throw (which aborts it), or the transaction's. `fn` may await only the `Kv` requests. When the database is not open, it is
    * opened (again) and waited for up to `waitMs`; if it does not open by then, `PlusDbUnavailable`, and `fn` never runs, not even later.
    */
-  async tx<T>(mode: 'readonly' | 'readwrite', fn: (kv: Kv) => T | Promise<T>, waitMs: number = OPEN_TIMEOUT_MS): Promise<T> {
+  async tx<T>(mode: 'readonly' | 'readwrite', fn: (kv: Kv) => T | Promise<T>, waitMs: number = this.openWaitMs): Promise<T> {
     let db = await this.#connection(waitMs);
     let transaction: DbTransaction;
     try {
