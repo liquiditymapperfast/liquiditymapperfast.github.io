@@ -38,10 +38,11 @@ export class PaidStore {
   memory(id: string): MemoryRecord | null { return this.#memory.get(id) ?? null; }
   /** Told whenever the list changes. */
   subscribe(listener: () => void): () => void { this.#listeners.add(listener); return () => { this.#listeners.delete(listener); }; }
-  #set(list: Paid[]): void {
+  /** The list now; the listeners are told when it changed, or when `told` (the payments became read: an empty list counts; Sol, C3-4). */
+  #set(list: Paid[], told = false): void {
     const same = list.length === this.#list.length && list.every((p, i) => p.id === this.#list[i]!.id && p.at === this.#list[i]!.at && p.memory === this.#list[i]!.memory);
     this.#list = list;
-    if (!same) for (const listener of [...this.#listeners]) listener();
+    if (!same || told) for (const listener of [...this.#listeners]) listener();
   }
 
   /**
@@ -49,7 +50,7 @@ export class PaidStore {
    * another seed is discarded). A database that cannot be read leaves the list as it was. Whether it was read.
    */
   async refresh(): Promise<boolean> {
-    if (!this.db) { this.#ready = true; this.#set([]); return true; }
+    if (!this.db) { const became = !this.#ready; this.#ready = true; this.#set([], became); return true; }
     let read: { stored: Paid[]; seed: unknown };
     try {
       read = await this.db.tx('readwrite', async kv => {
@@ -68,8 +69,9 @@ export class PaidStore {
       if (record.epoch !== read.seed || !paidWaits(record.at, now) || read.stored.some(p => p.id === id)) { this.#memory.delete(id); continue; }
       mine.push({ id, at: record.at, memory: true });
     }
+    const became = !this.#ready;
     this.#ready = true;
-    this.#set([...read.stored, ...mine].sort((a, b) => a.at - b.at));
+    this.#set([...read.stored, ...mine].sort((a, b) => a.at - b.at), became);
     return true;
   }
   /**

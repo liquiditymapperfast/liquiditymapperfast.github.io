@@ -57,3 +57,21 @@ test('C2-8: Try again for a checkout\'s unstored key settles its payment in this
   assert.deepEqual(paid.list(), [], 'the list is current at once');
   assert.match(read('src/app/plus/page.ts'), /keepAgainSettling\(member, paid\)/);
 });
+
+test('C3-4: a first payment read that timed out, a late open and an empty read: readiness is told, and the sale shows', async () => {
+  const b = browser();
+  b.idb.opens = 'hang';
+  const member = b.open(), db = new PlusDb(b.idb.factory, undefined, OPEN_WAIT_MS), paid = new PaidStore(db, () => b.clock.t);
+  let view = '';
+  const render = (): void => { view = buyView(member.mode, paid.ready, paid.list().length > 0); };
+  member.subscribe(render); paid.subscribe(render); render();
+  assert.equal(await paid.refresh(), false);
+  assert.equal(view, 'opening');
+  b.idb.opens = 'answer'; b.idb.releaseOpens();
+  await until(() => member.mode === 'idb');
+  assert.equal(view, 'opening', 'IDB mode, payments not read yet');
+  assert.equal(await paid.refresh(), true);
+  assert.deepEqual(paid.list(), []);
+  assert.equal(view, 'prices', 'the last view drawn shows the sale');
+  assert.match(read('src/app/plus/page.ts'), /if \(await paid\.refresh\(\)\) \{ render\(\); return; \}/, 'the page draws after a read too');
+});

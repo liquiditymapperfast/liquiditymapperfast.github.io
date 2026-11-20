@@ -180,8 +180,10 @@ export async function restoreBy(email: string, invoice: string, deps: Pick<Attem
   }
   const grant = issued(answer?.status === 200 ? readGrant(answer.body) : null);
   if (grant) {
-    const out = await takeIssued(deps.member, cap, grant, cap.waiting);
-    if (out.kind === 'ok' && out.kept) deps.paid?.settled([...cap.waiting, ...local]);
+    // Stored and tab-local payments together, also in an overlay's settlement (its Try again settles them; Sol, code review C3-2).
+    const settle = [...cap.waiting, ...local];
+    const out = await takeIssued(deps.member, cap, grant, settle);
+    if (out.kind === 'ok' && out.kept) deps.paid?.settled(settle);
     return out;
   }
   return { kind: 'no', text: problem(answer, notFoundText()) };
@@ -192,8 +194,7 @@ export async function restoreBy(email: string, invoice: string, deps: Pick<Attem
  * tab's own records too, those it held when the key was sent).
  */
 export async function keySettling(text: string, deps: ActivateDeps & { paid: Pick<PaidStore, 'settled' | 'localIds'> }): Promise<KeyOutcome> {
-  const local = deps.paid.localIds();
-  return activateKey(text, { ...deps, settled: ids => { deps.paid.settled([...ids, ...local]); } });
+  return activateKey(text, { ...deps, local: deps.paid.localIds(), settled: ids => { deps.paid.settled(ids); } });
 }
 
 /**

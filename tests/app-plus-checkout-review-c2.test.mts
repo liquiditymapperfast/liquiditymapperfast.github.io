@@ -10,6 +10,7 @@ import { webPost } from '../src/app/plus/pass.ts';
 import { keyEntry } from '../src/app/plus/key.ts';
 import { popView, type PopUi } from '../src/app/plus/panel.ts';
 import { lateText, keySettling, restoreBy, setUpPayment, type AttemptDeps } from '../src/app/plus/page-flow.ts';
+import { keepAgainSettling } from '../src/app/plus/page-flow.ts';
 import { PaidStore } from '../src/app/plus/paid.ts';
 import { PlusDb, readSeed } from '../src/app/plus/plus-db.ts';
 import { TabWaits } from '../src/app/plus/schedule.ts';
@@ -177,4 +178,41 @@ test('C2-11: the key form stays disabled with no word while the tab\'s database 
 test('C2-2: the Plus page reads its payments again on focus, beside visibilitychange', () => {
   const source = read('src/app/plus/page.ts');
   assert.match(source, /addEventListener\('focus', \(\) => \{[^}]*paid\.refresh\(\)[^}]*member\.reload\(\)/);
+});
+
+test('C3-2: a key or a receipt held as an overlay settles the payments only this tab holds when Try again stores it; their button cannot replace it', async () => {
+  for (const how of ['restore', 'key'] as const) {
+    const { b, server } = world();
+    const SUB2 = subId('reviewgift'), TXN_G = txnId('reviewgifta');
+    server.subscription(SUB2); server.transaction(TXN_G, SUB2, { invoice: '325-777' });
+    const p = await page(b, server);
+    // A payment whose record this browser would not store (tab-local).
+    const seed = await readSeed(p.db);
+    b.idb.failNextPut('QuotaExceededError');
+    await p.paid.begin(TXN, seed);
+    assert.deepEqual(p.paid.list().map(x => [x.id, x.memory]), [[TXN, true]], how);
+    let chosen = '';
+    if (how === 'key') {
+      // A key of another subscription, from another browser (its own seed).
+      const elsewhere = browser(), there = await page(elsewhere, server);
+      const made = await restoreBy('buyer@example.com', '325-777', there.deps);
+      chosen = made.kind === 'ok' ? made.grant.key : '';
+      b.idb.failNextCommit('UnknownError');
+      const out = await keySettling(chosen, { post: server.post, api: () => 'https://plus.test/v1', member: p.member, paid: p.paid });
+      assert.deepEqual(out.kind === 'ok' ? out.kept : out.kind, false, `${how}: held as an overlay`);
+    } else {
+      b.idb.failNextCommit('UnknownError');
+      const out = await restoreBy('buyer@example.com', '325-777', p.deps);
+      assert.equal(out.kind === 'ok' && !out.kept, true, `${how}: held as an overlay`);
+      chosen = out.kind === 'ok' ? out.grant.key : '';
+    }
+    assert.equal(p.member.unstored, true);
+    assert.equal(await keepAgainSettling(p.member, p.paid), 'kept');
+    await p.paid.refresh();
+    assert.deepEqual(p.paid.list(), [], `${how}: the tab-local payment does not wait`);
+    const asked = server.asked('/v1/pass');
+    assert.deepEqual(await setUpPayment(TXN, p.deps), { kind: 'gone' }, `${how}: its button asks nothing`);
+    assert.equal(server.asked('/v1/pass'), asked);
+    assert.equal(p.member.key, chosen, `${how}: the chosen membership stands`);
+  }
 });

@@ -54,7 +54,11 @@ export const keyShaped = (key: string): boolean => key.length >= 16 && key.lengt
  * What `activateKey` may be given instead of the page's own: the server, its address, the membership (with `capture` where it has a
  * database), a signal that gives the key up, and who to tell which payments a key taken settled (`settled`: the Plus page's records).
  */
-export interface ActivateDeps { post?: Post; api?: () => string; member?: Pick<Plus, 'acceptIf' | 'generation'> & Partial<Pick<Plus, 'capture'>>; signal?: AbortSignal; settled?: (ids: readonly string[]) => void }
+export interface ActivateDeps {
+  post?: Post; api?: () => string; member?: Pick<Plus, 'acceptIf' | 'generation'> & Partial<Pick<Plus, 'capture'>>; signal?: AbortSignal; settled?: (ids: readonly string[]) => void;
+  /** The payments only this tab holds, as they were when the key was sent: settled with the stored ones, also through an overlay. */
+  local?: readonly string[];
+}
 /**
  * Enter `text` as this browser's key: checked for its shape, sent to the Plus server's renewal, and on a grant taken as the membership,
  * unless the key was given up meanwhile (`signal`) or the membership changed since it was sent (`Plus.acceptIf`: another tab stored a key,
@@ -74,7 +78,9 @@ export async function activateKey(text: string, deps: ActivateDeps = {}): Promis
   const said = keyAnswer(answer);
   if (said.kind !== 'grant') return said;
   const g = said.grant;
-  const settle = typeof generation === 'number' ? [] : generation.waiting;
+  // The payments waiting when the key was sent, stored and this tab's own: settled with the key, or kept with it in the overlay so that its Try
+  // again settles them (Sol, code review C3-2).
+  const settle = typeof generation === 'number' ? [] : [...generation.waiting, ...(deps.local ?? [])];
   const taken = await member.acceptIf(generation, { key, pass: g.pass, until: g.until, ...(g.renews !== undefined ? { renews: g.renews } : {}), ...(g.now !== undefined ? { now: g.now } : {}) }, settle);
   if (taken === 'refused') return { kind: 'refused', text: cannotHere() };
   if (taken === 'stale') return { kind: 'stale' };

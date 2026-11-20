@@ -444,7 +444,8 @@ function drawPage(): void {
  */
 let paidRetry = 0;
 async function settlePaid(): Promise<void> {
-  if (await paid.refresh() || paidRetry) return;
+  if (await paid.refresh()) { render(); return; }
+  if (paidRetry) return;
   paidRetry = window.setTimeout(() => { paidRetry = 0; void settlePaid(); }, 2_000);
 }
 // The payments are read again whenever the database or the membership becomes ready (the mode changes).
