@@ -4,7 +4,7 @@
  * (`dollars`), and under each total of Liq + stops its two parts, which add up to the figure above them as it is printed (`splitText` with
  * that figure).
  */
-import type { InfoLine } from './infobox.ts';
+import { INFO, type InfoLine } from './infobox.ts';
 import { t } from './i18n.ts';
 import { usd } from './format.ts';
 import { distanceText } from './panes/ladder-info.ts';
@@ -82,21 +82,41 @@ export function mirrorSplits(parts: LiqParts, price: number, d: number, below: n
   return { long: splitText(partsBetween(parts, 'long', price - d, price), below), short: splitText(partsBetween(parts, 'short', price, price + d), above) };
 }
 
+/** The least a finger's box says (`probeBoxLines`' `detail`). */
+export const PROBE_LEAST = 3;
+/**
+ * How wide a line of a finger's box on the split ladder may run before it wraps, on a ladder `W` px wide: the ladder less the box's padding
+ * and 2 px each side, between 120 and 300 px. The boxes' own 250 px made a 266 px box on a 320 px phone's 260 px ladder, and wrapped a group
+ * title that fits a wider one.
+ */
+export const probeWrap = (W: number): number => Math.max(120, Math.min(300, W - 2 * INFO.pad - 4));
+/** What a finger reads at its price in one set: `probeBoxLines`' figures. */
+export interface ProbeFacts { kind: LevelsKind; side: 'long' | 'short'; at: number; price: number; way: number; other: number; level: number; lo: number; hi: number; positions: number; top: number; parts: LiqParts | null }
+
 /**
  * The phone Liq tab's box at a finger's price `at`: the side, the distance, what goes on the way there (`way`), what is at that level (`level`,
  * the row [lo, hi)), for Liq + stops each with its parts under it, how many and the largest, and the same distance the other way (`other`).
+ * `whose` names the set's group after the title where the two halves of a split ladder are two groups ("Long liquidations · Profitable", as
+ * the stripe's box says it), its last word, the dot and the group kept together where the title wraps. `detail` says less where a split
+ * ladder is too short for both boxes (`probeDetail`): from 1 without the count, the largest and the other side; from 2 without the distance
+ * too (the same in both boxes, and on the finger's tag); at 3 (`PROBE_LEAST`) without the level, keeping what goes on the way there. A total
+ * of liquidations and stops keeps its two parts under it at every detail.
  */
-export function probeBoxLines(f: { kind: LevelsKind; side: 'long' | 'short'; at: number; price: number; way: number; other: number; level: number; lo: number; hi: number; positions: number; top: number; parts: LiqParts | null }): InfoLine[] {
+export function probeBoxLines(f: ProbeFacts, o: { detail?: number; whose?: string | null } = {}): InfoLine[] {
   const way = Math.max(0, f.way), waySplit = f.parts ? partsOnTheWay(f.parts, f.price, f.at) : null, sells = f.kind === 'takes' ? f.side === 'short' : f.side === 'long';
+  const detail = o.detail ?? 0, title = sideTitle(f.kind, f.side);
   const lines: InfoLine[] = [
     // In the colour it is drawn in: what sells in the falling colour (take profits of longs, above), what buys in the rising one.
-    { text: sideTitle(f.kind, f.side), color: sells ? 'sell' : 'buy', bold: true },
-    { label: t('Distance'), text: distanceText(f.at, f.price) },
+    o.whose ? { text: `${title}\u00a0·\u00a0${o.whose}`, color: sells ? 'sell' : 'buy', bold: true, wrap: true } : { text: title, color: sells ? 'sell' : 'buy', bold: true },
+    ...(detail < 2 ? [{ label: t('Distance'), text: distanceText(f.at, f.price) } satisfies InfoLine] : []),
     { label: t('If price gets here'), text: dollars(way), bold: true },
     ...(waySplit ? [{ text: splitText(waySplit, way), color: 'muted', wrap: true } satisfies InfoLine] : []),
-    { label: t('At this level'), text: dollars(f.level) },
-    ...(f.parts && f.level > 0 ? [{ text: splitText(partsBetween(f.parts, f.side, f.lo, f.hi), f.level), color: 'muted', wrap: true } satisfies InfoLine] : []),
   ];
+  if (detail < 3) {
+    lines.push({ label: t('At this level'), text: dollars(f.level) });
+    if (f.parts && f.level > 0) lines.push({ text: splitText(partsBetween(f.parts, f.side, f.lo, f.hi), f.level), color: 'muted', wrap: true });
+  }
+  if (detail > 0) return lines;
   if (f.positions > 0) lines.push({ label: countLabel(f.kind), text: String(f.positions) });
   if (f.top > 0 && f.level > 0) lines.push({ label: topLabel(f.kind), text: dollars(f.top) });
   lines.push({ label: t('Same distance, other side'), text: dollars(Math.max(0, f.other)), color: sells ? 'buy' : 'sell' });

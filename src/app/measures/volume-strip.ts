@@ -214,7 +214,12 @@ export interface StripDraw {
   recorded: string; candles: string;
   /** The bar under the pointer, or -1. */
   hovered: number;
+  /** What the strip's names keep clear of (the note under the map's legend where it reaches the strip), or none. */
+  clear?: { x0: number; x1: number; y0: number; y1: number } | null;
 }
+
+/** Where the strip's names stand: the top of their plates (14 px tall), on a plot `ph` tall with the strip `height` tall. */
+export const stripNamesTop = (ph: number, height: number): number => ph - height - 6 + 4;
 
 /**
  * The strip: a soft backdrop, each bar growing up from the bottom (the first side, bid colour, at its foot) on one scale, a candle's
@@ -272,13 +277,16 @@ export function paintVolumeStrip(ctx: CanvasRenderingContext2D, bars: readonly S
   }
   // The seam, and each part named at its left.
   ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-  // Each named at its left, the second after the first ends; one with no room left out rather than over the other or off the map.
+  // Each named at its left, the second after the first ends; one with no room left out rather than over the other or off the map, or under
+  // the note over the map's foot (`clear`: on a short map even its one line can reach the names).
   let taken = 2;
+  const names = stripNamesTop(ph, H), clear = d.clear;
   const name = (text: string, x: number, color: string): void => {
     const w = ctx.measureText(text).width + 8, at = Math.max(taken, x);
     if (at + w > d.pw - 2) return;
-    ctx.globalAlpha = 0.85; ctx.fillStyle = p.panel; ctx.fillRect(at, top + 4, w, 14);
-    ctx.globalAlpha = 1; ctx.fillStyle = color; ctx.fillText(text, at + 4, top + 11);
+    if (clear && at < clear.x1 && at + w > clear.x0 && names < clear.y1 && names + 14 > clear.y0) return;
+    ctx.globalAlpha = 0.85; ctx.fillStyle = p.panel; ctx.fillRect(at, names, w, 14);
+    ctx.globalAlpha = 1; ctx.fillStyle = color; ctx.fillText(text, at + 4, names + 7);
     taken = at + w + 6;
   };
   const firstCandle = bars.findIndex(b => b.source === 'candle'), firstRecorded = bars.findIndex(b => b.source !== 'candle');

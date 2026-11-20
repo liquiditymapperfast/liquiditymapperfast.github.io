@@ -6,7 +6,7 @@ import { isCoarse, isPhone } from '../device.ts';
 import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorLine, type MirrorStats } from '../mirror.ts';
 import { PROFILE_CANDLES_BACK_MS, TIMEFRAMES, askedSpan, valueAreaKey, windowProfileKey, type Hub, type RasterResult } from '../hub.ts';
 import { ensureDeltaFlow } from '../delta/flows.ts';
-import { StripHighlightMemo, coarseCandles, joinRows, paintVolumeStrip, stripBars, stripHistoryFrom, stripLines, stripTimeframe, withEarlier, type StripBar } from '../measures/volume-strip.ts';
+import { StripHighlightMemo, coarseCandles, joinRows, paintVolumeStrip, stripBars, stripHistoryFrom, stripLines, stripNamesTop, stripTimeframe, withEarlier, type StripBar } from '../measures/volume-strip.ts';
 import { StripOrderCache, WHOLE_RANGE_STEP, stripOrdersOf } from '../measures/strip-orders.ts';
 import { gridStepFor } from '../../shared/grid.ts';
 import { MAX_PROFILE_INSTRUMENTS, type ProfileAnswer } from '../../shared/footprint.ts';
@@ -26,8 +26,8 @@ import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from '../scope.ts';
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText, wrapText } from '../text-fit.ts';
-import { captionPlace, dollarPriceOf, laneRows, liqCurves, liqProfile, onTheWay, seamStats, standingBelow, TAKE_DASH, type CurvePoint, type Lane, type LaneRows, type LiqLevels, type LiqRow, type LiqSet, type LiqStanding } from '../liq-levels.ts';
-import { SPLIT_COLUMN_W, liqColumnWidth, splitHeads, splitScales, stackCaptions, stripePlan, subAt, subColumns, type Sub, type SubScale } from '../liq-split.ts';
+import { captionPlace, dollarPriceOf, laneRows, liqCurves, liqProfile, onTheWay, seamStats, standingBelow, TAKE_DASH, type CurvePoint, type LaneRows, type LiqLevels, type LiqRow, type LiqSet, type LiqStanding } from '../liq-levels.ts';
+import { SPLIT_COLUMN_W, captionKeepOut, cornerSpan, liqColumnWidth, placeCaptions, splitHeads, splitScales, stripePlan, subAt, subColumns, type Rect, type Sub, type SubScale } from '../liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../layouts/dock-model.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRowsHeld, type TradedRows } from '../traded.ts';
@@ -58,7 +58,7 @@ import { liqLevelsUrl } from '../liq-url.ts';
 import { curveOf, groupName, groupTitle, heldBack, kindName, kindTitle, levelsDescription, liveAsk, liveSplit, liveView, narrowView, pairKey, plusOn, viewKey, viewParts, type LiqPair, type LiqView } from '../liq-view.ts';
 import { columnNotes, liqWhy, narrowNote, ordersAbsent, pairDescription, sideTitle, splitName, subNames, takesLeftOut } from '../liq-words.ts';
 import { mirrorSplits, readingTexts, setBoxLines, stripeBoxLines } from '../liq-box.ts';
-import { noteLines, noteMostLines, paintStripe, stripeNote, stripeStands, type StripeHeld, type StripePainted } from '../liq-stripe.ts';
+import { layNote, paintStripe, stripeNote, stripeStands, type LaneCaption, type StripeHeld, type StripePainted } from '../liq-stripe.ts';
 import { toggleLevels } from '../levels-control.ts';
 import { linesToAsk } from '../sizes.ts';
 import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolveZone, type LineKind, type TradedSettings } from '../traded/settings.ts';
@@ -398,9 +398,11 @@ export class HeatPane {
   #gutterCss = ''; #leftCss = '';
   /** What the corner tools' names were last judged on (`#fitCorner`), and the room the legend wants for its title and prices (`#paintLegend`). */
   #cornerKey = ''; #legendNeed = LEGEND_NEED_PX;
-  /** The corner tools' element and their size as last measured, with what it was measured for (`#cornerTools`). */
-  #cornerEl: HTMLElement | null = null;
-  #cornerBox: { key: string; box: { width: number; bottom: number } | null } = { key: '', box: null };
+  /** The corner buttons' elements (the desktop's row, a phone's Draw key) and their rectangle as last measured, with what it was measured for (`#cornerTools`). */
+  #cornerEls: (HTMLElement | null)[] = [null, null];
+  #cornerBox: { key: string; box: Rect | null } = { key: '', box: null };
+  /** The stripe's caption plates as placed this frame (`#placeLiqCaptions`), painted once the map's lines are drawn (`#paintLiqPlates`). */
+  #liqPlates: (LaneCaption & { x: number; y: number; w: number })[] | null = null;
   onStats: () => void = () => {};
   onView: () => void = () => {};
   /** Whether scripts are running and read the candles (main.ts): then the price history reaches `SCRIPT_WARM_BARS` before the view too. */
@@ -1406,6 +1408,8 @@ export class HeatPane {
       const y = v.yOf(mark, ph);
       if (y >= 0 && y <= ph) { ctx.strokeStyle = markColor; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(pw, y + 0.5); ctx.stroke(); ctx.setLineDash([]); }
     }
+    // The stripe's captions over everything drawn on the plot, so no line or bar runs across one (placed with the stripe).
+    this.#paintLiqPlates(ctx);
     // profile column, traded-volume column and price axis
     // The liquidation column, then the profile column: the book as it is now, not shown in replay, which has no book of its moment.
     if (liqColumnShown(state)) this.#paintLiqColumn(ctx, state, pw, ph); else { this.#liqScale = null; this.#liqSubs = null; this.#liqDrawnSet = null; this.#placeLiqHistory(null); this.#placeLiqKind(null, 0, state); }
@@ -1687,16 +1691,18 @@ export class HeatPane {
   }
 
   /**
-   * The corner tools' width and bottom edge (px in the pane), measured again only when what sizes them can have changed: the plot's width, their
-   * names shown or folded and which of them show (`#fitCorner`'s key and the same reads, none of them layout), the frame and the arrangement.
-   * So a drawing that keeps clear of them (the take profits' caption) reads no layout.
+   * The corner buttons the map shows as one rectangle on the plot (`cornerSpan`): the desktop's row (`.map-tools`) or a phone's Draw key
+   * (`.map-draw-phone`, which the compact bar shows in the row's place; reading the row alone left a phone's captions under the key). Measured
+   * again only when what sizes them can have changed: the plot's width and the columns left of it, their names shown or folded and which of
+   * them show (`#fitCorner`'s key and the same reads, none of them layout), the frame and the arrangement. So a drawing that keeps clear of
+   * them (the stripe's captions) reads no layout.
    */
-  #cornerTools(pw: number): { width: number; bottom: number } | null {
-    if (!this.#cornerEl?.isConnected) this.#cornerEl = this.root.querySelector<HTMLElement>('.map-tools');
-    const tools = this.#cornerEl, html = document.documentElement.dataset;
-    if (!tools) return null;
-    const key = `${pw}|${this.#cornerKey}|${tools.hidden}|${tools.classList.contains('compact')}|${tools.querySelectorAll(':scope > :not([hidden])').length}|${html.frame ?? ''}|${html.layout ?? ''}|${html.bar ?? ''}`;
-    if (key !== this.#cornerBox.key) this.#cornerBox = { key, box: !tools.hidden && tools.offsetWidth > 0 ? { width: tools.offsetWidth, bottom: tools.offsetTop + tools.offsetHeight } : null };
+  #cornerTools(pw: number): Rect | null {
+    const els = this.#cornerEls, html = document.documentElement.dataset;
+    (['.map-tools', '.map-draw-phone'] as const).forEach((selector, i) => { if (!els[i]?.isConnected) els[i] = this.root.querySelector<HTMLElement>(selector); });
+    const [tools, drawKey] = els;
+    const key = `${pw}|${this.#left}|${this.#cornerKey}|${tools ? `${tools.hidden}|${tools.classList.contains('compact')}|${tools.querySelectorAll(':scope > :not([hidden])').length}` : '-'}|${drawKey ? `${drawKey.hidden}` : '-'}|${html.frame ?? ''}|${html.layout ?? ''}|${html.bar ?? ''}`;
+    if (key !== this.#cornerBox.key) this.#cornerBox = { key, box: cornerSpan(els, this.#left) };
     return this.#cornerBox.box;
   }
 
@@ -2242,10 +2248,10 @@ export class HeatPane {
     ctx.save();
     ctx.font = '10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
     // Under the legend, a line lower where the "depth recorded from" note already stands there; on a short map in fewer lines, so the
-    // captions keep their room below it (`noteMostLines`).
+    // captions keep their room below it (`noteMostLines`), and never down to the volume strip's names (`layNote`).
     const under = this.#legendBox.bottom + 6, measure = (words: string): number => ctx.measureText(words).width;
-    const lines = noteLines(measure, note, Math.max(40, pw - 24), noteMostLines(ph, under)), w = measure(lines[0] ?? '');
-    const h = this.#historyNote, below = h && Math.abs(h.top - under) < 12 && h.x0 < 8 + w + 6 && h.x1 > 2, top = below ? under + 13 : under;
+    const foot = state.show.volume && this.candlesDrawn(state).length ? stripNamesTop(ph, volumeBand(ph)) : ph;
+    const { lines, top } = layNote(measure, note, Math.max(40, pw - 24), { ph, under, foot, history: this.#historyNote });
     ctx.restore();
     this.#liqNoteBox = { x0: 8, x1: 8 + Math.max(0, ...lines.map(measure)), top, bottom: top + 13 * lines.length };
     if (stands) {
@@ -2253,8 +2259,8 @@ export class HeatPane {
       const painted = paintStripe(ctx, { src, plan, pair, x0: this.#liqStripeLeft(pw), pw, ph, view: v, colors: p, held: this.#liqHeld });
       if (painted) {
         this.#liqLanes = painted.lanes; this.#liqRightLane = painted.right;
-        if (painted.captions) this.#paintLaneCaptions(ctx, painted.captions, pw);
-        else if (painted.takesLane) this.#paintTakesCaption(ctx, painted.takesLane, pw);
+        if (painted.captions) this.#placeLiqCaptions(ctx, painted.captions, pw);
+        else if (painted.takesLane) this.#placeLiqCaptions(ctx, [{ lane: painted.takesLane, words: t('Take profits'), dashed: true }], pw);
       }
     }
     ctx.save();
@@ -2264,75 +2270,45 @@ export class HeatPane {
     ctx.restore();
   }
 
-  /** The highest a caption plate (`x`, `w`, 15 px tall) at `y` may stand: below the note under the legend wherever it would lie over it. */
-  #clearOfLiqNote(x: number, w: number, y: number): number {
-    const n = this.#liqNoteBox;
-    return n && y + 15 > n.top && y < n.bottom + 2 && x < n.x1 + 4 && x + w > n.x0 - 4 ? n.bottom + 3 : y;
-  }
-
   /**
-   * A caption at the top of the take profits' lane, with a small dashed sample of their look (Karl, 2026-11-18, read that lane as the stops').
-   * The levels' lane needs none: the column's button beside it names what it holds and what the curve adds up. On a plate of the panel's
-   * colour, so it reads in every theme over whatever is drawn there; inside the lane where it fits, else ending at the lane's right edge and
-   * reaching left over the map (`captionPlace`); below the corner tools where they stand over it, and below the legend and its notes.
+   * Where the captions of the stripe's lanes stand (`items`): a caption at the top of the take profits' lane without a split (Karl,
+   * 2026-11-18, read that lane as the stops'; the levels' lane needs none, the column's button beside it names what it holds), and every
+   * lane's under a split. Each is a plate with a small sample of its look (dashed for take profits, solid for levels), inside its lane where it
+   * fits, else ending at the lane's right edge and reaching left over the map (`captionPlace`), never wider than the plot (a longer word ends
+   * in "…"), at the highest place clear of the corner buttons the map shows (a phone's Draw key too), the legend, the "depth recorded from"
+   * note, the note under the legend and the plates placed before it (`captionKeepOut`, `placeCaptions`). Placed here, painted by
+   * `#paintLiqPlates` once the map's lines are drawn.
    */
-  #paintTakesCaption(ctx: CanvasRenderingContext2D, lane: Lane, pw: number): void {
-    const p = this.#palette, corner = this.#cornerTools(pw), box = this.#legendBox;
-    const tools = corner ? { x0: pw - 8 - corner.width - 4, bottom: corner.bottom + 4 } : null;
+  #placeLiqCaptions(ctx: CanvasRenderingContext2D, items: readonly LaneCaption[], pw: number): void {
     ctx.save();
-    ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-    const wide = (words: string): number => ctx.measureText(words).width, SAMPLE = 12, words = t('Take profits');
-    // Never wider than the plot: a longer word ends in "…".
-    const { x, w } = captionPlace(lane, Math.min(Math.max(40, pw - 16), Math.ceil(SAMPLE + wide(words) + 10)));
-    let y = 6;
-    if (tools && x + w > tools.x0) y = Math.max(y, tools.bottom);
-    if (x < box.right + 8) y = Math.max(y, box.bottom + 36);
-    // And under the "depth recorded from" note, which stands under the corner tools too.
-    const note = this.#historyNote;
-    if (note && note.top + 12 > y && note.top < y + 15 && x < note.x1 + 4 && x + w > note.x0 - 4) y = note.top + 15;
-    // And never over the note under the legend, however many lines it has.
-    y = this.#clearOfLiqNote(x, w, y);
-    ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x, y, w, 15);
-    ctx.globalAlpha = 1; ctx.strokeStyle = p.line; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 14);
-    ctx.strokeStyle = p.text; ctx.lineWidth = 3; ctx.setLineDash(TAKE_DASH as number[]); ctx.lineDashOffset = 0;
-    ctx.beginPath(); ctx.moveTo(x + 4, y + 7.5); ctx.lineTo(x + 4 + SAMPLE - 2, y + 7.5); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = p.text; ctx.fillText(fitText(wide, words, w - SAMPLE - 10), x + 6 + SAMPLE, y + 8);
+    ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif';
+    const wide = (words: string): number => ctx.measureText(words).width, SAMPLE = 12;
+    const placed = items.map(item => ({ ...item, ...captionPlace(item.lane, Math.min(Math.max(40, pw - 16), Math.ceil(SAMPLE + wide(item.words) + 10))) }));
     ctx.restore();
+    const keep = captionKeepOut({ corner: this.#cornerTools(pw), legend: this.#legendBox, history: this.#historyNote, note: this.#liqNoteBox });
+    const ys = placeCaptions(placed, keep, 6, 15);
+    this.#liqPlates = placed.map((item, i) => ({ ...item, y: ys[i]! }));
   }
 
   /**
-   * The captions of a split's lanes (`items`), each on a plate with a small sample of its look (dashed for take profits, solid for levels), as
-   * the take profits' caption is placed (`#paintTakesCaption`): inside its lane where it fits, else reaching left over the map; below the
-   * corner tools, the legend and its notes; and a row lower wherever it would overlap a caption already placed (`stackCaptions`).
+   * The stripe's caption plates placed this frame, on plates of the panel's colour so they read in every theme: painted after the map's
+   * lines, bars and candles (the price line, the VWAP and key levels, the volume strip), none of which is drawn across one (2026-11-19: on a
+   * phone held sideways a dashed line ran across the take profits' plate and the volume bars over it).
    */
-  #paintLaneCaptions(ctx: CanvasRenderingContext2D, items: { lane: Lane; words: string; dashed: boolean }[], pw: number): void {
-    const p = this.#palette, corner = this.#cornerTools(pw), box = this.#legendBox, note = this.#historyNote;
-    const tools = corner ? { x0: pw - 8 - corner.width - 4, bottom: corner.bottom + 4 } : null;
+  #paintLiqPlates(ctx: CanvasRenderingContext2D): void {
+    const plates = this.#liqPlates, p = this.#palette;
+    this.#liqPlates = null;
+    if (!plates?.length) return;
     ctx.save();
     ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     const wide = (words: string): number => ctx.measureText(words).width, SAMPLE = 12;
-    const placed = items.map(item => ({ ...item, ...captionPlace(item.lane, Math.min(Math.max(40, pw - 16), Math.ceil(SAMPLE + wide(item.words) + 10))) }));
-    // The highest each may start (clear of the corner tools, the legend, the history note), then a row lower while it would overlap another.
-    const floor = placed.map(({ x, w }) => {
-      let y = 6;
-      if (tools && x + w > tools.x0) y = Math.max(y, tools.bottom);
-      if (x < box.right + 8) y = Math.max(y, box.bottom + 36);
-      if (note && note.top + 12 > y && note.top < y + 15 && x < note.x1 + 4 && x + w > note.x0 - 4) y = note.top + 15;
-      return this.#clearOfLiqNote(x, w, y);
-    });
-    const top = Math.min(...floor), stacked = stackCaptions(placed.map(({ x, w }) => ({ x, w })), top, 15);
-    const ys: number[] = [];
-    placed.forEach(({ x, w, words, dashed }, i) => {
-      let y = this.#clearOfLiqNote(x, w, Math.max(floor[i]!, stacked[i]!));
-      // Clear of the ones above it, where they were finally placed, and of the note under the legend.
-      while (placed.slice(0, i).some((o, j) => Math.abs(ys[j]! - y) < 15 && x < o.x + o.w + 2 && x + w > o.x - 2)) y = this.#clearOfLiqNote(x, w, y + 17);
-      ys.push(y);
+    for (const { x, y, w, words, dashed } of plates) {
       ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x, y, w, 15);
       ctx.globalAlpha = 1; ctx.strokeStyle = p.line; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 14);
       ctx.strokeStyle = p.text; ctx.lineWidth = 3; ctx.setLineDash(dashed ? TAKE_DASH as number[] : []); ctx.lineDashOffset = 0;
       ctx.beginPath(); ctx.moveTo(x + 4, y + 7.5); ctx.lineTo(x + 4 + SAMPLE - 2, y + 7.5); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = p.text; ctx.fillText(fitText(wide, words, w - SAMPLE - 10), x + 6 + SAMPLE, y + 8);
-    });
+    }
     ctx.restore();
   }
 
@@ -2498,7 +2474,9 @@ export class HeatPane {
     // The candles' part named ≈ while any of its bars is an estimate (its volume at its typical price), plainly where all are as reported.
     const estimated = bars.some(b => b.source === 'candle' && !b.exact);
     paintVolumeStrip(ctx, bars, { pw, ph, height, palette: this.#tradedPalette(state), bars: state.traded.bars, emphasis: state.traded.emphasis, highlights,
-      recorded: `${t('Volume')} · ${tfName}`, candles: estimated ? t('≈ {market} {tf} candles', { market, tf: tfName }) : t('{market} {tf} candles', { market, tf: tfName }), hovered });
+      recorded: `${t('Volume')} · ${tfName}`, candles: estimated ? t('≈ {market} {tf} candles', { market, tf: tfName }) : t('{market} {tf} candles', { market, tf: tfName }), hovered,
+      // The note under the legend, where a short map's one line reaches the names (`layNote`): a name under it is left out.
+      clear: state.liqLevels.on && this.#liqNoteBox ? { x0: this.#liqNoteBox.x0 - 4, x1: this.#liqNoteBox.x1 + 4, y0: this.#liqNoteBox.top, y1: this.#liqNoteBox.bottom } : null });
     this.#strip = { bars, rows, ids, tf, top, market, tfName, reports: binance, total };
   }
 
