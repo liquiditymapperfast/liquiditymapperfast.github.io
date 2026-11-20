@@ -59,8 +59,8 @@ export type DbState = 'closed' | 'opening' | 'open' | 'failed';
 
 /** A transaction was asked for and the database did not open within its wait: the body never ran and never will. */
 export class PlusDbUnavailable extends Error {
-  override readonly name = 'PlusDbUnavailable';
-  constructor(readonly outcome: 'error' | 'timeout') { super(outcome === 'error' ? 'the Plus database cannot be opened here' : 'the Plus database did not open in time'); }
+  /** `error`: it cannot be opened here; `timeout`: it did not open within the wait. */
+  constructor(readonly outcome: 'error' | 'timeout') { super(outcome); this.name = 'PlusDbUnavailable'; }
 }
 
 /** The timers waits are measured with (tests may give their own). */
