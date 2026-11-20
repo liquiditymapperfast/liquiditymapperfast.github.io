@@ -66,15 +66,23 @@ which comes back with Plus (`effectiveView` in `src/app/liq-view.ts`).
   with its "as of" named ("All traders: stops as of 14:00"), or everyone's reason, named, where their lane draws nothing; then the profitable
   traders' positions and stops times wherever they differ from what everyone's part says or their stops are old, or the reason their lane
   draws nothing, each named ("Profitable traders: stops as of 11:00", `ofGroup`). Where both groups' times agree it reads as before. The note
-  takes up to four lines of whole phrases (`noteLines`), and the stripe's captions keep clear of it. The stripe is painted by `paintStripe`
+  takes up to four lines of whole phrases (`noteLines`), never down to the volume strip's names: on a short map (a phone held sideways, a
+  138 px plot) it takes fewer lines, one at least, and where even that one reaches them the strip leaves the name under it out (`layNote`,
+  `StripDraw.clear`). The stripe's captions keep clear of it. The stripe is painted by `paintStripe`
   (`liq-stripe.ts`), which reports what it painted: a lane is given only where
   it can be painted (`LANE_MIN_W`, 2 px: on a thin stripe the take profits' lane narrows, then goes), and only painted lanes are captioned or
-  answer the pointer. Every sub-column is captioned; the take profits stay with the left set. The phone's Liq tab splits into halves at
-  2 x 120 px. Everything else that draws one series draws the left column's set (`effectiveView`), except the Depth pane: Split is the
-  column's and the stripe's choice, never the Depth pane's, which draws the choice as with Split None (`depthView`, owner's rule of
-  2026-11-20): Liquidations | Stops as *Liq + stops* of the chosen traders, and Everyone | Profitable as everyone's levels (the saved Traders
-  value is not drawn, nor written). Its bands, header, table, Range summary and levels button all follow it; its tip says the Everyone |
-  Profitable case. The Depth plot shares the map's time axis, so a split that widens the column narrows it by the same pixels.
+  answer the pointer. Every sub-column is captioned; the take profits stay with the left set. The caption plates keep clear of the map's
+  corner buttons (whichever it shows: the desktop's row, or a phone's Draw key, `cornerSpan`), the legend, both notes and each other: in
+  the rows they always stood in where those are clear, else each at the highest free place (a phone held sideways; `captionKeepOut`,
+  `placeCaptions`); they are painted after the map's lines and bars, so none runs across them. The
+  phone's Liq tab splits into halves at 2 x 120 px; a finger there reads both halves in a box each, placed together (`placeProbeBoxes`),
+  titled with its group under Everyone | Profitable ("Long liquidations and stops · Profitable"), and saying less where the ladder is too
+  short for the two whole (`probeDetail`: first without the count, the largest and the other side, then the distance, then the level; a total
+  of both keeps its parts). Everything else that draws one series draws the left column's set (`effectiveView`), except the Depth pane:
+  Split is the column's and the stripe's choice, never the Depth pane's, which draws the choice as with Split None (`depthView`, owner's rule
+  of 2026-11-20): Liquidations | Stops as *Liq + stops* of the chosen traders, and Everyone | Profitable as everyone's levels (the saved
+  Traders value is not drawn, nor written). Its bands, header, table, Range summary and levels button all follow it; its tip says the
+  Everyone | Profitable case. The Depth plot shares the map's time axis, so a split that widens the column narrows it by the same pixels.
 - **Liq + stops apart**: wherever the page gives a total of both (the stripe's box, the column's reading and its Mirror box, the Liq tab's
   finger), it adds "Total $X = liquidations $Y + stops $Z" (`partStandings`, `partsBetween`, `partsOnTheWay`); the picture stays the
   total. The Depth pane's readout does not split it: its history rows hold the sum only.

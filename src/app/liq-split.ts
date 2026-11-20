@@ -105,16 +105,97 @@ export function stripePlan(pair: LiqPair | null, drawn: boolean): StripePlan {
     takesWhose: groupName(pair.left.group), standalone: true };
 }
 
+/** A rectangle on the plot (px): from `x0` to `x1` across and from `y0` to `y1` down, the far edges outside it. */
+export interface Rect { x0: number; y0: number; x1: number; y1: number }
+
+/** One of the map's corner buttons as the pane lays it out (`offsetLeft` and the rest, in the pane), and whether it is hidden. */
+export interface CornerEl { offsetLeft: number; offsetTop: number; offsetWidth: number; offsetHeight: number; hidden: boolean }
 /**
- * Where captions go when several share the stripe's top: each at its own place (`x`, `w`), at `top`, moved down a row (`h`) while it would
- * overlap one already placed (with `gap` px between plates). Returns each caption's top, in the order given.
+ * The map's corner buttons as one rectangle on the plot (`left` px of columns stand left of it): the union of those shown (no width is not
+ * shown), null where none is. The map passes the desktop's row (`.map-tools`) and a phone's Draw key (`.map-draw-phone`), whichever it
+ * shows: the compact bar takes the row off the map and leaves the key, so measuring the row alone left a phone's captions under the key
+ * (2026-11-19: at 844 x 207 the key covered the Stops caption and the end of the Liquidations one).
  */
-export function stackCaptions(items: readonly { x: number; w: number }[], top: number, h: number, gap = 2): number[] {
-  const placed: { x0: number; x1: number; y: number }[] = [];
+export function cornerSpan(els: readonly (CornerEl | null)[], left: number): Rect | null {
+  let span: Rect | null = null;
+  for (const el of els) {
+    if (!el || el.hidden || !(el.offsetWidth > 0)) continue;
+    const r = { x0: el.offsetLeft - left, y0: el.offsetTop, x1: el.offsetLeft - left + el.offsetWidth, y1: el.offsetTop + el.offsetHeight };
+    span = span ? { x0: Math.min(span.x0, r.x0), y0: Math.min(span.y0, r.y0), x1: Math.max(span.x1, r.x1), y1: Math.max(span.y1, r.y1) } : r;
+  }
+  return span;
+}
+
+/**
+ * What the stripe's caption plates keep clear of, each widened by the room it keeps: the corner buttons (`corner`, 4 px round them), the
+ * legend and the room under it for the note (`legend`, its right edge and foot: 8 px beside it, 36 px under it), the "depth recorded from"
+ * note (`history`, one 15 px row from its top) and the note under the legend (`note`, 3 px under its last line), in that order.
+ */
+export function captionKeepOut(o: { corner: Rect | null; legend: { right: number; bottom: number }; history: { x0: number; x1: number; top: number } | null; note: { x0: number; x1: number; top: number; bottom: number } | null }): Rect[] {
+  const out: Rect[] = [];
+  if (o.corner) out.push({ x0: o.corner.x0 - 4, y0: -Infinity, x1: o.corner.x1 + 4, y1: o.corner.y1 + 4 });
+  out.push({ x0: -Infinity, y0: -Infinity, x1: o.legend.right + 8, y1: o.legend.bottom + 36 });
+  if (o.history) out.push({ x0: o.history.x0 - 4, y0: o.history.top, x1: o.history.x1 + 4, y1: o.history.top + 15 });
+  if (o.note) out.push({ x0: o.note.x0 - 4, y0: o.note.top, x1: o.note.x1 + 4, y1: o.note.bottom + 3 });
+  return out;
+}
+
+/**
+ * The rows the stripe's caption plates stood in until 2026-11-19 (each `w` wide at `x`, `h` tall): each plate's highest start, each keep-out
+ * checked once in order; rows from the highest of them, a row lower for a plate that overlaps one before it; the last keep-out (the note
+ * under the legend) checked again. A plate the legend sent down still held its row at the top, so the plates after it could start lower than
+ * they had to, and a plate pushed under one keep-out was never checked against the ones before.
+ */
+export function captionRows(items: readonly { x: number; w: number }[], keepOut: readonly Rect[], top: number, h: number, gap = 2): number[] {
+  if (!items.length) return [];
+  const over = (r: Rect, x: number, w: number, y: number): boolean => x < r.x1 && x + w > r.x0 && y < r.y1 && y + h > r.y0;
+  const last = keepOut[keepOut.length - 1], clear = (x: number, w: number, y: number): number => last && over(last, x, w, y) ? last.y1 : y;
+  const floor = items.map(({ x, w }) => keepOut.reduce((y, r) => over(r, x, w, y) ? Math.max(y, r.y1) : y, top));
+  const first = Math.min(...floor), rows: { x0: number; x1: number; y: number }[] = [];
+  // A row each from the highest start, a row lower while a plate overlaps one placed in that row.
+  const stacked = items.map(({ x, w }) => {
+    let y = first;
+    while (rows.some(r => r.y === y && x < r.x1 + gap && x + w > r.x0 - gap)) y += h + gap;
+    rows.push({ x0: x, x1: x + w, y });
+    return y;
+  });
+  const ys: number[] = [];
+  items.forEach(({ x, w }, i) => {
+    let y = clear(x, w, Math.max(floor[i]!, stacked[i]!));
+    while (items.slice(0, i).some((o, j) => Math.abs(ys[j]! - y) < h && x < o.x + o.w + gap && x + w > o.x - gap)) y = clear(x, w, y + h + gap);
+    ys.push(y);
+  });
+  return ys;
+}
+
+/**
+ * Where the stripe's caption plates stand (each `w` wide at `x`, `h` tall, the plot `bottom` px tall), in the order given. Where the rows
+ * they always stood in (`captionRows`) are clean, those: no plate over a keep-out (`captionKeepOut`) or over another, none past the plot's
+ * foot, so a desktop map's captions stay where they were. Else each at the highest place where it lies over no keep-out and no plate placed
+ * before it (`gap` px apart), moved down past whatever it lies over and checked against all of them again after every move, so one pushed
+ * under the corner buttons never lands in a note. On a phone held sideways (a 138 px plot) the rows put the Liquidations plate over the
+ * "depth recorded from" note, below a plate the legend had sent down; placed this way it stands under the Draw key, where it is free.
+ */
+export function placeCaptions(items: readonly { x: number; w: number }[], keepOut: readonly Rect[], top: number, h: number, bottom = Infinity, gap = 2): number[] {
+  const over = (r: Rect, x: number, w: number, y: number): boolean => x < r.x1 && x + w > r.x0 && y < r.y1 && y + h > r.y0;
+  const rows = captionRows(items, keepOut, top, h, gap);
+  const clean = rows.every((y, i) => {
+    const { x, w } = items[i]!;
+    return y + h <= bottom && !keepOut.some(r => over(r, x, w, y)) && rows.slice(0, i).every((v, j) => !over({ x0: items[j]!.x - gap, x1: items[j]!.x + items[j]!.w + gap, y0: v - gap, y1: v + h + gap }, x, w, y));
+  });
+  if (clean) return rows;
+  const placed: Rect[] = [];
   return items.map(({ x, w }) => {
     let y = top;
-    while (placed.some(p => p.y === y && x < p.x1 + gap && x + w > p.x0 - gap)) y += h + gap;
-    placed.push({ x0: x, x1: x + w, y });
+    // Each move takes the plate past the foot of something it lay over, and nothing is passed twice: at most one move per obstacle.
+    for (let moves = 0; moves <= keepOut.length + placed.length; moves++) {
+      let next = y;
+      for (const r of keepOut) if (over(r, x, w, y)) next = Math.max(next, r.y1);
+      for (const r of placed) if (over(r, x, w, y)) next = Math.max(next, r.y1);
+      if (next === y) break;
+      y = next;
+    }
+    placed.push({ x0: x - gap, x1: x + w + gap, y0: y - gap, y1: y + h + gap });
     return y;
   });
 }
@@ -183,4 +264,25 @@ export function placeProbeBoxes(sizes: readonly [BoxSize | null, BoxSize | null]
   const top = (down ? (fitsBelow ? below : fitsAbove ? above : null) : (fitsAbove ? above : fitsBelow ? below : null))
     ?? Math.max(edge, Math.min(down ? below : above, H - edge - tall));
   return [{ x: xOf(a, false), y: top }, { x: xOf(b, true), y: Math.min(top + a.h + gap, H - edge - b.h) }];
+}
+
+/**
+ * Whether a finger's two boxes fit the ladder (`W` by `H`) together as `placeProbeBoxes` places them: each no wider than the ladder (2 px in
+ * at both sides), and side by side, or one above the other within its height. A box alone always fits (it is kept on the ladder).
+ */
+export function probeBoxesFit(sizes: readonly [BoxSize | null, BoxSize | null], W: number, H: number): boolean {
+  const [a, b] = sizes, edge = 2, gap = 4;
+  if (!a || !b) return true;
+  return a.w <= W - 2 * edge && b.w <= W - 2 * edge && (a.w + b.w + gap + 16 <= W || a.h + gap + b.h <= H - 2 * edge);
+}
+
+/**
+ * How much a finger's two boxes on the split ladder say: the most (0, everything) at which they fit it together (`probeBoxesFit`), each
+ * measured at that detail by `sizes`; `least` where even that does not fit, and there `placeProbeBoxes` lays the second over the foot of the
+ * first (a ladder that short is under 190 px tall: a phone held sideways, whose Liq tab puts the ladder below the fold). On a 320 x 568
+ * phone (a 260 x 253 ladder) two whole boxes of liquidations and stops are 150 to 170 px tall each and lay one over the other.
+ */
+export function probeDetail(sizes: (detail: number) => readonly [BoxSize | null, BoxSize | null], W: number, H: number, least: number): number {
+  for (let detail = 0; detail < least; detail++) if (probeBoxesFit(sizes(detail), W, H)) return detail;
+  return least;
 }
