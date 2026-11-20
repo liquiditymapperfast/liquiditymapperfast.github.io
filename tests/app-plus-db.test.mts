@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { KV_STORE, OPEN_TIMEOUT_MS, PLUS_DB, PLUS_DB_VERSION, PlusDb, PlusDbUnavailable, SEED_KEY, SEED_SHAPE, newSeed, readSeed, seedIn, type DbState } from '../src/app/plus/plus-db.ts';
 import { FakeIdb, settle } from './plus-db-fake.mts';
 import { PLUS_GEN_STORE, PLUS_IDB_MARKER, PLUS_STORE, storedMember, type Capture, type Plus, type StoredMember, type Taken } from '../src/app/plus/pass.ts';
-import { HOUR, KEY_A, KEY_B, KEY_C, NOW, UNTIL, browser, grantOf, passOf, slowPost, until, type Browser } from './plus-browser-double.mts';
+import { HOUR, KEY_A, KEY_B, KEY_C, NOW, OPEN_WAIT_MS, UNTIL, browser, grantOf, passOf, slowPost, until, type Browser } from './plus-browser-double.mts';
 
 const tab = (idb: FakeIdb): PlusDb => new PlusDb(idb.factory);
 const nameOf = (error: unknown): string => (error as { name?: string }).name ?? '';
@@ -340,7 +340,9 @@ test('not ready and unusable here: the mirror shows Plus at once, renews in memo
   n.idb.opens = 'hang';
   const late = slowPost();
   const slow = n.open({ post: late.post });
-  await until(() => slow.mode === 'notready', 2_000);
+  // The open's wait (OPEN_WAIT_MS) runs on real time.
+  await new Promise(resolve => { setTimeout(resolve, OPEN_WAIT_MS * 3); });
+  await until(() => slow.mode === 'notready');
   slow.pass();
   await until(() => late.asked.length === 1);
   late.asked[0]!.answer({ status: 200, body: { pass: passOf('gift_aaaa', NOW + 24 * HOUR), paidUntil: UNTIL, now: NOW } });
