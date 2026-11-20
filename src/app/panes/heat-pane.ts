@@ -44,7 +44,7 @@ import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
 import { paintWatermark } from '../watermark.ts';
 import { FOOTPRINT_SETTLE_MS, FootprintData, FootprintLod, VENUE_LINES, candleBody, footprintLayout, paintFootprint, readBar, rowCellAt, rowCellLines, visibilityFactor, type Bar as FootprintBar, type LodFrame, type RowCell } from './footprint.ts';
-import { layoutInfo, paintInfoBox, type InfoColor, type InfoLine, type InfoRect } from '../infobox.ts';
+import { layoutInfo, measureInfoBox, paintInfoBox, type InfoColor, type InfoLine, type InfoRect } from '../infobox.ts';
 import { TrapData, trapStatusText, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
 import { PRICE_SPAN_SHARE, TIME_SPAN_MS, fitPrices, focusWindow, followPrice, holdPixel, limitFactor, liveEdgeShown, priceAtEdge, priceHeldAfter, priceRef, regionAt, wheelZoom, zoomedView } from './heat-zoom.ts';
@@ -326,12 +326,14 @@ export function profileColumnW(state: AppState): number { return !state.show.pro
  * actually hovering over"): pointing at the profile column's left edge (`x`) and kept left of it, so over the liquidation column where that
  * stands between the map and this one, and never over the columns right of it or the price axis. Kept inside the map alone, it stood a whole
  * column away, beside the liquidation column. Over that column it keeps below its heading (`liqHead`, its height), whose button and History
- * link lie over the canvas and would hide its first lines. With no liquidation column, and beside a compact map's two 16 px strips (where it
- * would cover a sliver of the liquidation strip), it is where it always was: inside the map, against its edge.
+ * link lie over the canvas and would hide its first lines, wherever the box (`boxH` tall) fits under it with its 2 px margins; on a map too
+ * short for that it may go anywhere from the top, as before, so it never runs off the plot's foot (Sol, review 2026-11-20). With no
+ * liquidation column, and beside a compact map's two 16 px strips (where it would cover a sliver of the liquidation strip), it is where it
+ * always was: inside the map, against its edge.
  */
-export function profileBoxFrame(state: AppState, pw: number, ph: number, liqHead: number): { x: number; bounds: { x0: number; y0: number; x1: number; y1: number } } {
+export function profileBoxFrame(state: AppState, pw: number, ph: number, liqHead: number, boxH: number): { x: number; bounds: { x0: number; y0: number; x1: number; y1: number } } {
   const liqW = liqColumnW(state), x = pw + liqW, wide = liqW >= PROFILE_W;
-  return { x, bounds: { x0: 0, y0: wide ? Math.min(liqHead, ph / 3) : 0, x1: wide ? x : pw, y1: ph } };
+  return { x, bounds: { x0: 0, y0: wide && liqHead + boxH + 4 <= ph ? liqHead : 0, x1: wide ? x : pw, y1: ph } };
 }
 export function gutter(state: AppState): number { return AXIS_W + liqColumnW(state) + profileColumnW(state) + sideColumns(state).right.length * TRADED_W; }
 /** The width the columns left of the map take, between the flow column and the map: the map and the panes under it start after them. */
@@ -4042,7 +4044,7 @@ export class HeatPane {
     if (box) {
       // The comparison pops up beside the profile column, pointing at it, and only while the pointer is on the column (`profileBoxFrame`).
       this.#profileBox = null;
-      const frame = profileBoxFrame(state, pw, ph, this.#liqHeadH);
+      const frame = profileBoxFrame(state, pw, ph, this.#liqHeadH, measureInfoBox(ctx, box.lines).h);
       paintMirrorBox(ctx, box.lines, frame.x, box.y, frame.bounds, p, c => c === 'above' ? p.ask : c === 'below' ? p.bid : c === 'muted' ? p.muted : p.text, box.placement);
       ctx.textBaseline = 'middle';
     }

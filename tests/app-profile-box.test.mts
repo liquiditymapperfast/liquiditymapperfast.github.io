@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { mirrorLines, mirrorStats, paintMirrorBox } from '../src/app/mirror.ts';
 import { PALETTES } from '../src/app/theme.ts';
-import { INFO } from '../src/app/infobox.ts';
+import { INFO, measureInfoBox } from '../src/app/infobox.ts';
 import { readLiqLevels } from '../src/app/liq-url.ts';
 import { initialState, type AppState } from '../src/app/store.ts';
 import { PROFILE_STRIP_W, PROFILE_W, liqSplitDrawn, profileBoxFrame, profileColumnW, setCompactGutters } from '../src/app/panes/heat-pane.ts';
@@ -31,10 +31,10 @@ const stateWith = (liq: Partial<{ column: boolean; split: 'kinds' }>): AppState 
     liqLevels: readLiqLevels({ column: liq.column ?? true, liq: true, stops: liq.split === 'kinds', ...(liq.split ? { split: liq.split } : {}) }) } as AppState;
 };
 const PW = 487, PH = 876, HEAD = 85;
-/** The box for a pointer on the profile column at `y`, as the map draws it. */
-function boxAt(state: AppState, y: number, placement: 'down' | 'up', pw = PW): { rect: { x: number; y: number; w: number; h: number }; frame: ReturnType<typeof profileBoxFrame> } {
-  const frame = profileBoxFrame(state, pw, PH, HEAD);
-  const rect = paintMirrorBox(ctx, lines, frame.x, y, frame.bounds, p, pick, placement)!;
+/** The box for a pointer on the profile column at `y`, as the map draws it (`#paintProfile`), on a map `ph` tall under a heading `head` tall. */
+function boxAt(state: AppState, y: number, placement: 'down' | 'up', pw = PW, ph = PH, head = HEAD, shown = lines): { rect: { x: number; y: number; w: number; h: number }; frame: ReturnType<typeof profileBoxFrame> } {
+  const frame = profileBoxFrame(state, pw, ph, head, measureInfoBox(ctx, shown).h);
+  const rect = paintMirrorBox(ctx, shown, frame.x, y, frame.bounds, p, pick, placement)!;
   return { rect, frame };
 }
 
@@ -63,8 +63,20 @@ test('over the liquidation column the box keeps below that column\'s heading, wh
       const { rect } = boxAt(state, y, 'down');
       assert.ok(rect.y >= HEAD, `a pointer at ${y}: the box starts at ${rect.y}, below the heading`);
     }
-    // A short map does not lose the box under a tall heading.
-    assert.equal(profileBoxFrame(state, PW, 150, 120).bounds.y0, 50);
+    // A short map keeps the whole heading clear where the box fits under it: a split's heading is 97 px (the History link at 77-93 px), on a
+    // 218 px map (Sol, review 2026-11-20: a cap at a third of the map put the box's first line under the link).
+    for (const y of [4, 60, 150]) {
+      const { rect } = boxAt(state, y, 'down', PW, 218, 97);
+      assert.ok(rect.y >= 97 && rect.y + rect.h <= 218, `a pointer at ${y} on a 218 px map: the box spans ${rect.y}-${rect.y + rect.h}`);
+    }
+    // Too short for that: the box keeps inside the plot, from its top as before, and never runs under the time axis (a 140 px map pane
+    // leaves a 118 px plot; the box with its "outside the data" line is 88 px tall).
+    const clipped = mirrorLines(mirrorStats(58_979.9, 46_879.9, 152.8e6, 412e6, true)!, { above: 'Asks', below: 'Bids' });
+    for (const y of [4, 60, 110]) {
+      const { rect, frame } = boxAt(state, y, 'down', PW, 118, 97, clipped);
+      assert.equal(frame.bounds.y0, 0);
+      assert.ok(rect.y >= 2 && rect.y + rect.h <= 118 - 2, `a pointer at ${y} on a 118 px map: the box spans ${rect.y}-${rect.y + rect.h}`);
+    }
   } finally { setCompactGutters(false, 2000); }
 });
 
@@ -113,6 +125,6 @@ test('the map draws the profile column\'s box in that frame', () => {
   const start = heat.indexOf('  #paintProfile(ctx'), end = heat.indexOf('\n  }\n', start);
   assert.ok(start > 0 && end > start);
   const body = heat.slice(start, end);
-  assert.match(body, /const frame = profileBoxFrame\(state, pw, ph, this\.#liqHeadH\);/);
+  assert.match(body, /const frame = profileBoxFrame\(state, pw, ph, this\.#liqHeadH, measureInfoBox\(ctx, box\.lines\)\.h\);/);
   assert.match(body, /paintMirrorBox\(ctx, box\.lines, frame\.x, box\.y, frame\.bounds,/);
 });
