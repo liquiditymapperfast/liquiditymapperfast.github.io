@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { PADDLE, plusOnSale } from '../src/app/plus/config.ts';
 
 const read = (file: string): string => fs.readFileSync(path.join(process.cwd(), file), 'utf8');
 
@@ -28,8 +29,7 @@ test('the Plus page\'s own rules reach only its lower part and its foot, never t
   assert.ok(!/^\.lv \{/m.test(read('src/app/styles.css')) && /^\.lv \{/m.test(read('src/app/levels-control.css')));
 });
 
-test('before the sale opens the Plus page says the monthly price (Karl, 2026-11-20: $10 a month) and offers no checkout', async () => {
-  const { PADDLE, plusOnSale } = await import('../src/app/plus/config.ts');
+test('before the sale opens the Plus page says the monthly price (Karl, 2026-11-20: $10 a month) and offers no checkout', () => {
   assert.equal(PADDLE.monthly.usd, 10, 'the monthly price written on the page');
   assert.equal(plusOnSale(), false, 'still not on sale (the sale gate)');
   const page = read('src/app/plus/page.ts'), branch = page.slice(page.indexOf('if (!plusOnSale()) {'), page.indexOf('const pending = paid.list()[0];'));
