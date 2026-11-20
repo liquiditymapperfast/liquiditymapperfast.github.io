@@ -401,8 +401,10 @@ export class HeatPane {
   /** The corner buttons' elements (the desktop's row, a phone's Draw key) and their rectangle as last measured, with what it was measured for (`#cornerTools`). */
   #cornerEls: (HTMLElement | null)[] = [null, null];
   #cornerBox: { key: string; box: Rect | null } = { key: '', box: null };
-  /** The stripe's caption plates as placed this frame (`#placeLiqCaptions`), painted once the map's lines are drawn (`#paintLiqPlates`). */
-  #liqPlates: (LaneCaption & { x: number; y: number; w: number })[] | null = null;
+  /** The stripe's caption plates of this frame, their places across (`#placeLiqCaptions`), placed and painted once the map's lines and the volume strip are drawn (`#paintLiqPlates`). */
+  #liqPlates: (LaneCaption & { x: number; w: number; rank: number })[] | null = null;
+  /** Where this frame's volume strip printed its names (`paintVolumeStrip`), which the stripe's captions keep clear of. */
+  #stripNames: { x0: number; x1: number; y0: number; y1: number }[] = [];
   onStats: () => void = () => {};
   onView: () => void = () => {};
   /** Whether scripts are running and read the candles (main.ts): then the price history reaches `SCRIPT_WARM_BARS` before the view too. */
@@ -2277,38 +2279,41 @@ export class HeatPane {
    * fits, else ending at the lane's right edge and reaching left over the map (`captionPlace`), never wider than the plot (a longer word ends
    * in "…"), clear of the corner buttons the map shows (a phone's Draw key too), the legend, the "depth recorded from" note, the note under the
    * legend and each other: in the rows they always stood in where those are clear, else each at the highest free place (`captionKeepOut`,
-   * `placeCaptions`). Placed here, painted by `#paintLiqPlates` once the map's lines are drawn.
+   * `placeCaptions`). Measured here; placed and painted by `#paintLiqPlates` once the map's lines and the volume strip are drawn.
    */
   #placeLiqCaptions(ctx: CanvasRenderingContext2D, items: readonly LaneCaption[], pw: number): void {
     ctx.save();
     ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif';
     const wide = (words: string): number => ctx.measureText(words).width, SAMPLE = 12;
-    const placed = items.map(item => ({ ...item, ...captionPlace(item.lane, Math.min(Math.max(40, pw - 16), Math.ceil(SAMPLE + wide(item.words) + 10))) }));
+    // The take profits' plate goes first where not every plate has room (rank 1): the split's own lanes keep theirs.
+    this.#liqPlates = items.map(item => ({ ...item, ...captionPlace(item.lane, Math.min(Math.max(40, pw - 16), Math.ceil(SAMPLE + wide(item.words) + 10))), rank: item.dashed ? 1 : 0 }));
     ctx.restore();
-    const keep = captionKeepOut({ corner: this.#cornerTools(pw), legend: this.#legendBox, history: this.#historyNote, note: this.#liqNoteBox });
-    const ys = placeCaptions(placed, keep, 6, 15, this.plotH);
-    this.#liqPlates = placed.map((item, i) => ({ ...item, y: ys[i]! }));
   }
 
   /**
-   * The stripe's caption plates placed this frame, on plates of the panel's colour so they read in every theme: painted after the map's
-   * lines, bars and candles (the price line, the VWAP and key levels, the volume strip), none of which is drawn across one (2026-11-19: on a
-   * phone held sideways a dashed line ran across the take profits' plate and the volume bars over it).
+   * The stripe's caption plates of this frame, placed (`captionKeepOut`, `placeCaptions`: the volume strip's names are known by now, and a
+   * plate with no room above the plot's foot is left out) and painted on plates of the panel's colour so they read in every theme, after the
+   * map's lines, bars and candles (the price line, the VWAP and key levels, the volume strip), none of which is drawn across one (2026-11-19:
+   * on a phone held sideways a dashed line ran across the take profits' plate and the volume bars over it).
    */
   #paintLiqPlates(ctx: CanvasRenderingContext2D): void {
-    const plates = this.#liqPlates, p = this.#palette;
+    const plates = this.#liqPlates, p = this.#palette, pw = this.plotW;
     this.#liqPlates = null;
     if (!plates?.length) return;
+    const keep = captionKeepOut({ corner: this.#cornerTools(pw), legend: this.#legendBox, history: this.#historyNote, note: this.#liqNoteBox, names: this.#stripNames });
+    const ys = placeCaptions(plates, keep, 6, 15, this.plotH);
     ctx.save();
     ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     const wide = (words: string): number => ctx.measureText(words).width, SAMPLE = 12;
-    for (const { x, y, w, words, dashed } of plates) {
+    plates.forEach(({ x, w, words, dashed }, i) => {
+      const y = ys[i];
+      if (y === null || y === undefined) return;
       ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x, y, w, 15);
       ctx.globalAlpha = 1; ctx.strokeStyle = p.line; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 14);
       ctx.strokeStyle = p.text; ctx.lineWidth = 3; ctx.setLineDash(dashed ? TAKE_DASH as number[] : []); ctx.lineDashOffset = 0;
       ctx.beginPath(); ctx.moveTo(x + 4, y + 7.5); ctx.lineTo(x + 4 + SAMPLE - 2, y + 7.5); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = p.text; ctx.fillText(fitText(wide, words, w - SAMPLE - 10), x + 6 + SAMPLE, y + 8);
-    }
+    });
     ctx.restore();
   }
 
@@ -2411,7 +2416,7 @@ export class HeatPane {
    * the dashed line is that threshold, and a faint column behind an anomalous bar marks its time slot all the way up the chart.
    */
   #paintVolume(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number, narrowing: number): void {
-    this.#strip = null;
+    this.#strip = null; this.#stripNames = [];
     if (!state.show.volume || !this.candlesDrawn(state).length) return;
     const chartTf = TIMEFRAMES[state.timeframe] ?? 3_600_000, v = this.view, p = this.#palette;
     // Zoomed out until the chart's bars would be narrower than STRIP_MIN_PX, the strip's are of a longer timeframe: what the venues traded
@@ -2473,7 +2478,7 @@ export class HeatPane {
     const hovered = hy >= top && hy <= ph ? bars.findIndex(b => Math.abs(hx - b.x) <= Math.max(b.w, slot) / 2) : -1;
     // The candles' part named ≈ while any of its bars is an estimate (its volume at its typical price), plainly where all are as reported.
     const estimated = bars.some(b => b.source === 'candle' && !b.exact);
-    paintVolumeStrip(ctx, bars, { pw, ph, height, palette: this.#tradedPalette(state), bars: state.traded.bars, emphasis: state.traded.emphasis, highlights,
+    this.#stripNames = paintVolumeStrip(ctx, bars, { pw, ph, height, palette: this.#tradedPalette(state), bars: state.traded.bars, emphasis: state.traded.emphasis, highlights,
       recorded: `${t('Volume')} · ${tfName}`, candles: estimated ? t('≈ {market} {tf} candles', { market, tf: tfName }) : t('{market} {tf} candles', { market, tf: tfName }), hovered,
       // The note under the legend, where a short map's one line reaches the names (`layNote`): a name under it is left out.
       clear: state.liqLevels.on && this.#liqNoteBox ? { x0: this.#liqNoteBox.x0 - 4, x1: this.#liqNoteBox.x1 + 4, y0: this.#liqNoteBox.top, y1: this.#liqNoteBox.bottom } : null });

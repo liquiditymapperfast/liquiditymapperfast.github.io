@@ -224,9 +224,10 @@ export const stripNamesTop = (ph: number, height: number): number => ph - height
 /**
  * The strip: a soft backdrop, each bar growing up from the bottom (the first side, bid colour, at its foot) on one scale, a candle's
  * outlined in the profile colour and grey where it does not say who bought, a gap a dotted run along the bottom, the Highlights' bars full
- * strength with their threshold dashed within each run, the seam marked, and the two parts named at their left.
+ * strength with their threshold dashed within each run, the seam marked, and the two parts named at their left. Returns where it printed
+ * those names (their plates), which the map's captions keep clear of.
  */
-export function paintVolumeStrip(ctx: CanvasRenderingContext2D, bars: readonly StripBar[], d: StripDraw): void {
+export function paintVolumeStrip(ctx: CanvasRenderingContext2D, bars: readonly StripBar[], d: StripDraw): { x0: number; x1: number; y0: number; y1: number }[] {
   const { ph, height: H, palette: p } = d, floor = ph - 1, top = ph - H - 6;
   let max = 0; for (const b of bars) max = Math.max(max, b.buy + b.sell);
   ctx.save();
@@ -235,7 +236,7 @@ export function paintVolumeStrip(ctx: CanvasRenderingContext2D, bars: readonly S
   const backdrop = ctx.createLinearGradient(0, top, 0, ph);
   backdrop.addColorStop(0, `rgba(${br},${bg},${bb},0)`); backdrop.addColorStop(1, `rgba(${br},${bg},${bb},${p.dark ? 0.55 : 0.5})`);
   ctx.fillStyle = backdrop; ctx.fillRect(0, top, d.pw, H + 6);
-  if (!(max > 0) && !bars.some(b => b.source === 'gap')) { ctx.restore(); return; }
+  if (!(max > 0) && !bars.some(b => b.source === 'gap')) { ctx.restore(); return []; }
   const median = medianRow(bars.filter(b => b.source !== 'candle').map(b => b.buy + b.sell)), floorUsd = emphasisFloor(), hl = d.highlights;
   bars.forEach((b, i) => {
     const total = b.buy + b.sell, h = max > 0 ? Math.max(total > 0 ? 1 : 0, total / max * H) : 0, x0 = b.x - b.w / 2, hot = !!hl && hl.flag[i] === 1;
@@ -280,13 +281,14 @@ export function paintVolumeStrip(ctx: CanvasRenderingContext2D, bars: readonly S
   // Each named at its left, the second after the first ends; one with no room left out rather than over the other or off the map, or under
   // the note over the map's foot (`clear`: on a short map even its one line can reach the names).
   let taken = 2;
-  const names = stripNamesTop(ph, H), clear = d.clear;
+  const names = stripNamesTop(ph, H), clear = d.clear, printed: { x0: number; x1: number; y0: number; y1: number }[] = [];
   const name = (text: string, x: number, color: string): void => {
     const w = ctx.measureText(text).width + 8, at = Math.max(taken, x);
     if (at + w > d.pw - 2) return;
     if (clear && at < clear.x1 && at + w > clear.x0 && names < clear.y1 && names + 14 > clear.y0) return;
     ctx.globalAlpha = 0.85; ctx.fillStyle = p.panel; ctx.fillRect(at, names, w, 14);
     ctx.globalAlpha = 1; ctx.fillStyle = color; ctx.fillText(text, at + 4, names + 7);
+    printed.push({ x0: at, x1: at + w, y0: names, y1: names + 14 });
     taken = at + w + 6;
   };
   const firstCandle = bars.findIndex(b => b.source === 'candle'), firstRecorded = bars.findIndex(b => b.source !== 'candle');
@@ -297,6 +299,7 @@ export function paintVolumeStrip(ctx: CanvasRenderingContext2D, bars: readonly S
   if (firstCandle >= 0) name(d.candles, bars[firstCandle]!.x - bars[firstCandle]!.w / 2, p.poc);
   if (firstRecorded >= 0) name(d.recorded, bars[firstRecorded]!.x - bars[firstRecorded]!.w / 2 + 2, p.text);
   ctx.restore();
+  return printed;
 }
 
 const pct = (x: number): string => `${(x * 100).toFixed(1)} %`;

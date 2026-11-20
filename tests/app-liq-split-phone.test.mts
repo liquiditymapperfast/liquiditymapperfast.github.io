@@ -53,12 +53,15 @@ const FRAMES: Frame[] = [
   { name: '375x812', plot: { w: 285, h: 646 }, corner: [null, el(235, 8, 42, 36)], legend: { right: 242, bottom: 68 }, history: { x0: 135, x1: 254, top: 74 },
     note: { x0: 8, x1: 218, top: 87, bottom: 113 }, items: [{ x: 143, w: 124 }, { x: 197, w: 78 }, { x: 235, w: 48 }] },
 ];
+const ranked = (f: Frame): { x: number; w: number; rank: number }[] => f.items.map((it, i) => ({ ...it, rank: i === 0 ? 1 : 0 }));
 const keepOf = (f: Frame): Rect[] => captionKeepOut({ corner: cornerSpan(f.corner, 0), legend: f.legend, history: f.history, note: f.note });
 
 test('the stripe\'s caption plates keep clear of a phone\'s Draw key, the legend, both notes and each other, at every measured phone size', () => {
   for (const f of FRAMES) {
     const corner = cornerSpan(f.corner, 0)!, keep = keepOf(f);
-    const ys = placeCaptions(f.items, keep, 6, 15, f.plot.h), plates = f.items.map((it, i) => plate(it.x, it.w, ys[i]!));
+    const ys = placeCaptions(ranked(f), keep, 6, 15, f.plot.h);
+    assert.ok(ys.every(y => y !== null), `${f.name}: every plate placed`);
+    const plates = f.items.map((it, i) => plate(it.x, it.w, ys[i]!));
     plates.forEach((p, i) => {
       assert.ok(!over(p, { x0: corner.x0 - 4, x1: corner.x1 + 4, y0: corner.y0, y1: corner.y1 + 4 }), `${f.name}: plate ${i} at ${p.y0} lies under the Draw key`);
       for (const r of keep) assert.ok(!over(p, r), `${f.name}: plate ${i} at ${p.y0} lies over a keep-out ${JSON.stringify(r)}`);
@@ -74,8 +77,8 @@ test('the plates keep the rows they always stood in where those are clean; where
   assert.deepEqual(captionRows(three, keep, 6, 15), [80, 23, 40]);
   assert.deepEqual(placeCaptions(three, keep, 6, 15), [80, 23, 40]);
   assert.deepEqual(placeCaptions([{ x: 10, w: 80 }, { x: 60, w: 80 }, { x: 200, w: 50 }], [], 6, 15), [6, 23, 6], 'the second a row down, the third up where it is clear');
-  // Rows that put a plate past the plot's foot are not kept.
-  assert.deepEqual(placeCaptions(three, keep, 6, 15, 50), [80, 6, 23]);
+  // Rows that put a plate past the plot's foot are not kept, and a plate with no room above the foot is left out (Sol, review 2026-11-20).
+  assert.deepEqual(placeCaptions(three, keep, 6, 15, 50), [null, 6, 23]);
   // Pushed under one keep-out into another: the rows leave it there (each keep-out checked once); placed again, it moves on below that one too.
   const two: Rect[] = [{ x0: 0, y0: 30, x1: 300, y1: 45 }, { x0: 0, y0: -Infinity, x1: 300, y1: 32 }];
   assert.deepEqual(captionRows([{ x: 10, w: 50 }], two, 6, 15), [32]);
@@ -84,7 +87,7 @@ test('the plates keep the rows they always stood in where those are clean; where
   // to 89) and Stops into the take profits' plate; placed again, Liquidations stands under the Draw key and Stops at the plot's foot, the
   // take profits' plate where the legend sends it. Upright at 390 px the rows put Stops at 82, over the "depth recorded from" note: under the
   // key instead. At 320 and 375 px the rows are clean and kept.
-  const at = (name: string): number[] => { const f = FRAMES.find(g => g.name === name)!; return placeCaptions(f.items, keepOf(f), 6, 15, f.plot.h); };
+  const at = (name: string): (number | null)[] => { const f = FRAMES.find(g => g.name === name)!; return placeCaptions(ranked(f), keepOf(f), 6, 15, f.plot.h); };
   assert.deepEqual(at('844x207'), [104, 48, 121]);
   assert.deepEqual(at('390x844'), [116, 133, 48]);
   for (const name of ['320x568', '375x812']) { const f = FRAMES.find(g => g.name === name)!; assert.deepEqual(at(name), captionRows(f.items, keepOf(f), 6, 15), `${name}: the rows kept`); }
@@ -234,4 +237,66 @@ test('the map and the Liq tab use these: the keep-out of the corner buttons show
   const price = overlay.indexOf('// The price line'), plates = overlay.indexOf('this.#paintLiqPlates(ctx'), column = overlay.indexOf('if (liqColumnShown(state)) this.#paintLiqColumn');
   assert.ok(price > 0 && plates > price && column > plates, `plates after the price line, before the columns: ${price} ${plates} ${column}`);
   assert.match(tab, /probeDetail\(/); assert.match(tab, /whose: pair\.split === 'groups'/);
+});
+
+// Sol's review of the phone polish (2026-11-20): three P2s, each failing on the code before its fix.
+test('Sol 1 (P2): a finger box must fit the ladder\'s height too, side by side and alone; a wide short ladder says less', () => {
+  // A 640 x 120 ladder had room across for two 287 x 152 boxes and kept them whole, each taller than the ladder.
+  assert.equal(probeBoxesFit([{ w: 287, h: 152 }, { w: 287, h: 152 }], 640, 120), false);
+  assert.equal(probeBoxesFit([{ w: 287, h: 56 }, { w: 287, h: 56 }], 640, 120), true);
+  assert.equal(probeBoxesFit([{ w: 200, h: 150 }, null], 260, 120), false, 'a box alone taller than the ladder');
+  assert.equal(probeBoxesFit([null, { w: 270, h: 60 }], 260, 120), false, 'a box alone wider than the ladder');
+  assert.equal(probeBoxesFit([{ w: 200, h: 100 }, null], 260, 120), true);
+  const W = 640, H = 120, whose = [groupName('all'), groupName('profitable')] as const;
+  for (let y = 2; y <= H - 2; y += 2) {
+    const at = 100 + (H / 2 - y) / (H / 2) * 2.5;
+    const sizes = (d: number): [BoxSize, BoxSize] => [sizeOf(probeBoxLines(facts(at), { detail: d, whose: whose[0] }), W), sizeOf(probeBoxLines(facts(at), { detail: d, whose: whose[1] }), W)];
+    const d = probeDetail(sizes, W, H, PROBE_LEAST), s = sizes(d), [p, q] = placeProbeBoxes(s, y, W, H);
+    assert.ok(s.every(z => z.h <= H - 4 && z.w <= W - 4), `finger ${y}: detail ${d} gives boxes inside the ladder ${JSON.stringify(s)}`);
+    assert.ok(p && q && [[p, s[0]], [q, s[1]]].every(([b, z]) => (b as { y: number }).y >= 2 && (b as { y: number }).y + (z as BoxSize).h <= H - 2), `finger ${y}: on the ladder`);
+    assert.ok(p && q && (p.y + s[0].h <= q.y || q.y + s[1].h <= p.y || p.x + s[0].w <= q.x || q.x + s[1].w <= p.x), `finger ${y}: apart`);
+  }
+});
+
+test('Sol 2 (P2): the plates keep clear of the volume strip\'s names, which they are painted over', () => {
+  // The 392 x 138 landscape frame with the recording starting near x 280: "Volume · 15m" at 272 to 347 by 102 to 116, where the take
+  // profits' plate stood (244 to 368 by 104 to 119).
+  const f = FRAMES[0]!, names: Rect[] = [{ x0: 272, x1: 347, y0: 102, y1: 116 }];
+  const keep = captionKeepOut({ corner: cornerSpan(f.corner, 0), legend: f.legend, history: f.history, note: f.note, names });
+  const ys = placeCaptions(ranked(f), keep, 6, 15, f.plot.h);
+  ys.forEach((y, i) => { if (y !== null) assert.ok(!over(plate(f.items[i]!.x, f.items[i]!.w, y), names[0]!), `plate ${i} at ${y} over the strip's name`); });
+  // Liquidations under the Draw key, Stops under the name; no room is left for the take profits' plate, whose lane still answers the pointer.
+  assert.deepEqual(ys, [null, 48, 118]);
+  // The note under the legend stays the last keep-out (the old rows check it again), the names before it, 2 px round them.
+  assert.deepEqual(keep.at(-2), { x0: 270, x1: 349, y0: 100, y1: 118 });
+  assert.equal(keep.at(-1)!.y0, f.note.top);
+});
+
+test('Sol 3 (P2): no plate is placed past the plot\'s foot; where one has no room, the split\'s lanes keep theirs and the take profits\' goes', () => {
+  // The landscape frame on a 120 px plot: Stops stood at 121, under the time axis that paints over it.
+  const f = FRAMES[0]!, keep = keepOf(f);
+  assert.deepEqual(placeCaptions(ranked(f), keep, 6, 15, 120), [null, 48, 103]);
+  // Everywhere: whatever is placed is inside the plot, clear of the keep-outs and of each other.
+  for (const g of FRAMES) for (let ph = 40; ph <= 260; ph += 3) {
+    const ys = placeCaptions(ranked(g), keepOf(g), 6, 15, ph), plates = ys.flatMap((y, i) => y === null ? [] : [plate(g.items[i]!.x, g.items[i]!.w, y)]);
+    plates.forEach((p, i) => {
+      assert.ok(p.y1 <= ph, `${g.name} on ${ph} px: a plate past the foot at ${p.y0}`);
+      for (const r of keepOf(g)) assert.ok(!over(p, r), `${g.name} on ${ph} px: over a keep-out`);
+      plates.slice(0, i).forEach(q => assert.ok(!over(p, q), `${g.name} on ${ph} px: plates overlap`));
+    });
+  }
+  // A plot with room keeps every plate, in the order given (the frames' own heights above).
+  assert.deepEqual(placeCaptions(ranked(f), keep, 6, 15, 138), [104, 48, 121]);
+});
+
+test('the strip says where it printed its names, and the map keeps the plates off them and places them after the strip is drawn', () => {
+  const bars: StripBar[] = [0, 1, 2, 3].map(i => ({ t: i, x: 20 + i * 30, w: 20, buy: 100, sell: 50, source: 'candle', split: true, exact: true, trades: 0, i: -1 } as StripBar));
+  const draw = { pw: 392, ph: 120, height: 34, palette: PALETTES.dark!, bars: 'split' as const, emphasis: false, highlights: null, recorded: 'Volume · 15m', candles: 'Binance 15m candles', hovered: -1 };
+  const top = stripNamesTop(120, 34), shown = paintVolumeStrip(namesCtx().ctx, bars, draw);
+  assert.deepEqual(shown, [{ x0: 10, x1: 10 + 'Binance 15m candles'.length * 5.6 + 8, y0: top, y1: top + 14 }]);
+  assert.deepEqual(paintVolumeStrip(namesCtx().ctx, bars, { ...draw, clear: { x0: 8, x1: 380, y0: top - 2, y1: top + 10 } }), [], 'a name left out is not reported');
+  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
+  assert.match(heat, /this\.#stripNames = paintVolumeStrip\(ctx, bars,/);
+  assert.match(heat, /names: this\.#stripNames/);
+  assert.match(heat, /rank: item\.dashed \? 1 : 0/, 'the take profits\' plate goes first where one must');
 });

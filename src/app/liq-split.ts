@@ -129,13 +129,16 @@ export function cornerSpan(els: readonly (CornerEl | null)[], left: number): Rec
 /**
  * What the stripe's caption plates keep clear of, each widened by the room it keeps: the corner buttons (`corner`, 4 px round them), the
  * legend and the room under it for the note (`legend`, its right edge and foot: 8 px beside it, 36 px under it), the "depth recorded from"
- * note (`history`, one 15 px row from its top) and the note under the legend (`note`, 3 px under its last line), in that order.
+ * note (`history`, one 15 px row from its top), the volume strip's names (`names`, 2 px round them: the plates are painted after the strip,
+ * so one over a name hid it, Sol, review 2026-11-20) and the note under the legend (`note`, 3 px under its last line), in that order (the
+ * old rows check the last one again, `captionRows`).
  */
-export function captionKeepOut(o: { corner: Rect | null; legend: { right: number; bottom: number }; history: { x0: number; x1: number; top: number } | null; note: { x0: number; x1: number; top: number; bottom: number } | null }): Rect[] {
+export function captionKeepOut(o: { corner: Rect | null; legend: { right: number; bottom: number }; history: { x0: number; x1: number; top: number } | null; note: { x0: number; x1: number; top: number; bottom: number } | null; names?: readonly Rect[] }): Rect[] {
   const out: Rect[] = [];
   if (o.corner) out.push({ x0: o.corner.x0 - 4, y0: -Infinity, x1: o.corner.x1 + 4, y1: o.corner.y1 + 4 });
   out.push({ x0: -Infinity, y0: -Infinity, x1: o.legend.right + 8, y1: o.legend.bottom + 36 });
   if (o.history) out.push({ x0: o.history.x0 - 4, y0: o.history.top, x1: o.history.x1 + 4, y1: o.history.top + 15 });
+  for (const n of o.names ?? []) out.push({ x0: n.x0 - 2, y0: n.y0 - 2, x1: n.x1 + 2, y1: n.y1 + 2 });
   if (o.note) out.push({ x0: o.note.x0 - 4, y0: o.note.top, x1: o.note.x1 + 4, y1: o.note.bottom + 3 });
   return out;
 }
@@ -175,8 +178,11 @@ export function captionRows(items: readonly { x: number; w: number }[], keepOut:
  * before it (`gap` px apart), moved down past whatever it lies over and checked against all of them again after every move, so one pushed
  * under the corner buttons never lands in a note. On a phone held sideways (a 138 px plot) the rows put the Liquidations plate over the
  * "depth recorded from" note, below a plate the legend had sent down; placed this way it stands under the Draw key, where it is free.
+ * A plate whose highest free place ends past the plot's foot has no room (the time axis paints over the foot; Sol, review 2026-11-20): then
+ * they are placed again in the order of `rank` (lowest first, the split's lanes before the take profits'), and a plate that still has no room
+ * is left out (null): its lane still says what it holds under the pointer.
  */
-export function placeCaptions(items: readonly { x: number; w: number }[], keepOut: readonly Rect[], top: number, h: number, bottom = Infinity, gap = 2): number[] {
+export function placeCaptions(items: readonly { x: number; w: number; rank?: number }[], keepOut: readonly Rect[], top: number, h: number, bottom = Infinity, gap = 2): (number | null)[] {
   const over = (r: Rect, x: number, w: number, y: number): boolean => x < r.x1 && x + w > r.x0 && y < r.y1 && y + h > r.y0;
   const rows = captionRows(items, keepOut, top, h, gap);
   const clean = rows.every((y, i) => {
@@ -184,20 +190,28 @@ export function placeCaptions(items: readonly { x: number; w: number }[], keepOu
     return y + h <= bottom && !keepOut.some(r => over(r, x, w, y)) && rows.slice(0, i).every((v, j) => !over({ x0: items[j]!.x - gap, x1: items[j]!.x + items[j]!.w + gap, y0: v - gap, y1: v + h + gap }, x, w, y));
   });
   if (clean) return rows;
-  const placed: Rect[] = [];
-  return items.map(({ x, w }) => {
-    let y = top;
-    // Each move takes the plate past the foot of something it lay over, and nothing is passed twice: at most one move per obstacle.
-    for (let moves = 0; moves <= keepOut.length + placed.length; moves++) {
-      let next = y;
-      for (const r of keepOut) if (over(r, x, w, y)) next = Math.max(next, r.y1);
-      for (const r of placed) if (over(r, x, w, y)) next = Math.max(next, r.y1);
-      if (next === y) break;
-      y = next;
+  const place = (order: readonly number[]): (number | null)[] => {
+    const ys: (number | null)[] = items.map(() => null), placed: Rect[] = [];
+    for (const i of order) {
+      const { x, w } = items[i]!;
+      let y = top;
+      // Each move takes the plate past the foot of something it lay over, and nothing is passed twice: at most one move per obstacle.
+      for (let moves = 0; moves <= keepOut.length + placed.length; moves++) {
+        let next = y;
+        for (const r of keepOut) if (over(r, x, w, y)) next = Math.max(next, r.y1);
+        for (const r of placed) if (over(r, x, w, y)) next = Math.max(next, r.y1);
+        if (next === y) break;
+        y = next;
+      }
+      if (y + h > bottom) continue;
+      placed.push({ x0: x - gap, x1: x + w + gap, y0: y - gap, y1: y + h + gap });
+      ys[i] = y;
     }
-    placed.push({ x0: x - gap, x1: x + w + gap, y0: y - gap, y1: y + h + gap });
-    return y;
-  });
+    return ys;
+  };
+  const given = items.map((_, i) => i), first = place(given);
+  if (first.every(y => y !== null)) return first;
+  return place([...given].sort((a, b) => (items[a]!.rank ?? 0) - (items[b]!.rank ?? 0) || a - b));
 }
 
 /**
@@ -267,13 +281,14 @@ export function placeProbeBoxes(sizes: readonly [BoxSize | null, BoxSize | null]
 }
 
 /**
- * Whether a finger's two boxes fit the ladder (`W` by `H`) together as `placeProbeBoxes` places them: each no wider than the ladder (2 px in
- * at both sides), and side by side, or one above the other within its height. A box alone always fits (it is kept on the ladder).
+ * Whether a finger's two boxes fit the ladder (`W` by `H`) together as `placeProbeBoxes` places them: every box shown inside the ladder (2 px
+ * in at each side, across and down), then side by side or one above the other within its height. A box alone fits where it fits the ladder.
+ * Sol, review 2026-11-20: room across alone kept two 152 px boxes whole on a 120 px ladder, and a box alone was never measured.
  */
 export function probeBoxesFit(sizes: readonly [BoxSize | null, BoxSize | null], W: number, H: number): boolean {
-  const [a, b] = sizes, edge = 2, gap = 4;
-  if (!a || !b) return true;
-  return a.w <= W - 2 * edge && b.w <= W - 2 * edge && (a.w + b.w + gap + 16 <= W || a.h + gap + b.h <= H - 2 * edge);
+  const [a, b] = sizes, edge = 2, gap = 4, inside = (s: BoxSize): boolean => s.w <= W - 2 * edge && s.h <= H - 2 * edge;
+  if (!a || !b) { const one = a ?? b; return !one || inside(one); }
+  return inside(a) && inside(b) && (a.w + b.w + gap + 16 <= W || a.h + gap + b.h <= H - 2 * edge);
 }
 
 /**
