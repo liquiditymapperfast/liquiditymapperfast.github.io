@@ -1,7 +1,7 @@
 import type { Palette } from './theme.ts';
 import { price as fmtPrice, usd } from './format.ts';
 import { t } from './i18n.ts';
-import { paintInfoBox, type InfoColor, type InfoLine } from './infobox.ts';
+import { paintInfoBox, type InfoColor, type InfoLine, type InfoRect } from './infobox.ts';
 
 /**
  * Mirror hover: pointing at a price highlights the band from the mid to that price and the equally wide band on the other
@@ -69,10 +69,13 @@ export function mirrorLines(stats: MirrorStats, names: SideNames, title?: string
   return lines;
 }
 
-/** Draw `lines` in a box beside (x, y), kept inside `bounds`. `placement` extends the box down or up from y (toward the inside of a band, clear of its edge labels) instead of centring it. */
+/**
+ * Draw `lines` in a box beside (x, y), kept inside `bounds`, and say where it was drawn. `placement` extends the box down or up from y (toward
+ * the inside of a band, clear of its edge labels) instead of centring it.
+ */
 export function paintMirrorBox(ctx: CanvasRenderingContext2D, lines: MirrorLine[], x: number, y: number, bounds: { x0: number; y0: number; x1: number; y1: number }, p: Palette,
-  pick: (color: InfoColor) => string, placement: 'center' | 'down' | 'up' = 'center'): void {
-  paintInfoBox(ctx, lines, x, y, bounds, p, { pick, placement });
+  pick: (color: InfoColor) => string, placement: 'center' | 'down' | 'up' = 'center'): InfoRect | null {
+  return paintInfoBox(ctx, lines, x, y, bounds, p, { pick, placement });
 }
 
 /** Shade everything in [y0, y1) outside the highlighted band [bandTop, bandBottom] so the inner layers stand out. */

@@ -321,6 +321,18 @@ export const liqSplitDrawn = (state: AppState): boolean => !COMPACT && liqColumn
 export const stripeSplitRoom = (state: AppState): boolean => liqSplitDrawn(state) || (!COMPACT && !state.liqLevels.column);
 /** The width the book profile takes: its column, the strip in a compact map beside the liquidation column (`PROFILE_STRIP_W`), or 0. */
 export function profileColumnW(state: AppState): number { return !state.show.profile ? 0 : COMPACT && liqColumnShown(state) ? PROFILE_STRIP_W : PROFILE_W; }
+/**
+ * Where the profile column's Mirror box stands, for a map `pw` × `ph` (Karl, 2026-11-20: "it should pop up right besides the column that I'm
+ * actually hovering over"): pointing at the profile column's left edge (`x`) and kept left of it, so over the liquidation column where that
+ * stands between the map and this one, and never over the columns right of it or the price axis. Kept inside the map alone, it stood a whole
+ * column away, beside the liquidation column. Over that column it keeps below its heading (`liqHead`, its height), whose button and History
+ * link lie over the canvas and would hide its first lines. With no liquidation column, and beside a compact map's two 16 px strips (where it
+ * would cover a sliver of the liquidation strip), it is where it always was: inside the map, against its edge.
+ */
+export function profileBoxFrame(state: AppState, pw: number, ph: number, liqHead: number): { x: number; bounds: { x0: number; y0: number; x1: number; y1: number } } {
+  const liqW = liqColumnW(state), x = pw + liqW, wide = liqW >= PROFILE_W;
+  return { x, bounds: { x0: 0, y0: wide ? Math.min(liqHead, ph / 3) : 0, x1: wide ? x : pw, y1: ph } };
+}
 export function gutter(state: AppState): number { return AXIS_W + liqColumnW(state) + profileColumnW(state) + sideColumns(state).right.length * TRADED_W; }
 /** The width the columns left of the map take, between the flow column and the map: the map and the panes under it start after them. */
 export function leftGutter(state: AppState): number { return sideColumns(state).left.length * TRADED_W; }
@@ -4028,9 +4040,10 @@ export class HeatPane {
     ctx.restore(); ctx.textBaseline = 'middle';
     const box = this.#profileBox as { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null; // set by #paintProfileMirror above
     if (box) {
-      // The comparison pops up beside the profile column, pointing at it, and only while the pointer is on the column.
+      // The comparison pops up beside the profile column, pointing at it, and only while the pointer is on the column (`profileBoxFrame`).
       this.#profileBox = null;
-      paintMirrorBox(ctx, box.lines, x0, box.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, c => c === 'above' ? p.ask : c === 'below' ? p.bid : c === 'muted' ? p.muted : p.text, box.placement);
+      const frame = profileBoxFrame(state, pw, ph, this.#liqHeadH);
+      paintMirrorBox(ctx, box.lines, frame.x, box.y, frame.bounds, p, c => c === 'above' ? p.ask : c === 'below' ? p.bid : c === 'muted' ? p.muted : p.text, box.placement);
       ctx.textBaseline = 'middle';
     }
     ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(x0 + 0.5, 0); ctx.lineTo(x0 + 0.5, ph); ctx.stroke();
