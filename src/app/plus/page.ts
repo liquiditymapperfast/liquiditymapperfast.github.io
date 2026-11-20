@@ -30,7 +30,7 @@ import { demoControl } from './demo-levels.ts';
 import { keyEntry, type KeyEntry } from './key.ts';
 import { PaidStore, type Paid } from './paid.ts';
 import { besideMembership, cannotBuy, cannotHere, keepAgainSettling, keySettling, keyShownFor, lateText, restoreBy, setUpPayment, type Answer, type Fresh } from './page-flow.ts';
-import { drawPageParts, drawTopRow, money, waitingButton, waitingNote } from './page-top.ts';
+import { drawBuyRows, drawPageParts, money, waitingButton, waitingNote } from './page-top.ts';
 import { features, hero, trust } from './present.ts';
 
 /** The part of Paddle's script this page uses (Paddle.js v2). */
@@ -78,6 +78,9 @@ const dark = wearTheme();
 const onPill = el('span', { class: 'px-pill on', hidden: true }, el('span', { class: 'px-check', ariaHidden: 'true' }), el('span', { textContent: t('Plus is on in this browser') }));
 const cta = el('button', { type: 'button', class: 'px-cta' });
 const top = el('div', { class: 'px-top', hidden: true }), topFine = el('div', { class: 'px-top-fine', hidden: true });
+/** The buy row once more at the end of the page, before "Already have Plus?" (on sale only; drawn by the same function as the hero's). */
+const endTop = el('div', { class: 'px-top', hidden: true }), endFine = el('div', { class: 'px-top-fine', hidden: true });
+const endBox = el('section', { class: 'buy-end', hidden: true, ariaLabel: t('Get Plus') }, endTop, endFine);
 const feats = features(day);
 const stage = el('section', { class: 'px-stage', ariaLabel: t('Interactive demo') });
 const rest = el('div', { class: 'plus-rest' }), foot = el('div', { class: 'plus-foot' });
@@ -286,10 +289,10 @@ function notOnSaleSection(): HTMLElement {
   return box;
 }
 
-/** The hero's buy row while the page is drawn (`page-top.ts` `drawTopRow`), from this page's state. */
+/** The buy rows while the page is drawn (`page-top.ts` `drawBuyRows`: the hero's and the end's), from this page's state. */
 function drawTop(buying: boolean): void {
   const sale = plusOnSale();
-  drawTopRow({ pricePill, onPill, cta, top, topFine },
+  drawBuyRows({ pricePill, onPill, cta, top, topFine }, { top: endTop, topFine: endFine, box: endBox },
     { onSale: sale, stands: member.state, buying, mode: member.mode, paidReady: paid.ready, pending: paid.list()[0], busy: state.busy !== '', tried: id => state.tried.has(id), said: buying && sale ? said('buy') : [] },
     { buy: price => { void buy(price); }, press: id => { void completed(id, 'press'); } });
 }
@@ -397,6 +400,8 @@ function drawRest(buying: boolean): void {
     ...(stands !== 'none' ? [memberSection(buying)] : []),
     ...(stands === 'none' && member.unstored ? [removedHereSection()] : []),
     ...(buying && !plusOnSale() ? [notOnSaleSection()] : []),
+    // On sale, the buy row once more, just before "Already have Plus?", while it holds something; not on sale, nothing here.
+    ...(plusOnSale() && !endBox.hidden ? [endBox] : []),
     ...(stands !== 'on' ? [deviceSection()] : []),
   );
 }
@@ -410,7 +415,7 @@ function drawPage(): void {
   if (state.shown !== null && state.shown !== member.key) state.shown = null;
   if (state.fresh !== null && state.fresh.key !== member.key) state.fresh = null;
   // The page is drawn afresh: what had the focus (a field being typed in, a button just pressed) gets it back, the caret where it was.
-  const drawn = (node: Node): boolean => rest.contains(node) || top.contains(node) || topFine.contains(node);
+  const drawn = (node: Node): boolean => rest.contains(node) || top.contains(node) || topFine.contains(node) || endBox.contains(node);
   const active = document.activeElement instanceof HTMLElement && drawn(document.activeElement) ? document.activeElement : null;
   const at = active instanceof HTMLInputElement ? [active.selectionStart, active.selectionEnd] as const : null;
   const focus = active?.id ? { id: active.id, at } : null;

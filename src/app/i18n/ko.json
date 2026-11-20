@@ -2942,8 +2942,6 @@
  "{price} a year": "연 {price}",
  "Renew Plus": "Plus 갱신하기",
  "Get Plus": "Plus 구독하기",
- "Prices are before tax; the checkout shows the total in your currency. You can end Plus at any time, and it then runs to the end of the period paid for.": "가격은 세금 별도이며, 결제 창에 내 통화로 계산한 총액이 표시됩니다. Plus는 언제든지 해지할 수 있고, 해지해도 결제한 기간이 끝날 때까지 유지됩니다.",
- "Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders. Paddle provides all customer service inquiries and handles returns.": "주문 절차는 저희의 온라인 리셀러인 Paddle.com이 진행합니다. Paddle.com은 저희의 모든 주문에 대한 법적 판매자(Merchant of Record)입니다. Paddle은 모든 고객 서비스 문의에 응대하고 반품을 처리합니다.",
  "Remove Plus from this browser": "이 브라우저에서 Plus 삭제",
  "Press again to remove it": "다시 누르면 삭제합니다",
  "Plus is on in this browser": "이 브라우저에서 Plus가 활성화되어 있습니다",
@@ -3285,5 +3283,7 @@
  "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "이 브라우저에서는 Plus를 구매할 수 없습니다. 다른 브라우저를 사용하세요. 다른 곳에서 구매한 키는 여기서도 작동합니다.",
  "Removed in this tab only: this browser still keeps the key.": "이 탭에서만 삭제했습니다. 이 브라우저에는 아직 키가 저장되어 있습니다.",
  "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "이 구독에는 하루 동안 키가 {n}개 발급되었습니다. 그중 하나를 사용하거나 {m}분 후에 다시 시도하세요.",
- "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "이 구독에는 하루 동안 키가 {n}개 발급되었습니다. 그중 하나를 사용하거나 {h}시간 후에 다시 시도하세요."
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "이 구독에는 하루 동안 키가 {n}개 발급되었습니다. 그중 하나를 사용하거나 {h}시간 후에 다시 시도하세요.",
+ "Renews monthly until you end it · before tax · sold by Paddle.com, Merchant of Record": "해지할 때까지 매월 갱신 · 세전 · 판매: Paddle.com(Merchant of Record)",
+ "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "계정이 필요 없습니다. 결제하면 이 브라우저에서 Plus가 켜지고, 다른 기기에서 쓸 키를 받습니다."
 }

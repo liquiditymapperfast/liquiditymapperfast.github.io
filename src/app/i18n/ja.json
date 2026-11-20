@@ -2942,8 +2942,6 @@
  "{price} a year": "年額 {price}",
  "Renew Plus": "Plus を再開",
  "Get Plus": "Plus に加入",
- "Prices are before tax; the checkout shows the total in your currency. You can end Plus at any time, and it then runs to the end of the period paid for.": "価格は税抜きです。購入手続きの画面に、お使いの通貨での合計額が表示されます。Plus はいつでも解約でき、その場合も支払い済みの期間の終わりまで使えます。",
- "Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders. Paddle provides all customer service inquiries and handles returns.": "ご注文の手続きは、当サイトのオンライン再販業者である Paddle.com が行います。Paddle.com は、当サイトのすべてのご注文における記録上の販売者（Merchant of Record）です。Paddle は、カスタマーサービスに関するすべてのお問い合わせに対応し、返品を取り扱います。",
  "Remove Plus from this browser": "このブラウザーから Plus を削除",
  "Press again to remove it": "もう一度押すと削除します",
  "Plus is on in this browser": "このブラウザーでは Plus が有効です",
@@ -3285,5 +3283,7 @@
  "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "このブラウザーでは Plus を購入できません。別のブラウザーをお使いください。別の場所で購入したキーはここでも使えます。",
  "Removed in this tab only: this browser still keeps the key.": "このタブでのみ削除しました。このブラウザーにはキーがまだ保存されています。",
  "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "このサブスクリプションには、1 日のうちに {n} 個のキーが発行されました。そのうちの 1 つを使うか、{m} 分後にもう一度試してください。",
- "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "このサブスクリプションには、1 日のうちに {n} 個のキーが発行されました。そのうちの 1 つを使うか、{h} 時間後にもう一度試してください。"
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "このサブスクリプションには、1 日のうちに {n} 個のキーが発行されました。そのうちの 1 つを使うか、{h} 時間後にもう一度試してください。",
+ "Renews monthly until you end it · before tax · sold by Paddle.com, Merchant of Record": "解約するまで毎月更新 · 税抜 · 販売: Paddle.com（Merchant of Record）",
+ "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "アカウントは不要です。お支払いでこのブラウザーの Plus が有効になり、ほかのデバイス用のキーが届きます。"
 }

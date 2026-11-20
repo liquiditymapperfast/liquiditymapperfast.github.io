@@ -21,14 +21,18 @@ body { margin: 0; background: var(--bg, #fff); color: var(--text, #1b1d1e); font
    button, its small print under the line. */
 .plus-page .px-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; max-width: 100%; }
 .plus-page .px-top[hidden], .plus-page .px-top-fine[hidden] { display: none; }
-.plus-page .px-top.waiting { flex: 1 1 100%; }
+.plus-page .px-top:is(.waiting, .price) { flex: 1 1 100%; }
 .plus-page .px-buy { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 16px; border: 1px solid var(--ui, #1f6feb); border-radius: var(--radius); background: var(--ui, #1f6feb); color: var(--on-ui, #fff); font: inherit; font-size: 14px; white-space: nowrap; cursor: pointer; }
 .plus-page .px-buy b { font-weight: 650; }
 .plus-page .px-buy span { opacity: .9; }
 .plus-page .px-buy.plain { background: none; color: var(--ui, #1f6feb); }
 .plus-page .px-buy:hover:not(:disabled) { filter: brightness(1.08); }
-.plus-page .px-buy:disabled, .plus-page .px-top #plus-paid-again:disabled { opacity: .55; cursor: default; }
-.plus-page .px-top #plus-paid-again { min-height: 34px; padding: 0 14px; border: 1px solid var(--ui, #1f6feb); border-radius: var(--radius); background: var(--ui, #1f6feb); color: var(--on-ui, #fff); font: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.plus-page .px-buy:disabled, .plus-page .px-top [id^="plus-paid-again"]:disabled { opacity: .55; cursor: default; }
+.plus-page .px-top [id^="plus-paid-again"] { min-height: 34px; padding: 0 14px; border: 1px solid var(--ui, #1f6feb); border-radius: var(--radius); background: var(--ui, #1f6feb); color: var(--on-ui, #fff); font: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+/* How it works without an account: beside the button while the line has room, under it on a phone. */
+.plus-page .px-top-howto { flex: 1 1 280px; min-width: 0; color: var(--muted, #5b6470); font-size: 13px; line-height: 1.4; }
+/* The buy row once more at the end of the page, before "Already have Plus?". */
+.plus-rest section.buy-end { margin-top: 22px; }
 .plus-page .px-top-note { flex: 1 1 240px; min-width: 0; color: var(--muted, #5b6470); font-size: 13px; line-height: 1.4; }
 .plus-page .px-top-said { padding: 5px 10px; border-left: 3px solid var(--ask, #c2255c); background: color-mix(in srgb, var(--ask, #c2255c) 8%, transparent); font-size: 13px; line-height: 1.4; }
 .plus-page .px-top-fine { max-width: 46em; margin-top: 8px; }
@@ -57,7 +61,7 @@ body { margin: 0; background: var(--bg, #fff); color: var(--text, #1b1d1e); font
 .plus-page footer { margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--line, #d7dbe0); font-size: 14px; }
 @media (max-width: 640px) {
   .plus-page { padding: 18px 16px 36px; }
-  .plus-page .px-buy, .plus-page .px-top #plus-paid-again { min-height: 44px; }
+  .plus-page .px-buy, .plus-page .px-top [id^="plus-paid-again"] { min-height: 44px; }
   .plus-rest .key-form .key-in { height: 44px; }
   .plus-rest .key-form :is(.key-go, .key-show) { min-height: 44px; }
 }

@@ -3195,8 +3195,6 @@
  "{price} a year": "{price} в год",
  "Renew Plus": "Возобновить Plus",
  "Get Plus": "Подключить Plus",
- "Prices are before tax; the checkout shows the total in your currency. You can end Plus at any time, and it then runs to the end of the period paid for.": "Цены указаны без учёта налогов; итоговую сумму в вашей валюте покажет форма оплаты. Отменить Plus можно в любой момент: подписка будет действовать до конца оплаченного периода.",
- "Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders. Paddle provides all customer service inquiries and handles returns.": "Оформление заказов осуществляет наш онлайн-реселлер Paddle.com. Paddle.com является официальным продавцом (Merchant of Record) по всем нашим заказам. Paddle обрабатывает все обращения в службу поддержки клиентов и занимается возвратами.",
  "Remove Plus from this browser": "Убрать Plus из этого браузера",
  "Press again to remove it": "Нажмите ещё раз, чтобы убрать",
  "Plus is on in this browser": "Plus действует в этом браузере",
@@ -3563,5 +3561,7 @@
  "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "В этом браузере Plus купить нельзя. Воспользуйтесь другим браузером; ключ, купленный в другом месте, работает и здесь.",
  "Removed in this tab only: this browser still keeps the key.": "Удалён только в этой вкладке: браузер всё ещё хранит ключ.",
  "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "По этой подписке за сутки уже выдано ключей: {n}. Воспользуйтесь одним из них или попробуйте ещё раз через {m} мин.",
- "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "По этой подписке за сутки уже выдано ключей: {n}. Воспользуйтесь одним из них или попробуйте ещё раз через {h} ч."
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "По этой подписке за сутки уже выдано ключей: {n}. Воспользуйтесь одним из них или попробуйте ещё раз через {h} ч.",
+ "Renews monthly until you end it · before tax · sold by Paddle.com, Merchant of Record": "Продлевается ежемесячно, пока вы не отмените · без налогов · продавец Paddle.com, Merchant of Record",
+ "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "Без аккаунта: после оплаты Plus включается в этом браузере, а вы получаете ключ для других устройств."
 }

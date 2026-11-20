@@ -2942,8 +2942,6 @@
  "{price} a year": "每年 {price}",
  "Renew Plus": "续费 Plus",
  "Get Plus": "开通 Plus",
- "Prices are before tax; the checkout shows the total in your currency. You can end Plus at any time, and it then runs to the end of the period paid for.": "价格不含税；付款时会显示按你的货币计算的总额。你可以随时取消 Plus，取消后仍可使用到已付费周期结束。",
- "Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders. Paddle provides all customer service inquiries and handles returns.": "我们的订购流程由我们的在线经销商 Paddle.com 负责。Paddle.com 是我们所有订单的登记商户（Merchant of Record）。Paddle 负责处理所有客户服务咨询并办理退货。",
  "Remove Plus from this browser": "从此浏览器中移除 Plus",
  "Press again to remove it": "再按一次即移除",
  "Plus is on in this browser": "Plus 已在此浏览器中启用",
@@ -3285,5 +3283,7 @@
  "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "无法在此浏览器中购买 Plus。请使用其他浏览器；在别处购买的密钥在这里也能用。",
  "Removed in this tab only: this browser still keeps the key.": "仅在此标签页中移除：此浏览器仍保存着密钥。",
  "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "这个订阅在一天内已发放 {n} 个密钥。请使用其中一个，或者在 {m} 分钟后重试。",
- "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "这个订阅在一天内已发放 {n} 个密钥。请使用其中一个，或者在 {h} 小时后重试。"
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "这个订阅在一天内已发放 {n} 个密钥。请使用其中一个，或者在 {h} 小时后重试。",
+ "Renews monthly until you end it · before tax · sold by Paddle.com, Merchant of Record": "按月续订，直到你取消 · 不含税 · 由 Paddle.com 销售（Merchant of Record）",
+ "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "无需账户：付款后，Plus 会在此浏览器中开通，你还会获得一个可在其他设备上使用的密钥。"
 }

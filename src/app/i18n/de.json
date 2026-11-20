@@ -3099,8 +3099,6 @@
  "{price} a year": "{price} pro Jahr",
  "Renew Plus": "Plus erneuern",
  "Get Plus": "Plus abonnieren",
- "Prices are before tax; the checkout shows the total in your currency. You can end Plus at any time, and it then runs to the end of the period paid for.": "Die Preise verstehen sich zuzüglich Steuern; die Kasse zeigt den Gesamtbetrag in deiner Währung. Du kannst Plus jederzeit kündigen; es läuft dann bis zum Ende des bezahlten Zeitraums.",
- "Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders. Paddle provides all customer service inquiries and handles returns.": "Unser Bestellvorgang wird von unserem Online-Wiederverkäufer Paddle.com durchgeführt. Paddle.com ist für alle unsere Bestellungen der offizielle Verkäufer (Merchant of Record). Paddle bearbeitet alle Kundendienstanfragen und wickelt Rückgaben ab.",
  "Remove Plus from this browser": "Plus aus diesem Browser entfernen",
  "Press again to remove it": "Zum Entfernen noch einmal drücken",
  "Plus is on in this browser": "Plus ist in diesem Browser aktiv",
@@ -3457,5 +3455,7 @@
  "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "Plus kann in diesem Browser nicht gekauft werden. Nutze einen anderen Browser; ein anderswo gekaufter Schlüssel funktioniert auch hier.",
  "Removed in this tab only: this browser still keeps the key.": "Nur in diesem Tab entfernt: Dieser Browser behält den Schlüssel noch.",
  "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "Für dieses Abo wurden innerhalb eines Tages {n} Schlüssel ausgegeben. Verwende einen davon oder versuche es in {m} Min. noch einmal.",
- "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "Für dieses Abo wurden innerhalb eines Tages {n} Schlüssel ausgegeben. Verwende einen davon oder versuche es in {h} Std. noch einmal."
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "Für dieses Abo wurden innerhalb eines Tages {n} Schlüssel ausgegeben. Verwende einen davon oder versuche es in {h} Std. noch einmal.",
+ "Renews monthly until you end it · before tax · sold by Paddle.com, Merchant of Record": "Verlängert sich monatlich, bis du kündigst · vor Steuern · verkauft von Paddle.com, Merchant of Record",
+ "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "Kein Konto: Mit der Zahlung wird Plus in diesem Browser aktiv, und du bekommst einen Schlüssel für deine anderen Geräte."
 }
