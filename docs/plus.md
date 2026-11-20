@@ -143,7 +143,11 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
   hero, the demo (mounted once the sheet has opened, destroyed as it closes), the three feature sections, the access card (gift keys: the
   key form; once on sale: Subscribe to `https://liquiditymapper.com/plus/`, the one place Paddle's checkout runs, and "Have a key?"; a
   member: until when), what stays free, and the site's terms, privacy and refunds pages. The Plus page opens on the same hero, demo and
-  sections, above its checkout, restore and key management.
+  sections, above its key management and restore. While Plus is on sale its buy row is in the hero (Karl, 2026-11-20: one click to the
+  checkout): one thin row with the price button ("Get Plus $10 a month", `plus-monthly`, opening the checkout at once), the tax line and
+  Paddle's Merchant-of-Record line right under it, and in its place a waiting payment's note and "Set up Plus", or the words of a tab or
+  browser that cannot buy (`page-flow.ts` `topRow`); nothing is sold further down. While it is not on sale the hero keeps "Gift keys only
+  today" and "Activate a key", and the "Not on sale yet" section stays under it.
 - **A key entered in the app** or on the Plus page goes to the renewal (`POST /v1/pass/renew`), in the same masked field with Reveal (the
   page's key box is the app's form, kept through the page's redraws and fresh each time the box comes back).
   Its grant is taken only for the membership it was sent under (`Plus.capture` when it is sent, `Plus.acceptIf` when the grant comes), so a
