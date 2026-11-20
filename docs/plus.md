@@ -188,6 +188,9 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
 3. The three legal pages (`src/app/public/terms/`, `privacy/`, `refunds/`) name the seller and the contact address
    (`support@liquiditymapper.com`, forwarded by Cloudflare Email Routing); the Plus page's footer names the same address
    (`PLUS_CONTACT`). The prices on the Plus page and in Paddle must say the same.
+4. The refund policy (since 2026-11-20, matching Paddle's own buyer terms) refunds any payment, the first or a renewal, in
+   full within 14 days, and says a refund ends the subscription. The Plus server does not act on refunds (HyperLiquidMap_Plus
+   README, "Refunds and chargebacks"), so a refund is done in Paddle together with cancelling that subscription there.
 
 ## Testing without the real services
 
