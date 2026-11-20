@@ -167,12 +167,20 @@ short:
   one transaction (`Plus` commit) that checks the stored baseline `{ seed, gen }` the operation began with (a reset makes a new seed, so an
   answer from before it is never taken) and the tab's revision; `localStorage` is a mirror for synchronous reads and other tabs. Without
   IndexedDB, or when it refuses to open and no marker is set, the membership stays in `localStorage` as before (plain mode). A tab with the
-  marker whose database is not open yet or will not open reads the mirror, renews in memory, and takes no key.
+  marker whose database is not open yet or will not open reads the mirror, renews in memory, and takes no key. A tab without the marker
+  whose open has not answered after its 3 s stays opening (the controls disabled, no message) and renews the key it shows in memory only,
+  so an open that never answers does not stop a member's renewals; a late open adopts the stored membership and stores that pass. A tab
+  enters IDB mode only after it has read the stored membership (three tries, else unusable here, showing the mirror until a reload).
 - **Who may issue.** Only a tab in IDB mode with the seed read issues: the prices, the checkout (opened only after a seed read), a payment's
   "Set up Plus" and the receipt form. Plain mode says "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere
   works here." in the place of the prices; a tab not ready or unusable here says "Plus cannot be set up in this tab. Reload the page, or use
   another tab." The not-on-sale page is the same in every mode. The bodies of `/v1/pass` and `/v1/restore` are built only by the gate in
-  `plus-db.ts`, from the seed read in a transaction (a source test pins it).
+  `plus-db.ts`, from the seed read in a transaction (a source test pins it). Every operation that may write the membership (a key, a
+  receipt, a payment's grant, Remove) begins with one readwrite transaction that makes the seed if there is none, so each has an epoch; a
+  request whose seed differs from the one its operation began with sends nothing. (A browser whose storage is full and that has no seed yet
+  therefore refuses key entry in IDB mode with the "cannot be set up in this tab" text.)
+- **Nothing of Plus travels.** A hand-over from the old address and a backup never write an `lmf.plus*` key: they are skipped, and the rest
+  of the visitor's settings are taken (the old address's page deployed before 2026-11-20 still sends them).
 - **A payment's record** (`paid:<txn>` = `{ at }`) is written once when its checkout completes and waits from a day before that time to a
   day after it. Nothing asks for it by itself: loading the page shows it with "Set up Plus" (Try again after this tab's own attempt ended
   without Plus). Before every ask one transaction reads the seed and confirms the record still waits. The asks follow `schedule.ts`: backoff
@@ -187,14 +195,19 @@ short:
   last few minutes may not show yet." Set `PLUS_RESTORE` to true when the sale opens (a test fails otherwise).
 - **Accepted residual:** a key entered or removed in a tab of the previous build during the switch-over is undone as soon as a new-build tab
   repairs the mirror (the old tab's own reload then adopts the repaired mirror); the member enters the key again in a reloaded tab. The
-  update notice offers Reload.
+  update notice offers Reload. A later pass an old tab renewed for the same key is adopted into the database while a new-build tab is open
+  to hear it. After a rollback to the previous build, its renewals live in `localStorage` only; when this build returns, the database's
+  membership stands, the mirror is written again from it, and one renewal follows if its pass is near its end (checked in Chrome,
+  2026-11-20).
 
 ## How the page behaves
 
 - **Renewal.** A pass with under six hours left is renewed with the key, at most about once a minute per tab (`next`, kept beside the
   membership, is the wait; tabs share it when they see each other's storage); after a refusal, or a pass that came already near its end
   (the last hours of a membership), the wait is an hour. A server's `Retry-After` is used between one minute and one hour, where the
-  server exposes it to the page.
+  server exposes it to the page. In IDB mode the minute is reserved in a transaction before a renewal goes, so all tabs together renew
+  about once a minute; a tab whose reservation write fails (a full storage) still renews on its own wait in memory, at most once a minute
+  by itself, so Plus does not go off because the browser will not write. Try again clears the wait, the tab's own included.
 - **One paid file first.** After the pass changes (and at the start) the history asks for one paid file, the newest closed day, and asks
   for the rest only once that one is answered: a gate that refuses every pass, even fresh ones, gets one request per new pass instead of
   every paid day of the view at once. A 4xx other than the refusal and a 429 (a day the service has no file for) counts as answered:
