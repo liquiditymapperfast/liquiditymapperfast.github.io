@@ -2980,7 +2980,7 @@
  "Checking Plus with the server…": "サーバーに Plus を確認しています…",
  "Plus runs until {date}.": "Plus は {date} まで使えます。",
  "This key no longer opens Plus: its subscription has ended, or the key was replaced by newer ones.": "このキーでは Plus を使えなくなりました。サブスクリプションが終了したか、キーが新しいキーに置き換えられています。",
- "Subscribing again below brings Plus back, with a new key.": "下でもう一度加入すると、新しいキーで Plus がまた使えるようになります。",
+ "Subscribing again brings Plus back, with a new key.": "もう一度加入すると、新しいキーで Plus がまた使えるようになります。",
  "This browser would not keep Plus: it lasts until this tab closes. Copy the key now and enter it again next time.": "このブラウザーは Plus を保存できませんでした。Plus を使えるのは、このタブを閉じるまでです。今のうちにキーをコピーして、次回もう一度入力してください。",
  "The key is your Plus on your other devices too: open this page there and enter it. Keep it to yourself.": "このキーがあれば、ほかの端末でも Plus を使えます。その端末でこのページを開いて、キーを入力してください。キーは他人に教えないでください。",
  "What you type here is sent to this site's server to find your subscription; it asks Paddle, which sold it, about the invoice number.": "ここに入力した内容は、サブスクリプションを探すためにこのサイトのサーバーへ送信されます。サーバーは、請求書番号について販売元の Paddle に問い合わせます。",

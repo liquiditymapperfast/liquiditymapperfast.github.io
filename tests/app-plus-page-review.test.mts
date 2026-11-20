@@ -170,9 +170,9 @@ test('Sol final 2 (P2): nothing asks for a payment by itself; only its button do
   const source = read('src/app/plus/page.ts');
   assert.ok(!/'resume'/.test(source) && !/planPayment/.test(source), 'no resume on load');
   const calls = [...source.matchAll(/completed\(/g)].length;
-  assert.equal(calls, 3, 'the function, the checkout\'s event and the button');
+  assert.equal(calls, 4, 'the function, the checkout event, and the button (beside a membership, and in the top row)');
   assert.match(source, /eventCallback: event => \{ if \(event\.name === 'checkout\.completed' && event\.data\?\.transaction_id\) void completed\(event\.data\.transaction_id, 'checkout'\); \}/);
-  assert.match(source, /onclick: \(\) => \{ void completed\(pending\.id, 'press'\); \}/);
+  assert.equal(source.split("id => { void completed(id, 'press'); }").length - 1, 2, 'both buttons press, nothing else asks');
   // A page loaded with a payment waiting: the record shows, nothing is sent.
   const { b, server } = world(), here = await page(b, server);
   await here.paid.begin(TXN_B, 'unused');

@@ -3190,7 +3190,7 @@
  "Checking Plus with the server…": "Vérification de Plus auprès du serveur…",
  "Plus runs until {date}.": "Plus reste actif jusqu’au {date}.",
  "This key no longer opens Plus: its subscription has ended, or the key was replaced by newer ones.": "Cette clé ne donne plus accès à Plus : son abonnement a pris fin, ou la clé a été remplacée par des clés plus récentes.",
- "Subscribing again below brings Plus back, with a new key.": "Vous abonner de nouveau ci-dessous rétablit Plus, avec une nouvelle clé.",
+ "Subscribing again brings Plus back, with a new key.": "Vous abonner de nouveau rétablit Plus, avec une nouvelle clé.",
  "This browser would not keep Plus: it lasts until this tab closes. Copy the key now and enter it again next time.": "Ce navigateur n’a pas conservé Plus : il reste actif jusqu’à la fermeture de cet onglet. Copiez la clé maintenant et saisissez-la de nouveau la prochaine fois.",
  "The key is your Plus on your other devices too: open this page there and enter it. Keep it to yourself.": "La clé, c’est aussi votre Plus sur vos autres appareils : ouvrez-y cette page et saisissez-la. Gardez-la pour vous.",
  "What you type here is sent to this site's server to find your subscription; it asks Paddle, which sold it, about the invoice number.": "Ce que vous saisissez ici est envoyé au serveur de ce site pour retrouver votre abonnement ; ce serveur interroge Paddle, qui a réalisé la vente, sur le numéro de facture.",

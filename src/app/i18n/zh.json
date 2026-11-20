@@ -2980,7 +2980,7 @@
  "Checking Plus with the server…": "正在向服务器确认 Plus…",
  "Plus runs until {date}.": "Plus 可使用至 {date}。",
  "This key no longer opens Plus: its subscription has ended, or the key was replaced by newer ones.": "这个密钥已无法解锁 Plus：它的订阅已结束，或者它已被更新的密钥取代。",
- "Subscribing again below brings Plus back, with a new key.": "在下方重新订阅，即可恢复 Plus，并得到一个新的密钥。",
+ "Subscribing again brings Plus back, with a new key.": "重新订阅即可恢复 Plus，并得到一个新的密钥。",
  "This browser would not keep Plus: it lasts until this tab closes. Copy the key now and enter it again next time.": "此浏览器未能保存 Plus：它只能用到此标签页关闭为止。请现在复制密钥，下次重新输入。",
  "The key is your Plus on your other devices too: open this page there and enter it. Keep it to yourself.": "有了这个密钥，你在自己的其他设备上也能使用 Plus：在那台设备上打开本页并输入它。请勿告诉他人。",
  "What you type here is sent to this site's server to find your subscription; it asks Paddle, which sold it, about the invoice number.": "你在这里输入的内容会发送到本站的服务器，用来查找你的订阅；服务器会就发票编号向负责销售的 Paddle 查询。",

@@ -29,7 +29,8 @@ import { mountDemo, mountVisuals } from './demo/index.ts';
 import { demoControl } from './demo-levels.ts';
 import { keyEntry, type KeyEntry } from './key.ts';
 import { PaidStore, type Paid } from './paid.ts';
-import { besideMembership, cannotBuy, cannotHere, keepAgainSettling, keySettling, keyShownFor, lateText, restoreBy, setUpPayment, topRow, type Answer, type Fresh } from './page-flow.ts';
+import { besideMembership, cannotBuy, cannotHere, keepAgainSettling, keySettling, keyShownFor, lateText, restoreBy, setUpPayment, type Answer, type Fresh } from './page-flow.ts';
+import { drawPageParts, drawTopRow, money, waitingButton, waitingNote } from './page-top.ts';
 import { features, hero, trust } from './present.ts';
 
 /** The part of Paddle's script this page uses (Paddle.js v2). */
@@ -51,7 +52,6 @@ const member = plus();
 const db = plusDbIfAny();
 const waits = new TabWaits();
 const day = (time: number): string => new Intl.DateTimeFormat(language(), { dateStyle: 'long', timeZone: 'UTC' }).format(time);
-const money = (usd: number): string => new Intl.NumberFormat(language(), { style: 'currency', currency: 'USD', maximumFractionDigits: Number.isInteger(usd) ? 0 : 2 }).format(usd);
 
 /**
  * The app's theme, as this browser wears it there (the app saves the one in use, picked or its own choice for the device). A visitor who
@@ -267,12 +267,9 @@ const link = (href: string, text: string): HTMLAnchorElement => el('a', { href, 
  * membership as it is then (`withSaid`: what the page said about the checkout goes with it, unless the thanks beside it say it). Nothing asks
  * for it by itself. Disabled while this tab's database is still opening; in a tab that may not issue, a press says so and sends nothing.
  */
-/** A waiting payment's button: "Set up Plus", or "Try again" after this tab's own attempt for it ended without Plus. */
-const waitingButton = (pending: Paid): HTMLButtonElement => el('button', { type: 'button', id: 'plus-paid-again', disabled: state.busy !== '' || member.mode === 'opening', textContent: state.tried.has(pending.id) ? t('Try again') : t('Set up Plus'), onclick: () => { void completed(pending.id, 'press'); } });
-const WAITING_NOTE = (): string => t('A payment made in this browser is still being set up. The prices come back once it is, so it is not paid twice.');
 const pendingNote = (pending: Paid, withSaid = true): HTMLElement[] => [...(withSaid ? said('buy') : []),
-  el('p', { textContent: WAITING_NOTE() }),
-  el('p', { class: 'actions' }, waitingButton(pending))];
+  el('p', { textContent: waitingNote() }),
+  el('p', { class: 'actions' }, waitingButton(pending, { busy: state.busy !== '', opening: member.mode === 'opening', tried: state.tried.has(pending.id) }, id => { void completed(id, 'press'); }))];
 
 /**
  * While Plus is not on sale, the section that says so under the hero, as it always was: the monthly price is written before the sale opens
@@ -289,34 +286,12 @@ function notOnSaleSection(): HTMLElement {
   return box;
 }
 
-/**
- * The hero's line while the page is drawn (`topRow`): on sale, one thin row that buys with one click (Karl, 2026-11-20): the price button
- * (`plus-monthly`, the checkout at once), a waiting payment's note and button, or why nothing is sold here; and the small print under it
- * (what the page said about a checkout, the tax line and Paddle's Merchant-of-Record line next to the price). Only a tab whose database is
- * open, and whose payments were read once, sells (spec 2.1, 4; Sol, code review C2-1). Not on sale: the pill and "Activate a key", as before.
- */
+/** The hero's buy row while the page is drawn (`page-top.ts` `drawTopRow`), from this page's state. */
 function drawTop(buying: boolean): void {
-  const pending = paid.list()[0], sale = plusOnSale(), ended = member.state === 'ended';
-  const row = topRow({ onSale: sale, stands: member.state, buying, mode: member.mode, paidReady: paid.ready, waiting: pending !== undefined });
-  if (pricePill) pricePill.hidden = !row.pill;
-  onPill.hidden = !row.on;
-  cta.hidden = !row.activate; cta.textContent = t('Activate a key');
-  const parts: HTMLElement[] = [], fine: HTMLElement[] = buying && sale ? said('buy') : [];
-  top.classList.toggle('waiting', row.buy === 'waiting');
-  if (row.buy === 'price') {
-    const price = (p: PlusPrice, per: string, main: boolean, id: string): HTMLButtonElement => el('button', { type: 'button', id, class: main ? 'px-buy' : 'px-buy plain', disabled: state.busy !== '', onclick: () => { void buy(p); } },
-      ...(main ? [el('b', { textContent: ended ? t('Renew Plus') : t('Get Plus') })] : []), el('span', { textContent: per }));
-    parts.push(price(PADDLE.monthly, t('{price} a month', { price: money(PADDLE.monthly.usd) }), true, 'plus-monthly'));
-    if (PADDLE.yearly.id) parts.push(price(PADDLE.yearly, t('{price} a year', { price: money(PADDLE.yearly.usd) }), false, 'plus-yearly'));
-    fine.push(el('p', { textContent: t('Prices are before tax; the checkout shows the total in your currency. You can end Plus at any time, and it then runs to the end of the period paid for.') }),
-      el('p', { textContent: t('Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders. Paddle provides all customer service inquiries and handles returns.') }));
-  } else if (row.buy === 'waiting' && pending) {
-    parts.push(waitingButton(pending), el('span', { class: 'px-top-note', textContent: WAITING_NOTE() }));
-  } else if (row.buy === 'cannot-buy' || row.buy === 'cannot-here') {
-    parts.push(el('span', { class: 'px-top-said', role: 'status', textContent: row.buy === 'cannot-buy' ? cannotBuy() : cannotHere() }));
-  }
-  top.replaceChildren(...parts); top.hidden = parts.length === 0;
-  topFine.replaceChildren(...fine); topFine.hidden = fine.length === 0;
+  const sale = plusOnSale();
+  drawTopRow({ pricePill, onPill, cta, top, topFine },
+    { onSale: sale, stands: member.state, buying, mode: member.mode, paidReady: paid.ready, pending: paid.list()[0], busy: state.busy !== '', tried: id => state.tried.has(id), said: buying && sale ? said('buy') : [] },
+    { buy: price => { void buy(price); }, press: id => { void completed(id, 'press'); } });
 }
 
 /** What this browser holds: whether Plus is on, until when, and the key; and a payment still waiting here when no prices are drawn (`buying`). */
@@ -350,7 +325,7 @@ function memberSection(buying: boolean): HTMLElement {
   box.append(
     el('h2', { textContent: heading }),
     ...(standing ? [el('p', { textContent: standing })] : []),
-    ...(stands === 'ended' && member.why !== 'replaced' && plusOnSale() ? [el('p', { textContent: t('Subscribing again below brings Plus back, with a new key.') })] : []),
+    ...(stands === 'ended' && member.why !== 'replaced' && plusOnSale() ? [el('p', { textContent: t('Subscribing again brings Plus back, with a new key.') })] : []),
     // A membership this tab took but could not store (the overlay): it lasts until the tab closes; another failure than a full storage
     // offers Try again, which stores it without asking the server.
     ...(unkept() && stands === 'on' ? [el('p', { class: 'said-bad', role: 'status', textContent: t('This browser would not keep Plus: it lasts until this tab closes. Copy the key now and enter it again next time.') })] : []),
@@ -415,31 +390,34 @@ function removedHereSection(): HTMLElement {
       el('p', { class: 'actions' }, el('button', { type: 'button', id: 'plus-keep-again', textContent: t('Try again'), onclick: () => { void keepAgainSettling(member, paid).then(() => { render(); }); } }))] : []));
 }
 
-/** The page drawn afresh, through the countdown (`redraw`), which tells a scroll the drawing makes from the visitor's. */
-function render(): void { activity.redraw(drawPage); }
-
-function drawPage(): void {
+/** The page under the hero: the membership, an unstored Remove, the not-on-sale section, the key and the receipt. */
+function drawRest(buying: boolean): void {
   const stands = member.state;
-  // Reveal and the showing after a checkout or a restore hold for their own key only: another key in its place starts masked. The thanks
-  // after a checkout go the same way.
-  if (state.shown !== null && state.shown !== member.key) state.shown = null;
-  if (state.fresh !== null && state.fresh.key !== member.key) state.fresh = null;
-  // Nothing is sold to a browser whose membership is in force or still being checked: only where there is none, or the server ended it
-  // (a key replaced by newer ones belongs to a subscription that may well be paid: the receipt brings Plus back, not a second purchase).
-  const buying = stands === 'none' || (stands === 'ended' && member.why !== 'replaced');
-  // The page is drawn afresh: what had the focus (a field being typed in, a button just pressed) gets it back, the caret where it was.
-  const drawn = (node: Node): boolean => rest.contains(node) || top.contains(node) || topFine.contains(node);
-  const active = document.activeElement instanceof HTMLElement && drawn(document.activeElement) ? document.activeElement : null;
-  const at = active instanceof HTMLInputElement ? [active.selectionStart, active.selectionEnd] as const : null;
-  const focus = active?.id ? { id: active.id, at } : null;
-  // On sale the buy row is at the top and nothing is sold further down; not on sale the lower section says so, as it always did.
-  drawTop(buying);
   rest.replaceChildren(
     ...(stands !== 'none' ? [memberSection(buying)] : []),
     ...(stands === 'none' && member.unstored ? [removedHereSection()] : []),
     ...(buying && !plusOnSale() ? [notOnSaleSection()] : []),
     ...(stands !== 'on' ? [deviceSection()] : []),
   );
+}
+
+/** The page drawn afresh, through the countdown (`redraw`), which tells a scroll the drawing makes from the visitor's. */
+function render(): void { activity.redraw(drawPage); }
+
+function drawPage(): void {
+  // Reveal and the showing after a checkout or a restore hold for their own key only: another key in its place starts masked. The thanks
+  // after a checkout go the same way.
+  if (state.shown !== null && state.shown !== member.key) state.shown = null;
+  if (state.fresh !== null && state.fresh.key !== member.key) state.fresh = null;
+  // The page is drawn afresh: what had the focus (a field being typed in, a button just pressed) gets it back, the caret where it was.
+  const drawn = (node: Node): boolean => rest.contains(node) || top.contains(node) || topFine.contains(node);
+  const active = document.activeElement instanceof HTMLElement && drawn(document.activeElement) ? document.activeElement : null;
+  const at = active instanceof HTMLInputElement ? [active.selectionStart, active.selectionEnd] as const : null;
+  const focus = active?.id ? { id: active.id, at } : null;
+  // Nothing is sold to a browser whose membership is in force or still being checked: only where there is none, or the server ended it
+  // (`buyingFor`: never for a key replaced by newer ones). The buy row first, then the rest, both drawn now for that one decision: on sale
+  // the buy row is at the top and nothing is sold further down; not on sale the lower section says so, as it always did.
+  drawPageParts(member, { top: drawTop, rest: drawRest });
   // The key box left the page (Plus is on): the next time it comes back, it comes back as a fresh form.
   if (!keyBox.root.isConnected) keyBoxOut = true;
   // What stays free and the page's foot never change: drawn once, under the rest.

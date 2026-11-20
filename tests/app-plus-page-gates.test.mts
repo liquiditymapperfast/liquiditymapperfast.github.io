@@ -38,7 +38,8 @@ test('C2-1: a slow first open never offers prices over a payment still waiting: 
   assert.equal(buyView('unusable', false, false), 'cannot-here');
   // The page draws from it, reads the payments again when the mode changes, and tries a failed read again.
   const source = read('src/app/plus/page.ts');
-  assert.match(source, /topRow\(\{ onSale: sale, stands: member\.state, buying, mode: member\.mode, paidReady: paid\.ready, /);
+  assert.match(source, /\{ onSale: sale, stands: member\.state, buying, mode: member\.mode, paidReady: paid\.ready, /);
+  assert.match(read('src/app/plus/page-top.ts'), /const row = topRow\(\{ onSale: s\.onSale, stands: s\.stands, buying: s\.buying, mode: s\.mode, paidReady: s\.paidReady, /);
   assert.match(source, /if \(member\.mode !== lastMode\) \{ lastMode = member\.mode; void settlePaid\(\); \}/);
   assert.match(source, /async function settlePaid\(\): Promise<void> \{/);
 });

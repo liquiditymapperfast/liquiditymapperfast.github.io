@@ -2980,7 +2980,7 @@
  "Checking Plus with the server…": "서버에 Plus를 확인하는 중…",
  "Plus runs until {date}.": "Plus는 {date}까지 유지됩니다.",
  "This key no longer opens Plus: its subscription has ended, or the key was replaced by newer ones.": "이 키로는 더 이상 Plus를 쓸 수 없습니다. 구독이 종료되었거나, 키가 새 키로 교체되었습니다.",
- "Subscribing again below brings Plus back, with a new key.": "아래에서 다시 구독하면 새 키로 Plus를 다시 쓸 수 있습니다.",
+ "Subscribing again brings Plus back, with a new key.": "다시 구독하면 새 키로 Plus를 다시 쓸 수 있습니다.",
  "This browser would not keep Plus: it lasts until this tab closes. Copy the key now and enter it again next time.": "이 브라우저가 Plus를 저장하지 못했습니다. Plus는 이 탭을 닫을 때까지만 유지됩니다. 지금 키를 복사해 두고 다음에 다시 입력하세요.",
  "The key is your Plus on your other devices too: open this page there and enter it. Keep it to yourself.": "이 키가 있으면 내 다른 기기에서도 Plus를 쓸 수 있습니다. 그 기기에서 이 페이지를 열고 키를 입력하세요. 키는 다른 사람에게 알려 주지 마세요.",
  "What you type here is sent to this site's server to find your subscription; it asks Paddle, which sold it, about the invoice number.": "여기에 입력한 내용은 구독을 찾기 위해 이 사이트의 서버로 전송됩니다. 서버는 인보이스 번호를 판매자인 Paddle에 문의합니다.",
