@@ -6,10 +6,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { LADDER_SUB_MIN, SPLIT_COLUMN_W, SPLIT_SUB_W, ladderSplitFits, liqColumnWidth, placeProbeBoxes, splitFits, splitHeads, splitLanes, splitScales, stackCaptions, subAt, subColumns, type BoxAt, type BoxSize } from '../src/app/liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../src/app/layouts/dock-model.ts';
-import { readLiqLevels } from '../src/app/liq-url.ts';
-import { FREE_VIEW, narrowView, splitPair } from '../src/app/liq-view.ts';
+import { LIQ_SPLITS, readLiqLevels } from '../src/app/liq-url.ts';
+import { FREE_VIEW, curveOf, depthView, effectiveSplit, effectiveView, narrowView, splitPair } from '../src/app/liq-view.ts';
 import { narrowNote, pairDescription, pairSummary, splitChoiceName, splitName, subNames, takesOf } from '../src/app/liq-words.ts';
-import { createLevelsControl, pressSplit, shownSplit, type LevelsModel } from '../src/app/levels-control.ts';
+import { createLevelsControl, keptSplitNote, pressSplit, shownSplit, type LevelsModel } from '../src/app/levels-control.ts';
 import { Store, initialState, type AppState } from '../src/app/store.ts';
 import { gutter, gutterAt, leftGutter, liqSplitDrawn, setCompactGutters } from '../src/app/panes/heat-pane.ts';
 import { plus } from '../src/app/plus/pass.ts';
@@ -94,8 +94,13 @@ test('the Split choice: liquidations beside stops turns both kinds on, everyone 
   assert.equal(pressSplit(s, 'kinds', false), 'plus'); assert.equal(pressSplit(s, 'groups', false), 'plus');
   assert.deepEqual(pressSplit(s, 'none', false), { change: { split: 'none' } }, 'none is free');
   assert.equal(shownSplit({ ...s, split: 'groups' }, true), 'groups'); assert.equal(shownSplit({ ...s, split: 'groups' }, false), 'none', 'nothing split for a visitor');
-  assert.equal(shownSplit({ ...s, split: 'kinds' }, true), 'none', 'liquidations beside stops with stops off is none');
-  // Through the page's store every write is read: a kind switched off returns the split to none, the group untouched by a split.
+  assert.equal(shownSplit({ ...s, split: 'kinds' }, true), 'kinds', 'liquidations beside stops with stops off: still chosen, kept (owner, 2026-11-20)');
+  assert.equal(keptSplitNote({ ...s, split: 'kinds' }, true), 'Liquidations | Stops comes back when liquidations and stops are both on.', 'and the control says what brings it back');
+  assert.equal(keptSplitNote({ ...s, stops: true, split: 'kinds' }, true), '', 'drawn: nothing to say');
+  assert.equal(keptSplitNote({ liq: false, stops: false, takes: true, group: 'all', split: 'groups' }, true), 'Everyone | Profitable comes back when liquidations or stops are on.');
+  assert.equal(keptSplitNote({ ...s, split: 'kinds' }, false), '', 'nothing split for a visitor, nothing said');
+  // Through the page's store every write is read: a kind switched off keeps the split, drawn as none until the kind is on again; the group is
+  // untouched by a split.
   const store = new Store(initialState());
   store.set({ liqLevels: { ...store.state.liqLevels, group: 'profitable' } });
   store.set({ liqLevels: { ...store.state.liqLevels, ...(pressSplit(store.state.liqLevels, 'groups', true) as { change: Partial<LiqLevelSettings> }).change } });
@@ -103,7 +108,10 @@ test('the Split choice: liquidations beside stops turns both kinds on, everyone 
   store.set({ liqLevels: { ...store.state.liqLevels, ...(pressSplit(store.state.liqLevels, 'kinds', true) as { change: Partial<LiqLevelSettings> }).change } });
   assert.deepEqual([store.state.liqLevels.split, store.state.liqLevels.liq, store.state.liqLevels.stops], ['kinds', true, true]);
   store.set({ liqLevels: { ...store.state.liqLevels, liq: false } });
-  assert.equal(store.state.liqLevels.split, 'none', 'either kind off: none');
+  assert.equal(store.state.liqLevels.split, 'kinds', 'either kind off: the split is kept (it was lost until 2026-11-20)');
+  assert.equal(effectiveSplit(store.state.liqLevels, true), 'none', '... and drawn as none');
+  store.set({ liqLevels: { ...store.state.liqLevels, liq: true } });
+  assert.equal(effectiveSplit(store.state.liqLevels, true), 'kinds', 'on again: split again');
 });
 
 /** A levels model over a plain choice (no store's reader), recording what the control writes. */
@@ -192,7 +200,55 @@ test('the split\'s pieces are where the page draws them: the map\'s split painte
   assert.match(fs.readFileSync('src/app/liq-stripe.ts', 'utf8'), /splitLanes\(x0, pw, !!takes\)/); assert.match(heat, /this\.#paintLaneCaptions\(ctx, painted\.captions, pw\)/);
   assert.match(heat, /splitScales\(\{ maxLevel: Math\.max\(profs\[0\]\?\.maxLevel \?\? 0, tprof\?\.maxLevel \?\? 0\), maxCum: profs\[0\]\?\.maxCum \?\? 0 \},\n\s+\{ maxLevel: profs\[1\]\?\.maxLevel \?\? 0, maxCum: profs\[1\]\?\.maxCum \?\? 0 \}, pair\.split === 'kinds'\)/);
   assert.match(tab, /halves = !!pair && ladderSplitFits\(W - AXIS\)/); assert.match(tab, /#paintHalves\(/);
-  assert.match(depth, /Under a split the Depth pane draws its left column\./);
+  // The Depth pane is not split (owner, 2026-11-20): every place that asks what it draws (its series, its button, its Range summary's key) reads
+  // `liveDepthView`, never the left column's set; only Everyone | Profitable is told in its tip.
+  assert.equal((depth.match(/liveDepthView\(/g) ?? []).length, 3); assert.doesNotMatch(depth, /liveView\(/);
+  assert.match(depth, /liveSplit\(this\.store\.state\.liqLevels\)\?\.split === 'groups' \? `\$\{t\("Under Everyone \| Profitable the Depth pane draws everyone's levels\."\)\} `/);
+});
+
+test('the Depth pane draws every choice as with Split None; under Everyone | Profitable as Everyone, the saved Traders never drawn (owner, 2026-11-20)', () => {
+  const KINDS = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 1, 1]] as const;
+  for (const [l, st, tk] of KINDS) for (const group of ['all', 'profitable'] as const) for (const split of LIQ_SPLITS) {
+    const s = readLiqLevels({ liq: !!l, stops: !!st, takes: !!tk, group, split }), name = `${l}${st}${tk} ${group} ${split}`;
+    const inForce = effectiveSplit(s, true), none = { ...s, split: 'none' as const };
+    // The one-line rule: Depth(state) = Depth(the same state with Split None), Everyone | Profitable (in force) with Traders as Everyone.
+    assert.deepEqual(depthView(s, true), depthView(inForce === 'groups' ? { ...none, group: 'all' } : none, true), name);
+    assert.deepEqual(depthView(s, true), { liq: !!l, stops: !!st, takes: !!tk, group: inForce === 'groups' ? 'all' : group }, name);
+    assert.deepEqual(depthView(s, false), FREE_VIEW, `${name}: without Plus the free view`);
+  }
+  // Liquidations | Stops: Liq + stops of the chosen traders (until 2026-11-20 it drew the left column, liquidations alone).
+  assert.equal(curveOf(depthView(readLiqLevels({ liq: true, stops: true, takes: true, group: 'profitable', split: 'kinds' }), true)), 'both');
+  // A split kept but not in force (take profits alone under Everyone | Profitable) draws as none: the saved Traders count there.
+  assert.deepEqual(depthView(readLiqLevels({ liq: false, stops: false, takes: true, group: 'profitable', split: 'groups' }), true), { liq: false, stops: false, takes: true, group: 'profitable' });
+  // The column and the stripe still split: their one series is the left set.
+  assert.deepEqual(effectiveView(readLiqLevels({ liq: true, stops: true, split: 'kinds' }), true), { liq: true, stops: false, takes: false, group: 'all' });
+});
+
+test('the levels control keeps a split chosen while a kind it needs is off, says what brings it back, and gives Traders back their say (owner, 2026-11-20)', () => {
+  const done = new FakePage().install();
+  try {
+    const m = model(readLiqLevels({ liq: true, stops: true, takes: false, group: 'profitable', split: 'kinds' }), true);
+    const c = createLevelsControl(m, { locked: () => { throw new Error('no lock for a member'); } });
+    const root = c.root as unknown as FakeElement, opts = root.querySelectorAll('.lv-opt'), note = root.querySelector('.lv-split-kept')!;
+    const row = (part: string): FakeElement => root.querySelectorAll('.lv-row').find(b => b.dataset.part === part)!;
+    const traders = root.querySelectorAll('.lv-sec').find(sec => sec.querySelector('.lv-seg'))!;
+    assert.equal(note.hidden, true);
+    row('stops').click();
+    assert.deepEqual(m.writes.at(-1), { stops: false }); assert.equal(m.get().split, 'kinds', 'kept');
+    assert.deepEqual(opts.map(o => o.getAttribute('aria-checked')), ['false', 'true', 'false'], 'shown chosen, as where the map is too narrow');
+    assert.equal(note.hidden, false); assert.equal(note.textContent, 'Liquidations | Stops comes back when liquidations and stops are both on.');
+    assert.match(root.querySelector('.lv-sum')!.textContent, /^Curve: Liquidations · Profitable$/, 'the live line says what is drawn: one column');
+    row('stops').click();
+    assert.equal(note.hidden, true); assert.match(root.querySelector('.lv-sum')!.textContent, /Left: Liquidations · Right: Stops · Profitable/, 'on again: split again');
+    // Everyone | Profitable, then take profits alone: kept, Traders back (the drawn choice uses them), the note says what brings it back.
+    opts[2]!.click(); row('takes').click(); row('liq').click(); row('stops').click();
+    assert.deepEqual([m.get().liq, m.get().stops, m.get().takes, m.get().split], [false, false, true, 'groups']);
+    assert.equal(traders.hidden, false, 'nothing is split: Traders has its say');
+    assert.equal(note.textContent, 'Everyone | Profitable comes back when liquidations or stops are on.');
+    row('liq').click();
+    assert.equal(traders.hidden, true); assert.equal(note.hidden, true, 'liquidations on: split again');
+    c.destroy();
+  } finally { done(); }
 });
 
 // Sol's review of Split (2026-11-19): five P2s; the code before the fixes failed each.

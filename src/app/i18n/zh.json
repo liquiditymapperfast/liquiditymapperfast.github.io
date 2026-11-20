@@ -3277,6 +3277,8 @@
  "Right column: {what}.": "右栏：{what}。",
  "Take-profit bars shown on the left.": "止盈柱显示在左侧。",
  "Too narrow to split: {what}": "太窄，无法拆分：{what}",
- "Under a split the Depth pane draws its left column.": "拆分时，深度面板显示左栏。",
- "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. The stripe gives each column a lane of its own, captioned the same way; pointing at a level of everyone's or the profitable traders' lane names whose it is. Too narrow for two, it draws liquidations and stops added up, or everyone's levels (everyone's alone on the stripe too), and says so. The phone's Liq tab splits into halves when it is wide enough; the Depth pane draws the left column.": "拆分（Plus）把这一栏画成两栏：用同一个刻度把强平和止损并排，或把所有人和盈利交易者并排、各用自己的刻度。色带为每一栏各留单独的一条，标注方式相同；指向所有人或盈利交易者那一条上的价位时，会注明是谁的。宽度不够两栏时，它会画出强平和止损的合计，或所有人的价位（色带上也只有所有人的），并加以说明。手机上的“强平”标签页足够宽时会分成两半；深度面板画左栏。"
+ "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. The stripe gives each column a lane of its own, captioned the same way; pointing at a level of everyone's or the profitable traders' lane names whose it is. Too narrow for two, it draws liquidations and stops added up, or everyone's levels (everyone's alone on the stripe too), and says so. The phone's Liq tab splits into halves when it is wide enough. A kind the split needs switched off draws one column until it is on again. The Depth pane is not split: it draws as without a split, everyone's levels under Everyone | Profitable.": "拆分（Plus）把这一栏画成两栏：用同一个刻度把强平和止损并排，或把所有人和盈利交易者并排、各用自己的刻度。色带为每一栏各留单独的一条，标注方式相同；指向所有人或盈利交易者那一条上的价位时，会注明是谁的。宽度不够两栏时，它会画出强平和止损的合计，或所有人的价位（色带上也只有所有人的），并加以说明。手机上的“强平”标签页足够宽时会分成两半。关闭拆分所需的种类后，在它重新开启前只画一栏。深度面板不拆分：它像没有拆分时那样画，选“全部 | 盈利”时画所有人的价位。",
+ "Under Everyone | Profitable the Depth pane draws everyone's levels.": "选“全部 | 盈利”时，深度面板显示所有人的价位。",
+ "{split} comes back when liquidations and stops are both on.": "强平和止损都开启时，恢复为{split}。",
+ "{split} comes back when liquidations or stops are on.": "开启强平或止损时，恢复为{split}。"
 }

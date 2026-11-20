@@ -42,8 +42,9 @@ export function splitFor(split: LiqSplit, kinds: { liq: boolean; stops: boolean 
  * least one is on; a save of one kind and a take-profit switch (before 2026-11-19) as that kind: `liq` liquidations, `stops` stops, `both`
  * the two, its take profits kept. A switch present in either form that is not a boolean, and anything else, a save from before the Plus
  * choices included, reads as the free view: liquidations of everyone, no take profits. Any other group value reads as everyone's (`all`).
- * The split as saved where its kinds allow it (`splitFor`: a kind switched off returns it to none, since every write goes through here),
- * else none, and none where it is absent or anything else.
+ * The split as saved, whatever the kinds (none where it is absent or anything else): a kind it needs switched off draws the column as one
+ * (`splitFor`, where the split is drawn) and keeps the split, which comes back with the kind (owner's rule, 2026-11-20: before it, every write
+ * returned it to none here, so Stops off and on again lost Liquidations | Stops).
  */
 export function readLiqLevels(saved: unknown): LiqLevelSettings {
   const s = saved && typeof saved === 'object' ? saved as Record<string, unknown> : {};
@@ -51,7 +52,7 @@ export function readLiqLevels(saved: unknown): LiqLevelSettings {
   const group: LiqGroup = (LIQ_GROUPS as readonly unknown[]).includes(s.group) ? s.group as LiqGroup : 'all';
   const asked: LiqSplit = (LIQ_SPLITS as readonly unknown[]).includes(s.split) ? s.split as LiqSplit : 'none';
   const free: LiqLevelSettings = { ...shown, liq: true, stops: false, takes: false, group: 'all', split: 'none' };
-  const kinds = (liq: boolean, stops: boolean, takes: boolean): LiqLevelSettings => ({ ...shown, liq, stops, takes, group, split: splitFor(asked, { liq, stops }) });
+  const kinds = (liq: boolean, stops: boolean, takes: boolean): LiqLevelSettings => ({ ...shown, liq, stops, takes, group, split: asked });
   // A switch that is present but not a boolean makes the whole choice malformed, in either form (Sol, review 2026-11-19: { liq: "invalid",
   // stops: true } read as stops; round 2: { kind: "stops", takes: "invalid" } still did); a missing one is off.
   if (LIQ_PARTS.some(part => part in s && typeof s[part] !== 'boolean')) return free;
