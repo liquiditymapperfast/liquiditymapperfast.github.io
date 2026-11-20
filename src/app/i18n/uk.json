@@ -3192,7 +3192,7 @@
  "The server could not be reached. Try again in a moment.": "Не вдалося зв'язатися із сервером. Спробуйте ще раз трохи згодом.",
  "Enter the email you paid with and the invoice number from your receipt.": "Введіть електронну пошту, вказану під час оплати, і номер рахунку з квитанції.",
  "Found. Plus is on in this browser.": "Знайдено. Plus діє в цьому браузері.",
- "No subscription in good standing was found for that email and invoice number.": "Для цієї електронної пошти й цього номера рахунку не знайдено чинної підписки.",
+ "No subscription in good standing was found for that email and invoice number. A payment from the last few minutes may not show yet.": "Для цієї електронної пошти й цього номера рахунку не знайдено чинної підписки. Оплата за останні хвилини може ще не відображатися.",
  "Not on sale yet": "Ще не продається",
  "Plus is being set up. This page will carry its price and the checkout when it opens.": "Plus ще готується. Ціна й оплата з'являться на цій сторінці, коли відкриється продаж.",
  "Plus is being set up, and the checkout opens on this page soon. Prices are before tax.": "Plus ще готується, а оплата незабаром відкриється на цій сторінці. Ціни вказано без урахування податків.",
@@ -3563,5 +3563,9 @@
  "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. The stripe gives each column a lane of its own, captioned the same way; pointing at a level of everyone's or the profitable traders' lane names whose it is. Too narrow for two, it draws liquidations and stops added up, or everyone's levels (everyone's alone on the stripe too), and says so. The phone's Liq tab splits into halves when it is wide enough. A kind the split needs switched off draws one column until it is on again. The Depth pane is not split: it draws as without a split, everyone's levels under Everyone | Profitable.": "Поділ (Plus) малює колонку як дві: ліквідації поруч зі стопами на одній шкалі або всі поруч із прибутковими трейдерами, кожна на власній. Смуга дає кожній колонці окрему доріжку з таким самим підписом; якщо навести на рівень на доріжці всіх або прибуткових трейдерів, буде вказано, чий він. Якщо для двох надто вузько, він малює суму ліквідацій і стопів або рівні всіх (і на смузі лише їх) і повідомляє про це. Вкладка «Лікв.» на телефоні ділиться на половини, якщо вона достатньо широка. Якщо вимкнути вид, потрібний поділу, малюється одна колонка, доки його знову не ввімкнено. Панель глибини не ділиться: вона малює як без поділу, за «Усі | Прибуткові» рівні всіх.",
  "Under Everyone | Profitable the Depth pane draws everyone's levels.": "За «Усі | Прибуткові» панель глибини показує рівні всіх.",
  "{split} comes back when liquidations and stops are both on.": "{split} повернеться, коли ліквідації і стопи будуть увімкнені разом.",
- "{split} comes back when liquidations or stops are on.": "{split} повернеться, коли буде ввімкнено ліквідації або стопи."
+ "{split} comes back when liquidations or stops are on.": "{split} повернеться, коли буде ввімкнено ліквідації або стопи.",
+ "Set up Plus": "Налаштувати Plus",
+ "Plus could not be saved in this browser just now.": "Зараз не вдалося зберегти Plus у цьому браузері.",
+ "Plus cannot be set up in this tab. Reload the page, or use another tab.": "У цій вкладці Plus налаштувати не можна. Перезавантажте сторінку або відкрийте іншу вкладку.",
+ "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "У цьому браузері Plus купити не можна. Скористайтеся іншим браузером; ключ, куплений деінде, працює і тут."
 }

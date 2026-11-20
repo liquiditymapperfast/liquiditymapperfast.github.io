@@ -3144,7 +3144,7 @@
  "The server could not be reached. Try again in a moment.": "No se pudo contactar con el servidor. Inténtalo de nuevo en un momento.",
  "Enter the email you paid with and the invoice number from your receipt.": "Escribe el correo con el que pagaste y el número de factura de tu recibo.",
  "Found. Plus is on in this browser.": "Encontrado. Plus está activo en este navegador.",
- "No subscription in good standing was found for that email and invoice number.": "No se encontró ninguna suscripción al corriente de pago para ese correo y ese número de factura.",
+ "No subscription in good standing was found for that email and invoice number. A payment from the last few minutes may not show yet.": "No se encontró ninguna suscripción al corriente de pago para ese correo y ese número de factura. Puede que un pago de los últimos minutos aún no aparezca.",
  "Not on sale yet": "Aún no a la venta",
  "Plus is being set up. This page will carry its price and the checkout when it opens.": "Plus se está preparando. Esta página mostrará su precio y la opción de pago cuando se ponga a la venta.",
  "Plus is being set up, and the checkout opens on this page soon. Prices are before tax.": "Plus se está preparando y el pago se abrirá pronto en esta página. Los precios no incluyen impuestos.",
@@ -3510,5 +3510,9 @@
  "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. The stripe gives each column a lane of its own, captioned the same way; pointing at a level of everyone's or the profitable traders' lane names whose it is. Too narrow for two, it draws liquidations and stops added up, or everyone's levels (everyone's alone on the stripe too), and says so. The phone's Liq tab splits into halves when it is wide enough. A kind the split needs switched off draws one column until it is on again. The Depth pane is not split: it draws as without a split, everyone's levels under Everyone | Profitable.": "División (Plus) dibuja la columna como dos: liquidaciones junto a stops en una escala, o todos junto a los traders rentables, cada uno en la suya. La franja da a cada columna un carril propio, rotulado del mismo modo; al señalar un nivel del carril de todos o del de los traders rentables, se indica de quién es. Si es demasiado estrecha para dos, dibuja las liquidaciones y los stops sumados, o los niveles de todos (en la franja también solo los de todos), y lo dice. La pestaña Liq del móvil se divide en mitades cuando es lo bastante ancha. Si se desactiva un tipo que la división necesita, se dibuja una sola columna hasta que vuelva a estar activo. El panel de Profundidad no se divide: dibuja como sin división, con Todos | Rentables los niveles de todos.",
  "Under Everyone | Profitable the Depth pane draws everyone's levels.": "Con Todos | Rentables, el panel de Profundidad muestra los niveles de todos.",
  "{split} comes back when liquidations and stops are both on.": "{split} vuelve cuando liquidaciones y stops están activos a la vez.",
- "{split} comes back when liquidations or stops are on.": "{split} vuelve cuando liquidaciones o stops están activos."
+ "{split} comes back when liquidations or stops are on.": "{split} vuelve cuando liquidaciones o stops están activos.",
+ "Set up Plus": "Activar Plus",
+ "Plus could not be saved in this browser just now.": "No se ha podido guardar Plus en este navegador ahora mismo.",
+ "Plus cannot be set up in this tab. Reload the page, or use another tab.": "Plus no se puede activar en esta pestaña. Recarga la página o usa otra pestaña.",
+ "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "Plus no se puede comprar en este navegador. Usa otro navegador; una clave comprada en otro sitio también funciona aquí."
 }

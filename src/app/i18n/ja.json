@@ -2934,7 +2934,7 @@
  "The server could not be reached. Try again in a moment.": "サーバーに接続できませんでした。少し待ってからもう一度試してください。",
  "Enter the email you paid with and the invoice number from your receipt.": "お支払いに使ったメールアドレスと、領収書に記載の請求書番号を入力してください。",
  "Found. Plus is on in this browser.": "見つかりました。このブラウザーで Plus が有効になりました。",
- "No subscription in good standing was found for that email and invoice number.": "そのメールアドレスと請求書番号に該当する有効なサブスクリプションは見つかりませんでした。",
+ "No subscription in good standing was found for that email and invoice number. A payment from the last few minutes may not show yet.": "そのメールアドレスと請求書番号に該当する有効なサブスクリプションは見つかりませんでした。数分以内のお支払いは、まだ表示されないことがあります。",
  "Not on sale yet": "まだ販売していません",
  "Plus is being set up. This page will carry its price and the checkout when it opens.": "Plus は準備中です。販売が始まると、このページに価格が表示され、購入手続きができるようになります。",
  "Plus is being set up, and the checkout opens on this page soon. Prices are before tax.": "Plus は準備中で、まもなくこのページで購入手続きができるようになります。価格は税抜きです。",
@@ -3280,5 +3280,9 @@
  "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. The stripe gives each column a lane of its own, captioned the same way; pointing at a level of everyone's or the profitable traders' lane names whose it is. Too narrow for two, it draws liquidations and stops added up, or everyone's levels (everyone's alone on the stripe too), and says so. The phone's Liq tab splits into halves when it is wide enough. A kind the split needs switched off draws one column until it is on again. The Depth pane is not split: it draws as without a split, everyone's levels under Everyone | Profitable.": "分割（Plus）は列を 2 つに分けて描きます。清算とストップを 1 つの目盛りで並べるか、全員と黒字のトレーダーをそれぞれの目盛りで並べます。帯では各列にそれぞれ専用のレーンが付き、列と同じように見出しが付きます。全員または黒字のトレーダーのレーンのレベルを指すと、誰のレベルかが表示されます。2 列には狭すぎる場合は、清算とストップの合計、または全員のレベル（帯でも全員のレベルだけ）を描き、そう表示します。スマートフォンの清算タブは十分な幅があれば半分ずつに分かれます。分割に必要な種類をオフにすると、オンに戻すまで 1 列で描かれます。デプスパネルは分割されず、分割がないときと同じように描きます（全員 | 黒字では全員のレベル）。",
  "Under Everyone | Profitable the Depth pane draws everyone's levels.": "全員 | 黒字では、デプスパネルに全員のレベルが表示されます。",
  "{split} comes back when liquidations and stops are both on.": "清算とストップの両方をオンにすると、{split} に戻ります。",
- "{split} comes back when liquidations or stops are on.": "清算かストップをオンにすると、{split} に戻ります。"
+ "{split} comes back when liquidations or stops are on.": "清算かストップをオンにすると、{split} に戻ります。",
+ "Set up Plus": "Plus を設定",
+ "Plus could not be saved in this browser just now.": "今は、このブラウザーに Plus を保存できませんでした。",
+ "Plus cannot be set up in this tab. Reload the page, or use another tab.": "このタブでは Plus を設定できません。ページを再読み込みするか、別のタブを使ってください。",
+ "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "このブラウザーでは Plus を購入できません。別のブラウザーをお使いください。別の場所で購入したキーはここでも使えます。"
 }

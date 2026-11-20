@@ -2934,7 +2934,7 @@
  "The server could not be reached. Try again in a moment.": "无法连接服务器。请稍后重试。",
  "Enter the email you paid with and the invoice number from your receipt.": "请输入付款时使用的邮箱和收据上的发票编号。",
  "Found. Plus is on in this browser.": "找到了。Plus 已在此浏览器中启用。",
- "No subscription in good standing was found for that email and invoice number.": "没有找到与该邮箱和发票编号对应的有效订阅。",
+ "No subscription in good standing was found for that email and invoice number. A payment from the last few minutes may not show yet.": "没有找到与该邮箱和发票编号对应的有效订阅。最近几分钟内的付款可能还没有显示。",
  "Not on sale yet": "尚未开售",
  "Plus is being set up. This page will carry its price and the checkout when it opens.": "Plus 正在筹备中。开售后，本页将列出价格，并可在此付款。",
  "Plus is being set up, and the checkout opens on this page soon. Prices are before tax.": "Plus 正在筹备中，很快即可在本页付款。价格不含税。",
@@ -3280,5 +3280,9 @@
  "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. The stripe gives each column a lane of its own, captioned the same way; pointing at a level of everyone's or the profitable traders' lane names whose it is. Too narrow for two, it draws liquidations and stops added up, or everyone's levels (everyone's alone on the stripe too), and says so. The phone's Liq tab splits into halves when it is wide enough. A kind the split needs switched off draws one column until it is on again. The Depth pane is not split: it draws as without a split, everyone's levels under Everyone | Profitable.": "拆分（Plus）把这一栏画成两栏：用同一个刻度把强平和止损并排，或把所有人和盈利交易者并排、各用自己的刻度。色带为每一栏各留单独的一条，标注方式相同；指向所有人或盈利交易者那一条上的价位时，会注明是谁的。宽度不够两栏时，它会画出强平和止损的合计，或所有人的价位（色带上也只有所有人的），并加以说明。手机上的“强平”标签页足够宽时会分成两半。关闭拆分所需的种类后，在它重新开启前只画一栏。深度面板不拆分：它像没有拆分时那样画，选“全部 | 盈利”时画所有人的价位。",
  "Under Everyone | Profitable the Depth pane draws everyone's levels.": "选“全部 | 盈利”时，深度面板显示所有人的价位。",
  "{split} comes back when liquidations and stops are both on.": "强平和止损都开启时，恢复为{split}。",
- "{split} comes back when liquidations or stops are on.": "开启强平或止损时，恢复为{split}。"
+ "{split} comes back when liquidations or stops are on.": "开启强平或止损时，恢复为{split}。",
+ "Set up Plus": "设置 Plus",
+ "Plus could not be saved in this browser just now.": "此浏览器暂时未能保存 Plus。",
+ "Plus cannot be set up in this tab. Reload the page, or use another tab.": "无法在此标签页中设置 Plus。请重新加载页面，或使用其他标签页。",
+ "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "无法在此浏览器中购买 Plus。请使用其他浏览器；在别处购买的密钥在这里也能用。"
 }

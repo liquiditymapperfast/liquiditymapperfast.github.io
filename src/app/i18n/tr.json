@@ -3085,7 +3085,7 @@
  "The server could not be reached. Try again in a moment.": "Sunucuya ulaşılamadı. Birazdan yeniden deneyin.",
  "Enter the email you paid with and the invoice number from your receipt.": "Ödemede kullandığınız e-posta adresini ve makbuzunuzdaki fatura numarasını girin.",
  "Found. Plus is on in this browser.": "Bulundu. Plus bu tarayıcıda etkin.",
- "No subscription in good standing was found for that email and invoice number.": "Bu e-posta adresi ve fatura numarası için geçerli bir abonelik bulunamadı.",
+ "No subscription in good standing was found for that email and invoice number. A payment from the last few minutes may not show yet.": "Bu e-posta adresi ve fatura numarası için geçerli bir abonelik bulunamadı. Son birkaç dakika içinde yapılan bir ödeme henüz görünmüyor olabilir.",
  "Not on sale yet": "Henüz satışta değil",
  "Plus is being set up. This page will carry its price and the checkout when it opens.": "Plus hazırlanıyor. Satışa açıldığında fiyatı ve ödeme ekranı bu sayfada yer alacak.",
  "Plus is being set up, and the checkout opens on this page soon. Prices are before tax.": "Plus hazırlanıyor ve ödeme ekranı yakında bu sayfada açılacak. Fiyatlara vergi dahil değildir.",
@@ -3446,5 +3446,9 @@
  "Split (Plus) draws the column as two: liquidations beside stops on one scale, or everyone beside the profitable traders each on its own. The stripe gives each column a lane of its own, captioned the same way; pointing at a level of everyone's or the profitable traders' lane names whose it is. Too narrow for two, it draws liquidations and stops added up, or everyone's levels (everyone's alone on the stripe too), and says so. The phone's Liq tab splits into halves when it is wide enough. A kind the split needs switched off draws one column until it is on again. The Depth pane is not split: it draws as without a split, everyone's levels under Everyone | Profitable.": "Bölme (Plus) sütunu iki sütun olarak çizer: tek ölçekte stopların yanında tasfiyeler ya da her biri kendi ölçeğinde, kârlı trader'ların yanında herkes. Şerit her sütuna aynı şekilde etiketlenmiş kendi kulvarını verir; herkesin ya da kârlı trader'ların kulvarındaki bir seviyenin üzerine gelince kimin olduğu söylenir. İki sütun için çok darsa tasfiyeleri ve stopları toplanmış olarak ya da herkesin seviyelerini (şeritte de yalnızca herkesinkini) çizer ve bunu söyler. Telefondaki Tasfiye sekmesi yeterince genişse ikiye bölünür. Bölmenin gerektirdiği bir tür kapatılınca, yeniden açılana kadar tek sütun çizilir. Derinlik paneli bölünmez: bölme yokmuş gibi çizer, Herkes | Kârlı seçiliyken herkesin seviyelerini.",
  "Under Everyone | Profitable the Depth pane draws everyone's levels.": "Herkes | Kârlı seçiliyken Derinlik paneli herkesin seviyelerini gösterir.",
  "{split} comes back when liquidations and stops are both on.": "Tasfiyeler ve stoplar ikisi de açıkken {split} geri gelir.",
- "{split} comes back when liquidations or stops are on.": "Tasfiyeler ya da stoplar açıkken {split} geri gelir."
+ "{split} comes back when liquidations or stops are on.": "Tasfiyeler ya da stoplar açıkken {split} geri gelir.",
+ "Set up Plus": "Plus'ı kur",
+ "Plus could not be saved in this browser just now.": "Plus şu anda bu tarayıcıya kaydedilemedi.",
+ "Plus cannot be set up in this tab. Reload the page, or use another tab.": "Plus bu sekmede kurulamıyor. Sayfayı yeniden yükleyin ya da başka bir sekme kullanın.",
+ "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "Plus bu tarayıcıda satın alınamıyor. Başka bir tarayıcı kullanın; başka yerde satın alınan bir anahtar burada da çalışır."
 }

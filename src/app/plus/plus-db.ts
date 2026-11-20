@@ -251,3 +251,45 @@ export function readSeed(db: PlusDb, waitMs?: number): Promise<string> {
 let page: PlusDb | null = null;
 /** The page's one Plus database (opened on first use). */
 export function plusDb(): PlusDb { return page ??= new PlusDb(); }
+/** The page's one Plus database where the browser has IndexedDB, else null (Node; a browser that hides it): then the membership is plain. */
+export function plusDbIfAny(): PlusDb | null { return browserFactory() ? plusDb() : null; }
+
+// ---- Payment records and the gate (spec sections 3 and 4) ----
+
+/** A payment's record (`paid:<txn>` = `{ at }`) waits from this long before its checkout's time to this long after it, on this device's clock. */
+export const PAID_WINDOW_MS = 86_400_000;
+export const PAID_PREFIX = 'paid:';
+/** Whether a record dated `at` waits at `now` (both edges included). */
+export const paidWaits = (at: number, now: number): boolean => at - PAID_WINDOW_MS <= now && now <= at + PAID_WINDOW_MS;
+/** When a stored record's checkout completed, or null for anything else. */
+export function paidAt(value: unknown): number | null {
+  const at = value && typeof value === 'object' ? (value as { at?: unknown }).at : undefined;
+  return typeof at === 'number' && Number.isFinite(at) ? at : null;
+}
+/** A record this tab keeps in memory because the browser refused to store it: when its checkout completed, and the seed it belongs to. */
+export interface MemoryRecord { readonly at: number; readonly epoch: string }
+/** A request that issues a key: its path under the Plus server's address, its body, and the seed it carries (its answer's epoch). */
+export interface Issue { readonly path: string; readonly body: Readonly<Record<string, unknown>>; readonly seed: string }
+
+/**
+ * THE GATE: the one place where the bodies of the Plus server's `/v1/pass` and `/v1/restore` are built (a source test pins it). One readwrite
+ * transaction reads the seed (making one when there is none) and confirms that the payment's record still waits: stored here, or this tab's
+ * memory record of the same seed, within its window (a stored one outside it is removed). `gone` when it does not wait; null when the
+ * database cannot be used: then nothing is sent.
+ */
+export async function passRequest(db: PlusDb, txn: string, now: number, memory: MemoryRecord | null = null): Promise<Issue | 'gone' | null> {
+  try {
+    return await db.tx('readwrite', async (kv): Promise<Issue | 'gone'> => {
+      const seed = await seedIn(kv), key = `${PAID_PREFIX}${txn}`, at = paidAt(await kv.get(key));
+      if (at !== null && !paidWaits(at, now)) await kv.delete(key);
+      const waits = (at !== null && paidWaits(at, now)) || (memory !== null && memory.epoch === seed && paidWaits(memory.at, now));
+      return waits ? { path: '/pass', body: { transactionId: txn, secret: seed }, seed } : 'gone';
+    });
+  } catch { return null; }
+}
+/** The gate for a receipt: the request that finds the membership paid with `email` by `invoice`, carrying the seed read now. */
+export async function restoreRequest(db: PlusDb, email: string, invoice: string): Promise<Issue | null> {
+  try {
+    return await db.tx('readwrite', async (kv): Promise<Issue> => { const seed = await seedIn(kv); return { path: '/restore', body: { email, invoice, secret: seed }, seed }; });
+  } catch { return null; }
+}

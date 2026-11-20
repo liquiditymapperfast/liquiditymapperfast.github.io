@@ -47,6 +47,8 @@ export class TabWaits {
   get notBefore(): number { return this.#notBefore; }
   /** An attempt that ends with the server's wait reaching past its deadline: no press asks before the wait's end. */
   coolUntil(at: number): void { this.#cooldown = Math.max(this.#cooldown, at); }
+  /** A wait of `seconds` from now becomes the cooldown (`too_many_keys`: no key can be made before it ends). */
+  coolFor(seconds: number): void { if (Number.isFinite(seconds) && seconds > 0) this.coolUntil(this.clocks.mono() + seconds * 1_000); }
   /** How long the cooldown has left (ms), 0 when none. */
   cooldownLeft(): number { return Math.max(0, this.#cooldown - this.clocks.mono()); }
   /** A new attempt, beginning now. */

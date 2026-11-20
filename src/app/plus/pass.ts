@@ -16,7 +16,8 @@
  * server decides. A pass the server refuses is dropped and asked for again.
  */
 import { plusApi } from './config.ts';
-import { PlusDbUnavailable, SEED_KEY, SEED_SHAPE, type PlusDb } from './plus-db.ts';
+import { PAID_PREFIX, PlusDbUnavailable, SEED_KEY, SEED_SHAPE, plusDbIfAny, type PlusDb } from './plus-db.ts';
+import { withTimeout } from './request-timeout.ts';
 
 /** Where the membership is kept (`{ v, key, pass, until, ended, why, renews, skew, next }`). */
 export const PLUS_STORE = 'lmf.plus';
@@ -38,8 +39,6 @@ const MARGIN_MS = 30_000;
 const RETRY_MS = 60_000, LONG_RETRY_MS = 3_600_000, SHORT_PASS_RETRY_MS = 5 * 60_000;
 /** The device's clock and the server's count as agreeing within this much (an answer takes a moment to arrive). */
 const CLOCK_SLACK_MS = 5 * 60_000;
-/** A request to the Plus server that has not answered by then is given up (the tab can ask again). */
-const POST_TIMEOUT_MS = 20_000;
 /** A server time below this is not milliseconds (seconds, or nonsense) and is not believed. */
 const MIN_EPOCH_MS = 1e11;
 
@@ -124,16 +123,14 @@ type Kept = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 /** The error code of a JSON answer (`{"error":"…"}`), or ''. */
 export const errorOf = (body: unknown): string => { const e = body && typeof body === 'object' ? (body as { error?: unknown }).error : null; return typeof e === 'string' ? e : ''; };
 
-export const webPost: Post = async (url, body, given) => {
-  // Given up by the caller (a key form closed) or after POST_TIMEOUT_MS, whichever comes first.
-  const timeout = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(POST_TIMEOUT_MS) : undefined;
-  const signal = given && timeout && typeof AbortSignal.any === 'function' ? AbortSignal.any([given, timeout]) : given ?? timeout;
-  const answer = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store', ...(signal ? { signal } : {}) });
+/** A request to the Plus server, given up by the caller (a key form closed) or after 20 s in every browser (`request-timeout.ts`). */
+export const webPost: Post = (url, body, given) => withTimeout(async signal => {
+  const answer = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store', signal });
   let parsed: unknown = null;
   try { parsed = await answer.json(); } catch { /* an answer without a JSON body says enough with its status */ }
   const wait = Number(answer.headers.get('retry-after'));
   return { status: answer.status, body: parsed, ...(Number.isFinite(wait) && wait > 0 ? { retryAfter: wait } : {}) };
-};
+}, given);
 
 /** Set (`'1'`) once the Plus database is this browser's authority for the membership: from then on every tab goes through it. */
 export const PLUS_IDB_MARKER = 'lmf.plus.idb';
@@ -148,8 +145,11 @@ const COMMIT_WAIT_MS = 10_000;
 export type PlusMode = 'opening' | 'idb' | 'notready' | 'unusable' | 'plain';
 /** The stored baseline: the database's seed (its epoch: a reset makes a new one; null while none was made) and the membership's generation. */
 export interface Baseline { readonly seed: string | null; readonly gen: number }
-/** What an operation captured when it began (`capture`): the stored baseline and this tab's revision. Opaque to its callers. */
-export interface Capture { readonly base: Baseline; readonly rev: number }
+/**
+ * What an operation captured when it began (`capture`): the stored baseline, this tab's revision, and the payments waiting then (what a key
+ * or a receipt's membership settles when it is taken). Opaque to its callers.
+ */
+export interface Capture { readonly base: Baseline; readonly rev: number; readonly waiting: readonly string[] }
 /**
  * How taking or removing a membership went: stored (`kept`), held by this tab only because the browser would not store it (`unkept`: the
  * overlay), dropped because the membership changed since the operation began (`stale`), or not done because this tab takes no key (`refused`:
@@ -688,10 +688,11 @@ export class Plus {
     if (this.#mode === 'plain') return this.generation();
     const db = this.#db;
     if (this.#mode !== 'idb' || !db) return Promise.resolve(null);
-    const rev = this.#rev;
-    if (this.#overlay) return Promise.resolve({ base: this.#overlay.base, rev });
-    return db.tx('readonly', async kv => ({ seed: seedOf(await kv.get(SEED_KEY)), gen: storedMember(await kv.get('member')).gen }), COMMIT_WAIT_MS)
-      .then(base => ({ base, rev }), () => null);
+    const rev = this.#rev, overlay = this.#overlay;
+    return db.tx('readonly', async kv => ({
+      base: { seed: seedOf(await kv.get(SEED_KEY)), gen: storedMember(await kv.get('member')).gen },
+      waiting: (await kv.keys()).filter(key => key.startsWith(PAID_PREFIX)).map(key => key.slice(PAID_PREFIX.length)),
+    }), COMMIT_WAIT_MS).then(read => ({ base: overlay ? overlay.base : read.base, rev, waiting: read.waiting }), () => null);
   }
   /** A membership this tab could not store is held (spec 2.4): in force here, the revision moved on. */
   #hold(overlay: Overlay): void {
@@ -710,7 +711,7 @@ export class Plus {
   }
   /** Remove: one commit against the baseline (an overlay's, which it drops; if that fails too, the overlay holds "none"). */
   async #remove(): Promise<Taken> {
-    const cap = this.#overlay ? { base: this.#overlay.base, rev: this.#rev } : await this.capture();
+    const cap = this.#overlay ? { base: this.#overlay.base, rev: this.#rev, waiting: [] } : await this.capture();
     if (cap === null || typeof cap === 'number') return 'refused';
     const out = await this.#commit({ kind: 'operation', expect: cap.base, rev: cap.rev, change: () => null, settle: [] });
     if (out.kind === 'ok') { if (this.#unverified) { this.#unverified = false; this.#changed(); } return 'kept'; }
@@ -802,11 +803,23 @@ export class Plus {
   }
 }
 
+let channel: (PlusChannel & Pick<BroadcastChannel, 'addEventListener'>) | null | undefined;
+/** The channel the page's tabs tell each other on (`BroadcastChannel('lmf.plus')`: a commit, a payment record), or null where there is none. */
+export function plusChannel(): (PlusChannel & Pick<BroadcastChannel, 'addEventListener'>) | null {
+  if (channel === undefined) { try { channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('lmf.plus') : null; } catch { channel = null; } }
+  return channel;
+}
+
 let shared: Plus | null = null;
-/** The page's one membership; its first use starts listening for other tabs. */
+/**
+ * The page's one membership: on the Plus database where the browser has IndexedDB (and then heard on the tabs' channel), else plain. Its
+ * first use starts listening for other tabs.
+ */
 export function plus(): Plus {
   if (shared) return shared;
-  shared = new Plus();
+  const db = plusDbIfAny(), told = db ? plusChannel() : null;
+  shared = new Plus(kept(), webPost, Date.now, () => plusApi(), { db, channel: told });
+  told?.addEventListener('message', () => { shared?.heard(); });
   if (typeof addEventListener === 'function') {
     addEventListener('storage', event => { if (event.key === PLUS_STORE || event.key === null) shared?.mirrorChanged(); });
     // A tab shown again after a long while may hold a pass that ran out meanwhile; one left open sees its pass run out without a word.

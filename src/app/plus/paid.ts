@@ -1,95 +1,91 @@
 /**
- * Payments made in this browser whose Plus is not set up yet (the Plus page, `page.ts`): one record per Paddle transaction, written once when
- * its checkout completes and never stamped again, so that a reload asks again and the prices stay away meanwhile (nobody pays twice because
- * the first setting-up failed). Each record keeps the membership's generation when its checkout completed (`Plus.generation`) and whether an
- * answer for it was dropped because the membership changed (`stale`): the page asks again by itself only while neither is so, and otherwise
- * waits for its Try again (Sol, review 2026-11-19). A record is given up a day after its checkout (the receipt's email and invoice number
- * still bring Plus back), and a settlement removes the records it names, never one written after it began. No page here: the tests drive
- * two tabs over one storage.
+ * Payments made in this browser whose Plus is not set up yet (the Plus page; the checkout recovery, page build spec section 3, 2026-11-20).
+ * One record per Paddle transaction in the Plus database (`paid:<txn>` = `{ at }`), beside the seed, so a reset of the database clears
+ * both together and a record's transaction is always asked for with the current seed. Written once, when its checkout completes, and never
+ * dated again; it waits from a day before that time to a day after it, on this device's clock (best effort), and keeps the prices away
+ * meanwhile, so nobody pays twice because the first setting-up failed. Removed by its own grant's commit, by any key or receipt membership
+ * committed in this browser (the records that existed when that action began, inside the commit's transaction: `pass.ts`), and when read
+ * outside its window. A record the browser refuses to store stays in this tab's memory, bound to the seed read when its checkout opened, and
+ * is discarded once the seed differs (it never crosses a reset). Plain mode has no records: it opens no checkout. The page keeps the list in
+ * memory, read again after each change, on focus and when another tab says so (`BroadcastChannel('lmf.plus')`), so it draws synchronously.
  */
+import { PAID_PREFIX, SEED_KEY, paidAt, paidWaits, type MemoryRecord, type PlusDb } from './plus-db.ts';
+import type { PlusChannel } from './pass.ts';
 
-/** Where the records are kept, in the storage the app shares (the handover leaves it out: `handover.ts`). */
-export const PAID_STORE = 'lmf.plus.paid';
-/** A record is given up this long after its checkout completed. */
-export const PAID_KEEP_MS = 86_400_000;
-/** At most this many records are kept (one browser paying more often than this in a day is not a case to keep). */
-const PAID_MAX = 8;
-
-/** A payment waiting here: Paddle's transaction, when its checkout completed, the membership's generation then, and whether an answer for it was dropped. */
-export interface Paid { id: string; at: number; generation: number; stale: boolean }
-
-type Kept = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+/** A payment waiting here: Paddle's transaction, when its checkout completed, and whether only this tab holds it (its write refused). */
+export interface Paid { id: string; at: number; memory: boolean }
 const TXN = /^txn_[a-z0-9]{8,64}$/;
 
-/** `localStorage`, or nothing where the browser refuses it: the records then last as long as the tab. */
-function kept(): Kept | null {
-  try { return typeof localStorage === 'undefined' ? null : localStorage; } catch { return null; }
-}
-
-/** The records in what is kept, the valid ones only. One written before records had a generation (`{ id, at }`) waits for its Try again. */
-function readPaid(raw: string | null): Paid[] {
-  if (!raw) return [];
-  let o: unknown;
-  try { o = JSON.parse(raw); } catch { return []; }
-  const one = (p: unknown): Paid | null => {
-    if (!p || typeof p !== 'object') return null;
-    const r = p as { id?: unknown; at?: unknown; generation?: unknown; stale?: unknown };
-    if (typeof r.id !== 'string' || !TXN.test(r.id) || typeof r.at !== 'number' || !Number.isFinite(r.at)) return null;
-    const generation = typeof r.generation === 'number' && Number.isSafeInteger(r.generation) && r.generation >= 0 ? r.generation : -1;
-    return { id: r.id, at: r.at, generation, stale: generation < 0 || r.stale === true };
-  };
-  const list = o && typeof o === 'object' && Array.isArray((o as { paid?: unknown }).paid) ? (o as { paid: unknown[] }).paid : [o];
-  const out: Paid[] = [];
-  for (const p of list) { const r = one(p); if (r && !out.some(q => q.id === r.id)) out.push(r); }
-  return out;
-}
-
 export class PaidStore {
-  /** The records where the browser keeps nothing (this tab's own). */
-  #mem: Paid[] = [];
-  constructor(private storage: Kept | null = kept(), private now: () => number = Date.now) {}
+  #list: Paid[] = [];
+  #memory = new Map<string, MemoryRecord>();
+  #listeners = new Set<() => void>();
+  constructor(private readonly db: PlusDb | null, private readonly now: () => number = Date.now, private readonly channel: PlusChannel | null = null) {}
 
-  #read(): Paid[] {
-    if (!this.storage) return this.#mem;
-    try { return readPaid(this.storage.getItem(PAID_STORE)); } catch { return this.#mem; }
-  }
-  #write(list: Paid[]): void {
-    this.#mem = list;
-    try {
-      if (!this.storage) return;
-      if (list.length) this.storage.setItem(PAID_STORE, JSON.stringify({ v: 2, paid: list }));
-      else this.storage.removeItem(PAID_STORE);
-    } catch { /* kept for this tab only */ }
-  }
-
-  /** Every payment still waiting, oldest first. One a day old, or dated over an hour ahead (a clock since set back), is given up as it is read. */
-  list(): Paid[] {
-    const all = this.#read(), now = this.now();
-    const live = all.filter(p => now - p.at <= PAID_KEEP_MS && p.at <= now + 3_600_000);
-    if (live.length !== all.length) this.#write(live);
-    return live;
-  }
-  /** The payment `id` while it waits, or null (set up, settled, or given up). */
+  /** Every payment still waiting, oldest first, as last read (one outside its window by the clock now is left out). */
+  list(): Paid[] { const now = this.now(); return this.#list.filter(p => paidWaits(p.at, now)); }
+  /** The payment `id` while it waits, or null. */
   get(id: string): Paid | null { return this.list().find(p => p.id === id) ?? null; }
-  /** The payments waiting now: what an action that may settle them names when it starts (`settle`). */
-  ids(): string[] { return this.list().map(p => p.id); }
-  /** The checkout `id` completed under the membership's `generation`: its record, written now unless it is kept already (then as it was). */
-  begin(id: string, generation: number): Paid {
-    const list = this.list(), known = list.find(p => p.id === id);
-    if (known) return known;
-    const made: Paid = { id, at: this.now(), generation, stale: false };
-    this.#write([...list, made].slice(-PAID_MAX));
-    return made;
+  /** This tab's own record of `id` (its write was refused), for the gate to check against the seed. */
+  memory(id: string): MemoryRecord | null { return this.#memory.get(id) ?? null; }
+  /** Told whenever the list changes. */
+  subscribe(listener: () => void): () => void { this.#listeners.add(listener); return () => { this.#listeners.delete(listener); }; }
+  #set(list: Paid[]): void {
+    const same = list.length === this.#list.length && list.every((p, i) => p.id === this.#list[i]!.id && p.at === this.#list[i]!.at && p.memory === this.#list[i]!.memory);
+    this.#list = list;
+    if (!same) for (const listener of [...this.#listeners]) listener();
   }
-  /** An answer for `id` was dropped because the membership changed: from now on only its Try again asks for it. */
-  markStale(id: string): void {
-    const list = this.list();
-    if (list.some(p => p.id === id && !p.stale)) this.#write(list.map(p => p.id === id ? { ...p, stale: true } : p));
+
+  /**
+   * The records read again (each one outside its window removed as it is read), with this tab's memory records of the seed stored now (one of
+   * another seed is discarded). A database that cannot be read leaves the list as it was.
+   */
+  async refresh(): Promise<void> {
+    if (!this.db) { this.#set([]); return; }
+    let read: { stored: Paid[]; seed: unknown };
+    try {
+      read = await this.db.tx('readwrite', async kv => {
+        const now = this.now(), stored: Paid[] = [];
+        for (const key of await kv.keys()) {
+          if (!key.startsWith(PAID_PREFIX)) continue;
+          const id = key.slice(PAID_PREFIX.length), at = paidAt(await kv.get(key));
+          if (at === null || !TXN.test(id) || !paidWaits(at, now)) { await kv.delete(key); continue; }
+          stored.push({ id, at, memory: false });
+        }
+        return { stored, seed: await kv.get(SEED_KEY) };
+      });
+    } catch { return; }
+    const now = this.now(), mine: Paid[] = [];
+    for (const [id, record] of this.#memory) {
+      if (record.epoch !== read.seed || !paidWaits(record.at, now) || read.stored.some(p => p.id === id)) { this.#memory.delete(id); continue; }
+      mine.push({ id, at: record.at, memory: true });
+    }
+    this.#set([...read.stored, ...mine].sort((a, b) => a.at - b.at));
   }
-  /** These payments are settled (set up here, or the visitor took another membership): removed, and only these. */
-  settle(ids: readonly string[]): void {
-    if (!ids.length) return;
-    const list = this.list(), left = list.filter(p => !ids.includes(p.id));
-    if (left.length !== list.length) this.#write(left);
+  /**
+   * The checkout `id` completed (`epoch`: the seed read just before it opened): its record written now unless one is kept (never dated
+   * again). A write the browser refuses keeps it in this tab, bound to `epoch`: this tab's attempt and its button still work.
+   */
+  async begin(id: string, epoch: string): Promise<void> {
+    if (!TXN.test(id)) return;
+    const at = this.now();
+    let stored = false;
+    if (this.db) {
+      try {
+        await this.db.tx('readwrite', async kv => { const key = `${PAID_PREFIX}${id}`; if (paidAt(await kv.get(key)) === null) await kv.put(key, { at }); });
+        stored = true;
+      } catch { stored = false; }
+    }
+    if (!stored && !this.#memory.has(id)) this.#memory.set(id, { at, epoch });
+    // The record shows before the attempt's first answer: added now, read again after.
+    if (!this.#list.some(p => p.id === id)) this.#set([...this.#list, { id, at, memory: !stored }]);
+    if (stored) { try { this.channel?.postMessage({ kind: 'paid' }); } catch { /* other tabs see it on their next focus */ } }
+    void this.refresh();
+  }
+  /** These payments were settled (by a commit, which removed their stored records) or found gone: this tab's own records of them go too. */
+  settled(ids: readonly string[]): void {
+    for (const id of ids) this.#memory.delete(id);
+    if (ids.length) this.#set(this.#list.filter(p => !ids.includes(p.id)));
+    void this.refresh();
   }
 }

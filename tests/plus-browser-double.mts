@@ -43,6 +43,8 @@ export interface Browser {
   /** Whether `storage` events reach the other tabs (on by default). */
   events: boolean;
   tabs: Plus[];
+  /** Each tab's own `PlusDb` (null for a tab without one), by the tab's place in `tabs`. */
+  dbs: (PlusDb | null)[];
   /** A new tab: its own `PlusDb` over the browser's IndexedDB (or none: `db: false`), the shared storage and channel. */
   open(o?: { post?: Post; db?: boolean }): Plus;
   /** The membership in the mirror, by key (null: none). */
@@ -52,7 +54,7 @@ export interface Browser {
 export function browser(idb: FakeIdb = new FakeIdb()): Browser {
   const data = new Map<string, string>(), writes: string[] = [];
   const b: Browser = {
-    idb, data, writes, clock: { t: NOW }, refuse: null, unreadable: false, events: true, tabs: [],
+    idb, data, writes, clock: { t: NOW }, refuse: null, unreadable: false, events: true, tabs: [], dbs: [],
     open: (o = {}) => {
       const index = b.tabs.length;
       const emit = (key: string): void => {
@@ -70,8 +72,9 @@ export function browser(idb: FakeIdb = new FakeIdb()): Browser {
       };
       const channel = { postMessage: (): void => { setImmediate(() => { b.tabs.forEach((t, j) => { if (j !== index) t.heard(); }); }); } };
       // The open's wait is short here (3 s in the page), so a held open turns a marked tab not ready quickly.
-      const tab = new Plus(storage, o.post ?? noPost, () => b.clock.t, () => API, { db: o.db === false ? null : new PlusDb(idb.factory, undefined, OPEN_WAIT_MS), channel });
-      b.tabs.push(tab);
+      const db = o.db === false ? null : new PlusDb(idb.factory, undefined, OPEN_WAIT_MS);
+      const tab = new Plus(storage, o.post ?? noPost, () => b.clock.t, () => API, { db, channel });
+      b.tabs.push(tab); b.dbs.push(db);
       return tab;
     },
     mirrorKey: () => { const raw = data.get(PLUS_STORE); return raw ? (JSON.parse(raw) as { key: string }).key : null; },

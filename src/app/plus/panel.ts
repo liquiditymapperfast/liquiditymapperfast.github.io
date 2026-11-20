@@ -4,7 +4,7 @@ import { lazy } from '../lazy.ts';
 import { t } from '../i18n.ts';
 import { PLUS_NAME } from './name.ts';
 import { plus, type Plus, type PlusState } from './pass.ts';
-import { keyEntry, maskKey, offlineText, onText, plusDate, type KeyEntry } from './key.ts';
+import { cannotHere, keyEntry, maskKey, offlineText, onText, plusDate, type KeyEntry } from './key.ts';
 
 export { PLUS_NAME };
 
@@ -16,7 +16,7 @@ export const plusButtonAction = (state: PlusState): 'sheet' | 'status' => state 
  * was pressed for (`revealed`: a key another tab puts in its place is masked again until Reveal is pressed for it).
  */
 export interface PopUi { mode: 'idle' | 'replace' | 'confirm'; revealed: string | null; removed: boolean }
-export type PopAction = 'replace' | 'remove' | 'remove-yes' | 'remove-no' | 'cancel' | 'retry';
+export type PopAction = 'replace' | 'remove' | 'remove-yes' | 'remove-no' | 'cancel' | 'retry' | 'save';
 /** What the pop-up shows for a membership and its own state. */
 export interface PopView {
   /** The first line: its tone (a check, a spinner, a warning, plain) and words; null for none. */
@@ -29,6 +29,8 @@ export interface PopView {
   confirm: string | null;
   /** A key field: an ended membership's, Replace key's, or one for a browser whose key was just removed. */
   entry: boolean;
+  /** Lines under the status: a membership this tab could not store, and when storing it failed for another reason than a full storage. */
+  notes: string[];
 }
 
 /**
@@ -37,27 +39,30 @@ export interface PopView {
  * once a renewal could not reach the server, that Plus could not be verified, with Try again (never "ended": only the server's refusal
  * ends a membership). None: the key was just removed here.
  */
-export function popView(m: { state: PlusState; until: number | null; key: string | null; unverified: boolean }, ui: PopUi): PopView {
+export function popView(m: { state: PlusState; until: number | null; key: string | null; unverified: boolean; unstored?: boolean; saveFailed?: boolean }, ui: PopUi): PopView {
+  // A membership this tab took but could not store (the checkout recovery, 2026-11-20): it lasts until the tab closes; Try again stores it.
+  const notes = m.unstored && m.state !== 'none' ? [t('This browser would not keep Plus: it lasts until this tab closes. Copy the key now and enter it again next time.'), ...(m.saveFailed ? [t('Plus could not be saved in this browser just now.')] : [])] : [];
+  const save: PopAction[] = m.unstored && m.saveFailed && ui.mode === 'idle' ? ['save'] : [];
   if (m.state === 'on') {
-    const actions: PopAction[] = ui.mode === 'confirm' ? ['remove-yes', 'remove-no'] : ui.mode === 'replace' ? ['cancel'] : ['replace', 'remove'];
+    const actions: PopAction[] = ui.mode === 'confirm' ? ['remove-yes', 'remove-no'] : ui.mode === 'replace' ? ['cancel'] : [...save, 'replace', 'remove'];
     return { status: { tone: 'ok', text: onText(m.until) }, key: m.key ? (ui.revealed !== null && ui.revealed === m.key ? m.key : maskKey(m.key)) : null, actions,
-      confirm: ui.mode === 'confirm' ? t('Remove your key from this browser? This doesn\'t cancel a subscription.') : null, entry: ui.mode === 'replace' };
+      confirm: ui.mode === 'confirm' ? t('Remove your key from this browser? This doesn\'t cancel a subscription.') : null, entry: ui.mode === 'replace', notes };
   }
   if (m.state === 'ended') {
-    return { status: { tone: 'plain', text: m.until ? t('Plus ended on {date}. Everything free stays.', { date: plusDate(m.until) }) : t('Plus has ended in this browser. Everything free stays.') }, key: null, actions: [], confirm: null, entry: true };
+    return { status: { tone: 'plain', text: m.until ? t('Plus ended on {date}. Everything free stays.', { date: plusDate(m.until) }) : t('Plus has ended in this browser. Everything free stays.') }, key: null, actions: save, confirm: null, entry: true, notes };
   }
   if (m.state === 'checking') {
-    return m.unverified ? { status: { tone: 'error', text: offlineText() }, key: null, actions: ['retry'], confirm: null, entry: false }
-      : { status: { tone: 'checking', text: t('Checking Plus with the server…') }, key: null, actions: [], confirm: null, entry: false };
+    return m.unverified ? { status: { tone: 'error', text: offlineText() }, key: null, actions: [...save, 'retry'], confirm: null, entry: false, notes }
+      : { status: { tone: 'checking', text: t('Checking Plus with the server…') }, key: null, actions: save, confirm: null, entry: false, notes };
   }
-  return { status: ui.removed ? { tone: 'ok', text: t('Key removed from this browser.') } : null, key: null, actions: [], confirm: null, entry: !ui.removed };
+  return { status: ui.removed ? { tone: 'ok', text: t('Key removed from this browser.') } : null, key: null, actions: [], confirm: null, entry: !ui.removed, notes };
 }
 
 /**
- * What a press does to the pop-up's state, and to the membership (`forget`: the key leaves this browser; `retry`: ask the server again now).
- * Reveal is pressed for `key`, the key shown: pressed again (or for another key) it masks.
+ * What a press does to the pop-up's state, and to the membership (`forget`: the key leaves this browser; `retry`: ask the server again now;
+ * `save`: store a membership this tab could not store). Reveal is pressed for `key`, the key shown: pressed again (or for another key) it masks.
  */
-export function popPress(ui: PopUi, action: PopAction | 'reveal', key: string | null = null): { ui: PopUi; effect: 'forget' | 'retry' | null } {
+export function popPress(ui: PopUi, action: PopAction | 'reveal', key: string | null = null): { ui: PopUi; effect: 'forget' | 'retry' | 'save' | null } {
   switch (action) {
     case 'reveal': return { ui: { ...ui, revealed: ui.revealed !== null && ui.revealed === key ? null : key }, effect: null };
     case 'replace': return { ui: { ...ui, mode: 'replace' }, effect: null };
@@ -65,6 +70,7 @@ export function popPress(ui: PopUi, action: PopAction | 'reveal', key: string | 
     case 'remove-no': case 'cancel': return { ui: { ...ui, mode: 'idle' }, effect: null };
     case 'remove-yes': return { ui: { mode: 'idle', revealed: null, removed: true }, effect: 'forget' };
     case 'retry': return { ui, effect: 'retry' };
+    case 'save': return { ui, effect: 'save' };
   }
 }
 
@@ -87,11 +93,13 @@ export function seePlus(opener: HTMLElement): void {
 
 const LABELS: Record<PopAction, () => string> = {
   replace: () => t('Replace key'), remove: () => t('Remove from this browser'), 'remove-yes': () => t('Remove'), 'remove-no': () => t('Keep'), cancel: () => t('Cancel'), retry: () => t('Try again'),
+  save: () => t('Try again'),
 };
 
 /** What the status pop-up works with: the membership, how it is drawn again and closed, what See what Plus adds opens, the clipboard, the key form. */
 export interface PopDeps {
-  member: Pick<Plus, 'state' | 'until' | 'key' | 'unverified' | 'forget' | 'retry' | 'subscribe'>;
+  /** The membership; with a database also whether this tab takes keys, holds one it could not store, and Try again for it. */
+  member: Pick<Plus, 'state' | 'until' | 'key' | 'unverified' | 'forget' | 'retry' | 'subscribe'> & Partial<Pick<Plus, 'takesKeys' | 'unstored' | 'saveFailed' | 'keepAgain'>>;
   /** Draw the pop-up again (the panel's `render`, which gives the keyboard back to the control with the same `data-focus`). */
   redraw(): void;
   close(): void;
@@ -124,6 +132,8 @@ export function createStatusPop(deps: PopDeps): StatusPop {
   const redraw = (): void => { if (!gone) deps.redraw(); };
   const off = member.subscribe(redraw);
   const press = (action: PopAction | 'reveal'): void => {
+    // A tab that takes no key removes none either (its database not open while the browser's membership lives there): it says so.
+    if (action === 'remove-yes' && member.takesKeys === false) { ui = { ...ui, mode: 'idle' }; hint = cannotHere(); hintFor = member.key; focusNext = 'remove'; redraw(); return; }
     const next = popPress(ui, action, member.key);
     // Hide, or anything that changes what is shown, makes a copy still under way say nothing when it ends.
     if (action === 'reveal' && next.ui.revealed === null) { copies++; hint = ''; }
@@ -131,8 +141,9 @@ export function createStatusPop(deps: PopDeps): StatusPop {
     if (action !== 'reveal') hint = '';
     focusNext = action === 'remove' ? 'remove-no' : action === 'remove-no' ? 'remove' : action === 'cancel' ? 'replace' : action === 'remove-yes' ? 'see' : action === 'replace' ? 'key-in' : null;
     if (action === 'cancel') dropEntry();
-    if (next.effect === 'forget') member.forget();
+    if (next.effect === 'forget') void member.forget();
     else if (next.effect === 'retry') member.retry();
+    else if (next.effect === 'save') void member.keepAgain?.();
     redraw();
   };
   const build = (body: HTMLElement): void => {
@@ -145,12 +156,15 @@ export function createStatusPop(deps: PopDeps): StatusPop {
       if (entry?.kind === 'replace') dropEntry();
       if (replaced) { hint = t('Key replaced.'); hintFor = member.key; focusNext = 'replace'; }
     }
-    const view = popView({ state: member.state, until: member.until, key: member.key, unverified: member.unverified }, ui);
+    const view = popView({ state: member.state, until: member.until, key: member.key, unverified: member.unverified, unstored: member.unstored === true, saveFailed: member.saveFailed === true }, ui);
     const parts: HTMLElement[] = [];
     if (view.status) {
       const mark = view.status.tone === 'checking' ? el('span', { class: 'spin', ariaHidden: 'true' }) : view.status.tone === 'plain' ? null : el('span', { class: 'pp-mark', ariaHidden: 'true' });
       parts.push(el('p', { class: `pp-status ${view.status.tone}`, role: 'status' }, ...(mark ? [mark] : []), el('span', { textContent: view.status.text })));
     }
+    for (const note of view.notes) parts.push(el('p', { class: 'pp-note', textContent: note }));
+    // A hint about the key that is not about a copy (a Remove this tab cannot do) is said under the status.
+    if (hint && hintFor === member.key && view.key === null) parts.push(el('p', { class: 'pp-hint', role: 'status', textContent: hint }));
     if (view.key !== null) {
       const shown = ui.revealed !== null && ui.revealed === member.key;
       const box = el('input', { type: 'text', class: 'pp-key', readOnly: true, value: view.key, ariaLabel: shown ? t('Your key') : t('Your key, hidden') });
