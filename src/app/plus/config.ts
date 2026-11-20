@@ -17,12 +17,13 @@ export const PLUS_API = 'https://plus.hiverust.dev/v1';
 /**
  * Paddle's side of the checkout (Paddle is the seller of record): the client-side token and the price ids are public by design. While the
  * token or the monthly price is empty Plus is not on sale, and the pages say so instead of offering a checkout. `usd` is each price before
- * tax, written on the Plus page (the checkout shows the buyer's own currency and tax); `portal` is Paddle's page where a subscriber ends
- * the subscription or changes the card.
+ * tax, written on the Plus page (the checkout shows the buyer's own currency and tax); the monthly one is written there before the sale
+ * opens too, so the page says what Plus will cost (Karl, 2026-11-20: $10 a month; the yearly price is still open); `portal` is Paddle's
+ * page where a subscriber ends the subscription or changes the card.
  */
 export interface PlusPrice { readonly id: string; readonly usd: number }
 export const PADDLE: { readonly environment: 'sandbox' | 'production'; readonly token: string; readonly portal: string; readonly monthly: PlusPrice; readonly yearly: PlusPrice } = {
-  environment: 'sandbox', token: '', portal: '', monthly: { id: '', usd: 0 }, yearly: { id: '', usd: 0 },
+  environment: 'sandbox', token: '', portal: '', monthly: { id: '', usd: 10 }, yearly: { id: '', usd: 0 },
 };
 export const plusOnSale = (): boolean => PADDLE.token !== '' && PADDLE.monthly.id !== '';
 /** How many keys a subscription holds at most (the server's limit): a newer one replaces the oldest, and no more are given within a day. */

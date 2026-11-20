@@ -2937,6 +2937,7 @@
  "No subscription in good standing was found for that email and invoice number.": "没有找到与该邮箱和发票编号对应的有效订阅。",
  "Not on sale yet": "尚未开售",
  "Plus is being set up. This page will carry its price and the checkout when it opens.": "Plus 正在筹备中。开售后，本页将列出价格，并可在此付款。",
+ "Plus is being set up, and the checkout opens on this page soon. Prices are before tax.": "Plus 正在筹备中，很快即可在本页付款。价格不含税。",
  "{price} a month": "每月 {price}",
  "renews each month": "每月自动续费",
  "{price} a year": "每年 {price}",

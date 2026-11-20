@@ -249,7 +249,11 @@ const pendingNote = (pending: Paid, withSaid = true): HTMLElement[] => [...(with
 function buySection(): HTMLElement {
   const box = el('section', { class: 'buy' });
   if (!plusOnSale()) {
-    box.append(el('h2', { textContent: t('Not on sale yet') }), el('p', { textContent: t('Plus is being set up. This page will carry its price and the checkout when it opens.') }));
+    // The monthly price is written before the sale opens (Karl, 2026-11-20: $10 a month), so the page says what Plus will cost, as Paddle's
+    // review of the site asks; no button until the checkout exists.
+    box.append(el('h2', { textContent: t('Not on sale yet') }));
+    if (PADDLE.monthly.usd > 0) box.append(el('p', { class: 'price-soon' }, el('b', { textContent: t('{price} a month', { price: money(PADDLE.monthly.usd) }) })), el('p', { textContent: t('Plus is being set up, and the checkout opens on this page soon. Prices are before tax.') }));
+    else box.append(el('p', { textContent: t('Plus is being set up. This page will carry its price and the checkout when it opens.') }));
     return box;
   }
   const pending = paid.list()[0];

@@ -27,3 +27,19 @@ test('the Plus page\'s own rules reach only its lower part and its foot, never t
   assert.match(read('src/app/main.ts'), /import '\.\/levels-control\.css';/);
   assert.ok(!/^\.lv \{/m.test(read('src/app/styles.css')) && /^\.lv \{/m.test(read('src/app/levels-control.css')));
 });
+
+test('before the sale opens the Plus page says the monthly price (Karl, 2026-11-20: $10 a month) and offers no checkout', async () => {
+  const { PADDLE, plusOnSale } = await import('../src/app/plus/config.ts');
+  assert.equal(PADDLE.monthly.usd, 10, 'the monthly price written on the page');
+  assert.equal(plusOnSale(), false, 'still not on sale (the sale gate)');
+  const page = read('src/app/plus/page.ts'), branch = page.slice(page.indexOf('if (!plusOnSale()) {'), page.indexOf('const pending = paid.list()[0];'));
+  assert.match(branch, /PADDLE\.monthly\.usd > 0/, 'the price is written where one is set');
+  assert.match(branch, /t\('\{price\} a month', \{ price: money\(PADDLE\.monthly\.usd\) \}\)/, 'in the same words as the price button');
+  assert.match(branch, /t\('Plus is being set up, and the checkout opens on this page soon\. Prices are before tax\.'\)/);
+  assert.match(branch, /return box;/);
+  assert.ok(!/el\('button'/.test(branch), 'no button before the checkout exists');
+  for (const lang of ['de', 'es', 'fr', 'it', 'ja', 'ko', 'pt', 'ru', 'tr', 'uk', 'zh']) {
+    const pack = JSON.parse(read(`src/app/i18n/${lang}.json`)) as Record<string, string>;
+    assert.ok(pack['Plus is being set up, and the checkout opens on this page soon. Prices are before tax.'], `${lang}: the sentence is translated`);
+  }
+});

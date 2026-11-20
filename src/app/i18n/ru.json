@@ -3190,6 +3190,7 @@
  "No subscription in good standing was found for that email and invoice number.": "Для этой электронной почты и этого номера счёта не найдено действующей подписки.",
  "Not on sale yet": "Пока не продаётся",
  "Plus is being set up. This page will carry its price and the checkout when it opens.": "Plus ещё готовится. Цена и оплата появятся на этой странице, когда откроется продажа.",
+ "Plus is being set up, and the checkout opens on this page soon. Prices are before tax.": "Plus ещё готовится, а оплата скоро откроется на этой странице. Цены указаны без учёта налогов.",
  "{price} a month": "{price} в месяц",
  "renews each month": "продлевается каждый месяц",
  "{price} a year": "{price} в год",

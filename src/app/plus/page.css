@@ -24,6 +24,7 @@ body { margin: 0; background: var(--bg, #fff); color: var(--text, #1b1d1e); font
 .plus-rest button.price-main { background: var(--ui, #1f6feb); border-color: var(--ui, #1f6feb); color: var(--on-ui, #fff); }
 .plus-rest button.price-main span { color: inherit; opacity: .85; }
 .plus-rest button.price-main:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--ui, #1f6feb); }
+.plus-rest .price-soon b { font-size: 22px; }
 .plus-rest button.quiet { border-color: transparent; background: none; color: var(--muted, #5b6470); padding: 6px 0; }
 .plus-rest button.quiet:hover { color: var(--text, #1b1d1e); border-color: transparent; }
 .plus-rest .fine { color: var(--muted, #5b6470); font-size: 13px; }

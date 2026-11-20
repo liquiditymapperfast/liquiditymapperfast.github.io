@@ -3088,6 +3088,7 @@
  "No subscription in good standing was found for that email and invoice number.": "Bu e-posta adresi ve fatura numarası için geçerli bir abonelik bulunamadı.",
  "Not on sale yet": "Henüz satışta değil",
  "Plus is being set up. This page will carry its price and the checkout when it opens.": "Plus hazırlanıyor. Satışa açıldığında fiyatı ve ödeme ekranı bu sayfada yer alacak.",
+ "Plus is being set up, and the checkout opens on this page soon. Prices are before tax.": "Plus hazırlanıyor ve ödeme ekranı yakında bu sayfada açılacak. Fiyatlara vergi dahil değildir.",
  "{price} a month": "Aylık {price}",
  "renews each month": "her ay yenilenir",
  "{price} a year": "Yıllık {price}",

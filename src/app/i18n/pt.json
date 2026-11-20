@@ -3147,6 +3147,7 @@
  "No subscription in good standing was found for that email and invoice number.": "Nenhuma assinatura em dia foi encontrada para esse e-mail e esse número de fatura.",
  "Not on sale yet": "Ainda não está à venda",
  "Plus is being set up. This page will carry its price and the checkout when it opens.": "O Plus está sendo preparado. Esta página vai trazer o preço e o checkout quando o Plus estiver à venda.",
+ "Plus is being set up, and the checkout opens on this page soon. Prices are before tax.": "O Plus está sendo preparado, e o checkout abre nesta página em breve. Os preços não incluem impostos.",
  "{price} a month": "{price} por mês",
  "renews each month": "renova todo mês",
  "{price} a year": "{price} por ano",

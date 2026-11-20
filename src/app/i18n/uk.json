@@ -3195,6 +3195,7 @@
  "No subscription in good standing was found for that email and invoice number.": "Для цієї електронної пошти й цього номера рахунку не знайдено чинної підписки.",
  "Not on sale yet": "Ще не продається",
  "Plus is being set up. This page will carry its price and the checkout when it opens.": "Plus ще готується. Ціна й оплата з'являться на цій сторінці, коли відкриється продаж.",
+ "Plus is being set up, and the checkout opens on this page soon. Prices are before tax.": "Plus ще готується, а оплата незабаром відкриється на цій сторінці. Ціни вказано без урахування податків.",
  "{price} a month": "{price} на місяць",
  "renews each month": "поновлюється щомісяця",
  "{price} a year": "{price} на рік",

@@ -183,7 +183,8 @@ at or after `floor(now / 86,400,000) * 86,400,000 - FREE_DAYS * 86,400,000`.
    the notification destination set to the Worker's `/v1/paddle/webhook`.
 2. In `src/app/plus/config.ts`: `PADDLE.environment` (`sandbox` or `production`), `token`, `monthly` and `yearly` (`id` and the price
    in dollars before tax, which the Plus page writes), `portal` (Paddle's customer portal link). While the token or the monthly id is
-   empty the pages say that Plus is not on sale yet.
+   empty the pages say that Plus is not on sale yet; the Plus page still writes the monthly price (`monthly.usd`, $10 since
+   2026-11-20) so Paddle's site review sees what Plus costs, and that price must match the one created in Paddle.
 3. The three legal pages (`src/app/public/terms/`, `privacy/`, `refunds/`) name the seller and the contact address
    (`support@liquiditymapper.com`, forwarded by Cloudflare Email Routing); the Plus page's footer names the same address
    (`PLUS_CONTACT`). The prices on the Plus page and in Paddle must say the same.

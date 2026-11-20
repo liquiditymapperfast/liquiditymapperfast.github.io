@@ -2937,6 +2937,7 @@
  "No subscription in good standing was found for that email and invoice number.": "해당 이메일과 인보이스 번호로는 유효한 구독을 찾지 못했습니다.",
  "Not on sale yet": "아직 판매 전",
  "Plus is being set up. This page will carry its price and the checkout when it opens.": "Plus는 준비 중입니다. 판매가 시작되면 이 페이지에서 가격을 확인하고 결제할 수 있습니다.",
+ "Plus is being set up, and the checkout opens on this page soon. Prices are before tax.": "Plus는 준비 중이며, 곧 이 페이지에서 결제할 수 있습니다. 가격은 세금 별도입니다.",
  "{price} a month": "월 {price}",
  "renews each month": "매월 자동 갱신",
  "{price} a year": "연 {price}",
