@@ -32,7 +32,8 @@ test('the Plus page\'s own rules reach only its lower part and its foot, never t
 test('before the sale opens the Plus page says the monthly price (Karl, 2026-11-20: $10 a month) and offers no checkout', () => {
   assert.equal(PADDLE.monthly.usd, 10, 'the monthly price written on the page');
   assert.equal(plusOnSale(), false, 'still not on sale (the sale gate)');
-  const page = read('src/app/plus/page.ts'), branch = page.slice(page.indexOf('if (!plusOnSale()) {'), page.indexOf('const pending = paid.list()[0];'));
+  const page = read('src/app/plus/page.ts'), branch = page.slice(page.indexOf('function notOnSaleSection()'), page.indexOf('function drawTop('));
+  assert.ok(branch.length > 0 && branch.includes('if (!plusOnSale()) {'), 'the not-on-sale section is where it was found');
   assert.match(branch, /PADDLE\.monthly\.usd > 0/, 'the price is written where one is set');
   assert.match(branch, /t\('\{price\} a month', \{ price: money\(PADDLE\.monthly\.usd\) \}\)/, 'in the same words as the price button');
   assert.match(branch, /t\('Plus is being set up, and the checkout opens on this page soon\. Prices are before tax\.'\)/);

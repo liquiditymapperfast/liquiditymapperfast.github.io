@@ -29,7 +29,7 @@ import { mountDemo, mountVisuals } from './demo/index.ts';
 import { demoControl } from './demo-levels.ts';
 import { keyEntry, type KeyEntry } from './key.ts';
 import { PaidStore, type Paid } from './paid.ts';
-import { besideMembership, buyView, cannotBuy, cannotHere, keepAgainSettling, keySettling, keyShownFor, lateText, restoreBy, setUpPayment, type Answer, type Fresh } from './page-flow.ts';
+import { besideMembership, cannotBuy, cannotHere, keepAgainSettling, keySettling, keyShownFor, lateText, restoreBy, setUpPayment, topRow, type Answer, type Fresh } from './page-flow.ts';
 import { features, hero, trust } from './present.ts';
 
 /** The part of Paddle's script this page uses (Paddle.js v2). */
@@ -71,23 +71,28 @@ function wearTheme(): boolean {
 const dark = wearTheme();
 
 /**
- * The top of the page, drawn once: the brand, the hero (its pill, and a button to the checkout or the key box), the demo with the page's own
- * levels control on the demo's store, and the three feature sections with their pictures. The rest of the page (`rest`) is drawn afresh
- * on every change; the demo runs on through it.
+ * The top of the page, drawn once: the brand, the hero (its pill, and "Activate a key" or, while Plus is on sale, the buy row), the demo with
+ * the page's own levels control on the demo's store, and the three feature sections with their pictures. The buy row (`top`, in the hero's
+ * line of pills) and its small print under it (`topFine`) are drawn afresh with the rest of the page (`rest`); the demo runs on through it.
  */
 const onPill = el('span', { class: 'px-pill on', hidden: true }, el('span', { class: 'px-check', ariaHidden: 'true' }), el('span', { textContent: t('Plus is on in this browser') }));
 const cta = el('button', { type: 'button', class: 'px-cta' });
+const top = el('div', { class: 'px-top', hidden: true }), topFine = el('div', { class: 'px-top-fine', hidden: true });
 const feats = features(day);
 const stage = el('section', { class: 'px-stage', ariaLabel: t('Interactive demo') });
 const rest = el('div', { class: 'plus-rest' }), foot = el('div', { class: 'plus-foot' });
+const heroBox = hero('plus-title', onPill, cta, top);
+/** The availability pill the hero draws ("$10 a month" on sale, else "Gift keys only today"). */
+const pricePill = heroBox.querySelector<HTMLElement>('.px-avail > .px-pill:not(.on)');
+heroBox.querySelector('.px-avail')?.after(topFine);
 root.replaceChildren(el('main', { class: 'plus-page' },
   el('header', { class: 'plus-head' }, el('b', { textContent: PLUS_NAME }), el('a', { class: 'home', href: '../', textContent: 'LiquidityMapperFast' })),
-  hero('plus-title', onPill, cta), stage, ...feats.root, rest, foot));
+  heroBox, stage, ...feats.root, rest, foot));
 mountDemo(stage, { control: demoControl });
 mountVisuals(feats.hosts);
-// To the checkout while Plus is on sale, else to the key box; the keyboard follows once the page has scrolled there.
+// "Activate a key" (shown while Plus is not on sale) goes to the key box; the keyboard follows once the page has scrolled there.
 cta.addEventListener('click', () => {
-  const target = plusOnSale() && document.getElementById('plus-monthly') ? document.getElementById('plus-monthly') : keyBox.input.isConnected ? keyBox.input : null;
+  const target = keyBox.input.isConnected ? keyBox.input : null;
   if (!target) return;
   target.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
   window.setTimeout(() => target.focus({ preventScroll: true }), 400);
@@ -262,46 +267,56 @@ const link = (href: string, text: string): HTMLAnchorElement => el('a', { href, 
  * membership as it is then (`withSaid`: what the page said about the checkout goes with it, unless the thanks beside it say it). Nothing asks
  * for it by itself. Disabled while this tab's database is still opening; in a tab that may not issue, a press says so and sends nothing.
  */
+/** A waiting payment's button: "Set up Plus", or "Try again" after this tab's own attempt for it ended without Plus. */
+const waitingButton = (pending: Paid): HTMLButtonElement => el('button', { type: 'button', id: 'plus-paid-again', disabled: state.busy !== '' || member.mode === 'opening', textContent: state.tried.has(pending.id) ? t('Try again') : t('Set up Plus'), onclick: () => { void completed(pending.id, 'press'); } });
+const WAITING_NOTE = (): string => t('A payment made in this browser is still being set up. The prices come back once it is, so it is not paid twice.');
 const pendingNote = (pending: Paid, withSaid = true): HTMLElement[] => [...(withSaid ? said('buy') : []),
-  el('p', { textContent: t('A payment made in this browser is still being set up. The prices come back once it is, so it is not paid twice.') }),
-  el('p', { class: 'actions' }, el('button', { type: 'button', id: 'plus-paid-again', disabled: state.busy !== '' || member.mode === 'opening', textContent: state.tried.has(pending.id) ? t('Try again') : t('Set up Plus'), onclick: () => { void completed(pending.id, 'press'); } }))];
+  el('p', { textContent: WAITING_NOTE() }),
+  el('p', { class: 'actions' }, waitingButton(pending))];
 
-/** The price buttons, or why there are none yet. */
-function buySection(): HTMLElement {
+/**
+ * While Plus is not on sale, the section that says so under the hero, as it always was: the monthly price is written before the sale opens
+ * (Karl, 2026-11-20: $10 a month), so the page says what Plus will cost, as Paddle's review of the site asks; no button until the checkout
+ * exists. On sale there is no section here: the buy row is at the top (`drawTop`).
+ */
+function notOnSaleSection(): HTMLElement {
   const box = el('section', { class: 'buy' });
   if (!plusOnSale()) {
-    // The monthly price is written before the sale opens (Karl, 2026-11-20: $10 a month), so the page says what Plus will cost, as Paddle's
-    // review of the site asks; no button until the checkout exists.
     box.append(el('h2', { textContent: t('Not on sale yet') }));
     if (PADDLE.monthly.usd > 0) box.append(el('p', { class: 'price-soon' }, el('b', { textContent: t('{price} a month', { price: money(PADDLE.monthly.usd) }) })), el('p', { textContent: t('Plus is being set up, and the checkout opens on this page soon. Prices are before tax.') }));
     else box.append(el('p', { textContent: t('Plus is being set up. This page will carry its price and the checkout when it opens.') }));
-    return box;
   }
-  const pending = paid.list()[0];
-  // Only a tab whose database is open, and whose payments were read once, sells (spec 2.1, 4; Sol, code review C2-1): plain mode never
-  // issues, a tab not ready or unusable here says so, and until the first read nothing shows (no prices over a payment still waiting). The
-  // words replace the buying controls only (the not-on-sale page above is the same in every mode).
-  const view = buyView(member.mode, paid.ready, pending !== undefined);
-  const heading = el('h2', { textContent: member.state === 'ended' ? t('Renew Plus') : t('Get Plus') });
-  if (view === 'pending' && pending) {
-    box.append(el('h2', { textContent: t('Get Plus') }), ...pendingNote(pending));
-    return box;
-  }
-  if (view === 'cannot-buy' || view === 'cannot-here') {
-    box.append(heading, el('p', { class: 'said-bad', role: 'status', textContent: view === 'cannot-buy' ? cannotBuy() : cannotHere() }));
-    return box;
-  }
-  if (view === 'opening') { box.append(heading); return box; }
-  const price = (label: string, detail: string, p: PlusPrice, main: boolean, id: string): HTMLButtonElement => {
-    const button = el('button', { type: 'button', id, class: main ? 'price-main' : 'price-plain', disabled: state.busy !== '', onclick: () => { void buy(p); } }, el('b', { textContent: label }), el('span', { textContent: detail }));
-    return button;
-  };
-  const prices = el('div', { class: 'prices' }, price(t('{price} a month', { price: money(PADDLE.monthly.usd) }), t('renews each month'), PADDLE.monthly, true, 'plus-monthly'));
-  if (PADDLE.yearly.id) prices.append(price(t('{price} a year', { price: money(PADDLE.yearly.usd) }), t('renews each year'), PADDLE.yearly, false, 'plus-yearly'));
-  box.append(heading, prices, ...said('buy'),
-    el('p', { class: 'fine', textContent: t('Prices are before tax; the checkout shows the total in your currency. You can end Plus at any time, and it then runs to the end of the period paid for.') }),
-    el('p', { class: 'fine', textContent: t('Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders. Paddle provides all customer service inquiries and handles returns.') }));
   return box;
+}
+
+/**
+ * The hero's line while the page is drawn (`topRow`): on sale, one thin row that buys with one click (Karl, 2026-11-20): the price button
+ * (`plus-monthly`, the checkout at once), a waiting payment's note and button, or why nothing is sold here; and the small print under it
+ * (what the page said about a checkout, the tax line and Paddle's Merchant-of-Record line next to the price). Only a tab whose database is
+ * open, and whose payments were read once, sells (spec 2.1, 4; Sol, code review C2-1). Not on sale: the pill and "Activate a key", as before.
+ */
+function drawTop(buying: boolean): void {
+  const pending = paid.list()[0], sale = plusOnSale(), ended = member.state === 'ended';
+  const row = topRow({ onSale: sale, stands: member.state, buying, mode: member.mode, paidReady: paid.ready, waiting: pending !== undefined });
+  if (pricePill) pricePill.hidden = !row.pill;
+  onPill.hidden = !row.on;
+  cta.hidden = !row.activate; cta.textContent = t('Activate a key');
+  const parts: HTMLElement[] = [], fine: HTMLElement[] = buying && sale ? said('buy') : [];
+  top.classList.toggle('waiting', row.buy === 'waiting');
+  if (row.buy === 'price') {
+    const price = (p: PlusPrice, per: string, main: boolean, id: string): HTMLButtonElement => el('button', { type: 'button', id, class: main ? 'px-buy' : 'px-buy plain', disabled: state.busy !== '', onclick: () => { void buy(p); } },
+      ...(main ? [el('b', { textContent: ended ? t('Renew Plus') : t('Get Plus') })] : []), el('span', { textContent: per }));
+    parts.push(price(PADDLE.monthly, t('{price} a month', { price: money(PADDLE.monthly.usd) }), true, 'plus-monthly'));
+    if (PADDLE.yearly.id) parts.push(price(PADDLE.yearly, t('{price} a year', { price: money(PADDLE.yearly.usd) }), false, 'plus-yearly'));
+    fine.push(el('p', { textContent: t('Prices are before tax; the checkout shows the total in your currency. You can end Plus at any time, and it then runs to the end of the period paid for.') }),
+      el('p', { textContent: t('Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders. Paddle provides all customer service inquiries and handles returns.') }));
+  } else if (row.buy === 'waiting' && pending) {
+    parts.push(waitingButton(pending), el('span', { class: 'px-top-note', textContent: WAITING_NOTE() }));
+  } else if (row.buy === 'cannot-buy' || row.buy === 'cannot-here') {
+    parts.push(el('span', { class: 'px-top-said', role: 'status', textContent: row.buy === 'cannot-buy' ? cannotBuy() : cannotHere() }));
+  }
+  top.replaceChildren(...parts); top.hidden = parts.length === 0;
+  topFine.replaceChildren(...fine); topFine.hidden = fine.length === 0;
 }
 
 /** What this browser holds: whether Plus is on, until when, and the key; and a payment still waiting here when no prices are drawn (`buying`). */
@@ -405,8 +420,6 @@ function render(): void { activity.redraw(drawPage); }
 
 function drawPage(): void {
   const stands = member.state;
-  onPill.hidden = stands !== 'on'; cta.hidden = stands === 'on';
-  cta.textContent = plusOnSale() ? t('Get Plus') : t('Activate a key');
   // Reveal and the showing after a checkout or a restore hold for their own key only: another key in its place starts masked. The thanks
   // after a checkout go the same way.
   if (state.shown !== null && state.shown !== member.key) state.shown = null;
@@ -415,13 +428,16 @@ function drawPage(): void {
   // (a key replaced by newer ones belongs to a subscription that may well be paid: the receipt brings Plus back, not a second purchase).
   const buying = stands === 'none' || (stands === 'ended' && member.why !== 'replaced');
   // The page is drawn afresh: what had the focus (a field being typed in, a button just pressed) gets it back, the caret where it was.
-  const active = document.activeElement instanceof HTMLElement && rest.contains(document.activeElement) ? document.activeElement : null;
+  const drawn = (node: Node): boolean => rest.contains(node) || top.contains(node) || topFine.contains(node);
+  const active = document.activeElement instanceof HTMLElement && drawn(document.activeElement) ? document.activeElement : null;
   const at = active instanceof HTMLInputElement ? [active.selectionStart, active.selectionEnd] as const : null;
   const focus = active?.id ? { id: active.id, at } : null;
+  // On sale the buy row is at the top and nothing is sold further down; not on sale the lower section says so, as it always did.
+  drawTop(buying);
   rest.replaceChildren(
     ...(stands !== 'none' ? [memberSection(buying)] : []),
     ...(stands === 'none' && member.unstored ? [removedHereSection()] : []),
-    ...(buying ? [buySection()] : []),
+    ...(buying && !plusOnSale() ? [notOnSaleSection()] : []),
     ...(stands !== 'on' ? [deviceSection()] : []),
   );
   // The key box left the page (Plus is on): the next time it comes back, it comes back as a fresh form.
@@ -431,8 +447,8 @@ function drawPage(): void {
       el('p', {}, link('../', t('Open the map')), ' · ', link(`../${LEGAL.terms}`, t('Terms')), ' · ', link(`../${LEGAL.privacy}`, t('Privacy')), ' · ', link(`../${LEGAL.refunds}`, t('Refunds'))),
       el('p', { class: 'fine' }, t('Questions about the page: {email}. Questions about a payment go to Paddle, which sold it: paddle.net.', { email: PLUS_CONTACT }))));
   // A control kept through the drawing (the key box's) is the same element, with or without an id; one drawn anew is found by its id.
-  const again = active && rest.contains(active) ? active : focus ? document.getElementById(focus.id) : null;
-  if (again && rest.contains(again) && document.activeElement !== again) {
+  const again = active && drawn(active) ? active : focus ? document.getElementById(focus.id) : null;
+  if (again && drawn(again) && document.activeElement !== again) {
     again.focus({ preventScroll: true });
     if (at && again instanceof HTMLInputElement) { try { again.setSelectionRange(at[0], at[1]); } catch { /* an email field has no caret to set */ } }
   }

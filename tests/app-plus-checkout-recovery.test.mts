@@ -336,7 +336,8 @@ test('source rules: nothing asked on load, the checkout opens only after a seed 
   assert.match(buy, /if \(!seed\) \{ state\.said = \{ where: 'buy', text: cannotHere\(\) \}; render\(\); return; \}/);
   assert.match(page, /\.\.\.\(offersReceipt\(\) && member\.mode !== 'plain' \? \[/);
   // Strings 4 and 5 replace only the buying controls of an open sale: the not-on-sale page is the same in every mode.
-  const notOnSale = page.slice(page.indexOf('if (!plusOnSale()) {'), page.indexOf('const pending = paid.list()[0];'));
+  const notOnSale = page.slice(page.indexOf('function notOnSaleSection()'), page.indexOf('function drawTop('));
+  assert.ok(notOnSale.includes('if (!plusOnSale()) {'));
   assert.ok(!/member\.mode|cannotBuy|cannotHere|member\.issues/.test(notOnSale));
   // The request timeout without AbortSignal.timeout.
   const pass = strip(read('src/app/plus/pass.ts'));

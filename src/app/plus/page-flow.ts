@@ -15,7 +15,7 @@ import type { Paid, PaidStore } from './paid.ts';
 import { errorOf, readGrant, type Capture, type Grant, type Plus, type Taken } from './pass.ts';
 import { passRequest, restoreRequest, type PlusDb } from './plus-db.ts';
 import type { TabWaits, WaitWhy } from './schedule.ts';
-import type { PlusMode } from './pass.ts';
+import type { PlusMode, PlusState } from './pass.ts';
 
 /** An answer of the Plus server: its status, its body, and the wait it asked for (`Retry-After`, in seconds). */
 export type Answer = { status: number; body: unknown; retryAfter?: number };
@@ -206,6 +206,25 @@ export async function keepAgainSettling(member: Pick<Plus, 'keepAgain' | 'overla
   const taken = await member.keepAgain();
   if (taken === 'kept' && settle.length) paid.settled(settle);
   return taken;
+}
+
+/**
+ * The hero's line of pills while the page is drawn (Karl, 2026-11-20: "people only have to click once to purchase"): while Plus is on sale the
+ * buy row lives there, one thin row, and nothing is sold further down. `pill`: the availability pill ("$10 a month", "Gift keys only today"),
+ * hidden on sale whenever the row holds something or Plus is on, so the price is not written twice; `on`: "Plus is on in this browser";
+ * `activate`: "Activate a key", which scrolls to the key box (not on sale); `buy`: what the row holds on sale (the price button, a waiting
+ * payment's note and button, or why nothing is sold here); `lower`: the section further down, only the not-on-sale one now.
+ */
+export interface TopRow { pill: boolean; on: boolean; activate: boolean; buy: 'nothing' | 'price' | 'waiting' | 'cannot-buy' | 'cannot-here'; lower: 'not-on-sale' | null }
+export function topRow(o: { onSale: boolean; stands: PlusState; buying: boolean; mode: PlusMode; paidReady: boolean; waiting: boolean }): TopRow {
+  // Not on sale: the page as it was (the pill, Activate a key, the lower "Not on sale yet" section).
+  if (!o.onSale) return { pill: true, on: o.stands === 'on', activate: o.stands !== 'on', buy: 'nothing', lower: o.buying ? 'not-on-sale' : null };
+  // On sale, Plus on or being checked (or a key replaced by newer ones): no buy controls; the on pill when it is on.
+  if (!o.buying) return { pill: false, on: o.stands === 'on', activate: false, buy: 'nothing', lower: null };
+  const view = buyView(o.mode, o.paidReady, o.waiting);
+  // Opening, or the payments not read yet: nothing to press; the pill keeps the row's place.
+  if (view === 'opening') return { pill: true, on: false, activate: false, buy: 'nothing', lower: null };
+  return { pill: false, on: false, activate: false, buy: view === 'pending' ? 'waiting' : view === 'prices' ? 'price' : view, lower: null };
 }
 
 /**
