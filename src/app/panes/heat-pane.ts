@@ -2275,9 +2275,9 @@ export class HeatPane {
    * 2026-11-18, read that lane as the stops'; the levels' lane needs none, the column's button beside it names what it holds), and every
    * lane's under a split. Each is a plate with a small sample of its look (dashed for take profits, solid for levels), inside its lane where it
    * fits, else ending at the lane's right edge and reaching left over the map (`captionPlace`), never wider than the plot (a longer word ends
-   * in "…"), at the highest place clear of the corner buttons the map shows (a phone's Draw key too), the legend, the "depth recorded from"
-   * note, the note under the legend and the plates placed before it (`captionKeepOut`, `placeCaptions`). Placed here, painted by
-   * `#paintLiqPlates` once the map's lines are drawn.
+   * in "…"), clear of the corner buttons the map shows (a phone's Draw key too), the legend, the "depth recorded from" note, the note under the
+   * legend and each other: in the rows they always stood in where those are clear, else each at the highest free place (`captionKeepOut`,
+   * `placeCaptions`). Placed here, painted by `#paintLiqPlates` once the map's lines are drawn.
    */
   #placeLiqCaptions(ctx: CanvasRenderingContext2D, items: readonly LaneCaption[], pw: number): void {
     ctx.save();
@@ -2286,7 +2286,7 @@ export class HeatPane {
     const placed = items.map(item => ({ ...item, ...captionPlace(item.lane, Math.min(Math.max(40, pw - 16), Math.ceil(SAMPLE + wide(item.words) + 10))) }));
     ctx.restore();
     const keep = captionKeepOut({ corner: this.#cornerTools(pw), legend: this.#legendBox, history: this.#historyNote, note: this.#liqNoteBox });
-    const ys = placeCaptions(placed, keep, 6, 15);
+    const ys = placeCaptions(placed, keep, 6, 15, this.plotH);
     this.#liqPlates = placed.map((item, i) => ({ ...item, y: ys[i]! }));
   }
 

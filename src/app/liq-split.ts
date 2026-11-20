@@ -141,21 +141,57 @@ export function captionKeepOut(o: { corner: Rect | null; legend: { right: number
 }
 
 /**
- * Where the stripe's caption plates stand (each `w` wide at `x`, `h` tall), in the order given: from `top` down, the highest place where a
- * plate lies over no keep-out (`captionKeepOut`) and over no plate placed before it (`gap` px apart). A plate is moved down past whatever it
- * lies over and checked against all of them again after every move, so one pushed under the corner buttons never lands in a note. No row is
- * held for a plate that stands lower: the rows laid out first before (2026-11-19) kept a row at the top for a plate the legend had sent down,
- * and on a phone held sideways (a 138 px plot) the plates after it were pushed under the Draw key's row or into the volume strip.
+ * The rows the stripe's caption plates stood in until 2026-11-19 (each `w` wide at `x`, `h` tall): each plate's highest start, each keep-out
+ * checked once in order; rows from the highest of them, a row lower for a plate that overlaps one before it; the last keep-out (the note
+ * under the legend) checked again. A plate the legend sent down still held its row at the top, so the plates after it could start lower than
+ * they had to, and a plate pushed under one keep-out was never checked against the ones before.
  */
-export function placeCaptions(items: readonly { x: number; w: number }[], keepOut: readonly Rect[], top: number, h: number, gap = 2): number[] {
+export function captionRows(items: readonly { x: number; w: number }[], keepOut: readonly Rect[], top: number, h: number, gap = 2): number[] {
+  if (!items.length) return [];
+  const over = (r: Rect, x: number, w: number, y: number): boolean => x < r.x1 && x + w > r.x0 && y < r.y1 && y + h > r.y0;
+  const last = keepOut[keepOut.length - 1], clear = (x: number, w: number, y: number): number => last && over(last, x, w, y) ? last.y1 : y;
+  const floor = items.map(({ x, w }) => keepOut.reduce((y, r) => over(r, x, w, y) ? Math.max(y, r.y1) : y, top));
+  const first = Math.min(...floor), rows: { x0: number; x1: number; y: number }[] = [];
+  // A row each from the highest start, a row lower while a plate overlaps one placed in that row.
+  const stacked = items.map(({ x, w }) => {
+    let y = first;
+    while (rows.some(r => r.y === y && x < r.x1 + gap && x + w > r.x0 - gap)) y += h + gap;
+    rows.push({ x0: x, x1: x + w, y });
+    return y;
+  });
+  const ys: number[] = [];
+  items.forEach(({ x, w }, i) => {
+    let y = clear(x, w, Math.max(floor[i]!, stacked[i]!));
+    while (items.slice(0, i).some((o, j) => Math.abs(ys[j]! - y) < h && x < o.x + o.w + gap && x + w > o.x - gap)) y = clear(x, w, y + h + gap);
+    ys.push(y);
+  });
+  return ys;
+}
+
+/**
+ * Where the stripe's caption plates stand (each `w` wide at `x`, `h` tall, the plot `bottom` px tall), in the order given. Where the rows
+ * they always stood in (`captionRows`) are clean, those: no plate over a keep-out (`captionKeepOut`) or over another, none past the plot's
+ * foot, so a desktop map's captions stay where they were. Else each at the highest place where it lies over no keep-out and no plate placed
+ * before it (`gap` px apart), moved down past whatever it lies over and checked against all of them again after every move, so one pushed
+ * under the corner buttons never lands in a note. On a phone held sideways (a 138 px plot) the rows put the Liquidations plate over the
+ * "depth recorded from" note, below a plate the legend had sent down; placed this way it stands under the Draw key, where it is free.
+ */
+export function placeCaptions(items: readonly { x: number; w: number }[], keepOut: readonly Rect[], top: number, h: number, bottom = Infinity, gap = 2): number[] {
+  const over = (r: Rect, x: number, w: number, y: number): boolean => x < r.x1 && x + w > r.x0 && y < r.y1 && y + h > r.y0;
+  const rows = captionRows(items, keepOut, top, h, gap);
+  const clean = rows.every((y, i) => {
+    const { x, w } = items[i]!;
+    return y + h <= bottom && !keepOut.some(r => over(r, x, w, y)) && rows.slice(0, i).every((v, j) => !over({ x0: items[j]!.x - gap, x1: items[j]!.x + items[j]!.w + gap, y0: v - gap, y1: v + h + gap }, x, w, y));
+  });
+  if (clean) return rows;
   const placed: Rect[] = [];
   return items.map(({ x, w }) => {
     let y = top;
     // Each move takes the plate past the foot of something it lay over, and nothing is passed twice: at most one move per obstacle.
     for (let moves = 0; moves <= keepOut.length + placed.length; moves++) {
       let next = y;
-      for (const r of keepOut) if (x < r.x1 && x + w > r.x0 && y < r.y1 && y + h > r.y0) next = Math.max(next, r.y1);
-      for (const r of placed) if (x < r.x1 && x + w > r.x0 && y < r.y1 && y + h > r.y0) next = Math.max(next, r.y1);
+      for (const r of keepOut) if (over(r, x, w, y)) next = Math.max(next, r.y1);
+      for (const r of placed) if (over(r, x, w, y)) next = Math.max(next, r.y1);
       if (next === y) break;
       y = next;
     }

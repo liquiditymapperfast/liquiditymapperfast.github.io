@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { captionKeepOut, cornerSpan, placeCaptions, placeProbeBoxes, probeBoxesFit, probeDetail, type BoxSize, type CornerEl, type Rect } from '../src/app/liq-split.ts';
+import { captionKeepOut, captionRows, cornerSpan, placeCaptions, placeProbeBoxes, probeBoxesFit, probeDetail, type BoxSize, type CornerEl, type Rect } from '../src/app/liq-split.ts';
 import { layNote, noteLines, noteMostLines } from '../src/app/liq-stripe.ts';
 import { paintVolumeStrip, stripNamesTop, type StripBar } from '../src/app/measures/volume-strip.ts';
 import { volumeBand } from '../src/app/measures/model.ts';
@@ -32,26 +32,33 @@ test('the corner buttons are the ones the map shows: the desktop\'s row, or a ph
   assert.equal(cornerSpan([null, null], 0), null);
 });
 
-/** A frame measured in the built page (headless Chrome, 2026-11-19), with the plates' keep-outs as the map composes them. */
+/**
+ * A frame measured in the built page (headless Chrome, Liquidations | Stops with take profits, 2026-11-19): the corner buttons, the legend's
+ * plate, the "depth recorded from" note and the note under the legend (whose right end the map measures in its 11 px font, a tenth wider
+ * than the 10 px it prints in), and the plates' places across, take profits first.
+ */
 interface Frame { name: string; plot: { w: number; h: number }; corner: (CornerEl | null)[]; legend: { right: number; bottom: number }; history: { x0: number; x1: number; top: number } | null;
   note: { x0: number; x1: number; top: number; bottom: number }; items: { x: number; w: number }[] }
 const FRAMES: Frame[] = [
-  // 844 x 207, a phone held sideways, Liquidations | Stops with take profits: a 392 x 138 plot, the Draw key over its top right, the note in
-  // one line under the "depth recorded from" note. Before, the plates stood at 23 and 40, under the key.
-  { name: '844x207', plot: { w: 392, h: 138 }, corner: [null, el(342, 8, 42, 36)], legend: { right: 226, bottom: 68 }, history: { x0: 196, x1: 334, top: 74 },
-    note: { x0: 8, x1: 376, top: 87, bottom: 100 }, items: [{ x: 244, w: 124 }, { x: 301, w: 78 }, { x: 342, w: 48 }] },
+  // 844 x 207, a phone held sideways: a 392 x 138 plot, the Draw key over its top right, the note in one line under the "depth recorded from"
+  // note. Before, the Liquidations plate stood at 23 and Stops at 40, under the key.
+  { name: '844x207', plot: { w: 392, h: 138 }, corner: [null, el(342, 8, 42, 36)], legend: { right: 242, bottom: 68 }, history: { x0: 232, x1: 351, top: 74 },
+    note: { x0: 8, x1: 408, top: 87, bottom: 100 }, items: [{ x: 244, w: 124 }, { x: 301, w: 78 }, { x: 342, w: 48 }] },
   // 390 x 844, upright: the Stops plate started right of the legend and stood at 40, its top under the key (which ends at 44).
-  { name: '390x844', plot: { w: 300, h: 678 }, corner: [null, el(250, 8, 42, 36)], legend: { right: 240, bottom: 68 }, history: { x0: 120, x1: 245, top: 74 },
-    note: { x0: 8, x1: 199, top: 87, bottom: 113 }, items: [{ x: 158, w: 124 }, { x: 212, w: 78 }, { x: 250, w: 48 }] },
-  // 320 x 568: the plates already stood under the note; they must stay clear of everything there too.
-  { name: '320x568', plot: { w: 230, h: 402 }, corner: [null, el(180, 8, 42, 36)], legend: { right: 222, bottom: 68 }, history: { x0: 60, x1: 196, top: 74 },
-    note: { x0: 8, x1: 199, top: 87, bottom: 113 }, items: [{ x: 92, w: 124 }, { x: 144, w: 78 }, { x: 180, w: 48 }] },
+  { name: '390x844', plot: { w: 300, h: 678 }, corner: [null, el(250, 8, 42, 36)], legend: { right: 242, bottom: 68 }, history: { x0: 148, x1: 267, top: 74 },
+    note: { x0: 8, x1: 218, top: 87, bottom: 113 }, items: [{ x: 158, w: 124 }, { x: 212, w: 78 }, { x: 250, w: 48 }] },
+  // 320 x 568 and 375 x 812: the plates already stood under the note, clear of everything; they stay where they were.
+  { name: '320x568', plot: { w: 230, h: 402 }, corner: [null, el(180, 8, 42, 36)], legend: { right: 218, bottom: 68 }, history: { x0: 85, x1: 204, top: 74 },
+    note: { x0: 8, x1: 218, top: 87, bottom: 113 }, items: [{ x: 92, w: 124 }, { x: 144, w: 78 }, { x: 180, w: 48 }] },
+  { name: '375x812', plot: { w: 285, h: 646 }, corner: [null, el(235, 8, 42, 36)], legend: { right: 242, bottom: 68 }, history: { x0: 135, x1: 254, top: 74 },
+    note: { x0: 8, x1: 218, top: 87, bottom: 113 }, items: [{ x: 143, w: 124 }, { x: 197, w: 78 }, { x: 235, w: 48 }] },
 ];
+const keepOf = (f: Frame): Rect[] => captionKeepOut({ corner: cornerSpan(f.corner, 0), legend: f.legend, history: f.history, note: f.note });
 
 test('the stripe\'s caption plates keep clear of a phone\'s Draw key, the legend, both notes and each other, at every measured phone size', () => {
   for (const f of FRAMES) {
-    const corner = cornerSpan(f.corner, 0)!, keep = captionKeepOut({ corner, legend: f.legend, history: f.history, note: f.note });
-    const ys = placeCaptions(f.items, keep, 6, 15), plates = f.items.map((it, i) => plate(it.x, it.w, ys[i]!));
+    const corner = cornerSpan(f.corner, 0)!, keep = keepOf(f);
+    const ys = placeCaptions(f.items, keep, 6, 15, f.plot.h), plates = f.items.map((it, i) => plate(it.x, it.w, ys[i]!));
     plates.forEach((p, i) => {
       assert.ok(!over(p, { x0: corner.x0 - 4, x1: corner.x1 + 4, y0: corner.y0, y1: corner.y1 + 4 }), `${f.name}: plate ${i} at ${p.y0} lies under the Draw key`);
       for (const r of keep) assert.ok(!over(p, r), `${f.name}: plate ${i} at ${p.y0} lies over a keep-out ${JSON.stringify(r)}`);
@@ -61,18 +68,43 @@ test('the stripe\'s caption plates keep clear of a phone\'s Draw key, the legend
   }
 });
 
-test('a plate stands at the highest free place: none holds a row for a plate that stands lower, and every keep-out is checked after every move', () => {
-  // The old rows: the take profits' plate held the top row though the legend sent it down, so the next plates started rows lower.
-  const keep: Rect[] = [{ x0: -Infinity, y0: -Infinity, x1: 120, y1: 80 }];
-  assert.deepEqual(placeCaptions([{ x: 100, w: 60 }, { x: 130, w: 60 }, { x: 150, w: 40 }], keep, 6, 15), [80, 6, 23]);
-  // Pushed under one keep-out into another: moved on below that one too, whatever their order.
+test('the plates keep the rows they always stood in where those are clean; where not, each takes the highest free place, every keep-out checked after every move', () => {
+  // Clean rows are kept, the row the legend's plate held at the top included.
+  const keep: Rect[] = [{ x0: -Infinity, y0: -Infinity, x1: 120, y1: 80 }], three = [{ x: 100, w: 60 }, { x: 130, w: 60 }, { x: 150, w: 40 }];
+  assert.deepEqual(captionRows(three, keep, 6, 15), [80, 23, 40]);
+  assert.deepEqual(placeCaptions(three, keep, 6, 15), [80, 23, 40]);
+  assert.deepEqual(placeCaptions([{ x: 10, w: 80 }, { x: 60, w: 80 }, { x: 200, w: 50 }], [], 6, 15), [6, 23, 6], 'the second a row down, the third up where it is clear');
+  // Rows that put a plate past the plot's foot are not kept.
+  assert.deepEqual(placeCaptions(three, keep, 6, 15, 50), [80, 6, 23]);
+  // Pushed under one keep-out into another: the rows leave it there (each keep-out checked once); placed again, it moves on below that one too.
   const two: Rect[] = [{ x0: 0, y0: 30, x1: 300, y1: 45 }, { x0: 0, y0: -Infinity, x1: 300, y1: 32 }];
+  assert.deepEqual(captionRows([{ x: 10, w: 50 }], two, 6, 15), [32]);
   assert.deepEqual(placeCaptions([{ x: 10, w: 50 }], two, 6, 15), [45]);
-  // Three plates where two would overlap: the second goes a row down, the third stays up where it is clear (as the rows placed them before).
-  assert.deepEqual(placeCaptions([{ x: 10, w: 80 }, { x: 60, w: 80 }, { x: 200, w: 50 }], [], 6, 15), [6, 23, 6]);
-  // The sideways phone: the plates fit between the Draw key and the volume strip where the old rows sent one under the key's row.
-  const f = FRAMES[0]!, ys = placeCaptions(f.items, captionKeepOut({ corner: cornerSpan(f.corner, 0), legend: f.legend, history: f.history, note: f.note }), 6, 15);
-  assert.ok(Math.min(ys[1]!, ys[2]!) >= 48, `Liquidations and Stops below the key: ${ys}`);
+  // The phones, as the page now places them: held sideways the rows put Liquidations over the "depth recorded from" note (65 to 80 over 74
+  // to 89) and Stops into the take profits' plate; placed again, Liquidations stands under the Draw key and Stops at the plot's foot, the
+  // take profits' plate where the legend sends it. Upright at 390 px the rows put Stops at 82, over the "depth recorded from" note: under the
+  // key instead. At 320 and 375 px the rows are clean and kept.
+  const at = (name: string): number[] => { const f = FRAMES.find(g => g.name === name)!; return placeCaptions(f.items, keepOf(f), 6, 15, f.plot.h); };
+  assert.deepEqual(at('844x207'), [104, 48, 121]);
+  assert.deepEqual(at('390x844'), [116, 133, 48]);
+  for (const name of ['320x568', '375x812']) { const f = FRAMES.find(g => g.name === name)!; assert.deepEqual(at(name), captionRows(f.items, keepOf(f), 6, 15), `${name}: the rows kept`); }
+  assert.deepEqual(at('320x568'), [116, 133, 150]);
+});
+
+test('a desktop map\'s plates stay where they stood (1,720 px, Liquidations | Stops), wherever the "depth recorded from" note stands', () => {
+  // Measured: the row of corner buttons 326 to 559 by 8 to 34 on a 567 x 772 plot, the legend to 313 by 60, the note under it 66 to 79 and
+  // its right end at 434 in the map's measure. The "depth recorded from" note moves with the recording's start: two places seen.
+  const base = { corner: cornerSpan([el(326, 8, 233, 26), el(0, 0, 0, 0)], 0), legend: { right: 313, bottom: 60 }, note: { x0: 8, x1: 434, top: 66, bottom: 79 } };
+  const items = [{ x: 410, w: 124 }, { x: 471, w: 78 }, { x: 517, w: 48 }];
+  for (const [history, rows] of [[{ x0: 380, x1: 499, top: 40 }, [82, 55, 106]], [{ x0: 395, x1: 514, top: 40 }, [82, 106, 123]]] as const) {
+    const keep = captionKeepOut({ ...base, history });
+    assert.deepEqual(captionRows(items, keep, 6, 15), rows, 'the old rows');
+    assert.deepEqual(placeCaptions(items, keep, 6, 15, 772), rows, `unchanged with the note at ${history.x0} to ${history.x1}`);
+  }
+  // Everyone | Profitable (two lanes, no take profits): unchanged too.
+  const groups = [{ x: 419, w: 122 }, { x: 440, w: 125 }], keep = captionKeepOut({ ...base, history: { x0: 395, x1: 514, top: 40 }, note: { x0: 8, x1: 347, top: 66, bottom: 79 } });
+  assert.deepEqual(placeCaptions(groups, keep, 6, 15, 772), captionRows(groups, keep, 6, 15));
+  assert.deepEqual(placeCaptions(groups, keep, 6, 15, 772), [55, 72]);
 });
 
 const measure10 = (words: string): number => words.length * 5.6;
