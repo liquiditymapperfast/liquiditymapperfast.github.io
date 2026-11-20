@@ -180,7 +180,7 @@ test('R1 with the cap: a stale /v1/pass write drops the key a restore just liste
   assert.equal(await renewStatus(server, k2), 'replaced', 'the restored key was dropped by the stale write');
   const again = await restoreBy('buyer@example.com', '325-100', fresh.deps);
   assert.equal(again.kind, 'no');
-  assert.equal((again as { text: string }).text, 'This subscription was given 5 keys within a day. Use one of them, or try again tomorrow.');
+  assert.match((again as { text: string }).text, /^This subscription was given 5 keys within a day\. Use one of them, or try again in \d+ h\.$/, 'the cap text with its wait');
 });
 
 test('the answers of design 6.4: taken, dropped, asked again, ran out, too many keys, refused (N3), turned down, gone', async () => {
@@ -232,7 +232,7 @@ test('the answers of design 6.4: taken, dropped, asked again, ran out, too many 
   // Too many keys: said, its wait becomes the cooldown, the record stays.
   {
     const r = await run([err(429, 'too_many_keys', 7_200)]);
-    assert.deepEqual(r.out, { kind: 'no', text: 'This subscription was given 5 keys within a day. Use one of them, or try again tomorrow.' });
+    assert.deepEqual(r.out, { kind: 'no', text: 'This subscription was given 5 keys within a day. Use one of them, or try again in 2 h.' });
     assert.ok(r.record); assert.equal(r.p.waits.cooldownLeft(), 7_200_000);
   }
   // The server would not set Plus up for it (N3): write in with the receipt.

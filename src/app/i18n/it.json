@@ -3514,5 +3514,8 @@
  "Set up Plus": "Attiva Plus",
  "Plus could not be saved in this browser just now.": "Al momento non è stato possibile salvare Plus in questo browser.",
  "Plus cannot be set up in this tab. Reload the page, or use another tab.": "Plus non può essere attivato in questa scheda. Ricarica la pagina, oppure usa un'altra scheda.",
- "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "Plus non può essere acquistato in questo browser. Usa un altro browser; una chiave acquistata altrove funziona anche qui."
+ "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "Plus non può essere acquistato in questo browser. Usa un altro browser; una chiave acquistata altrove funziona anche qui.",
+ "Removed in this tab only: this browser still keeps the key.": "Rimossa solo in questa scheda: questo browser conserva ancora la chiave.",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "Per questo abbonamento sono state rilasciate {n} chiavi in un giorno. Usane una, oppure riprova tra {m} min.",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "Per questo abbonamento sono state rilasciate {n} chiavi in un giorno. Usane una, oppure riprova tra {h} h."
 }

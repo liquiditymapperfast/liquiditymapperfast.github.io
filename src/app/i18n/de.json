@@ -3456,5 +3456,8 @@
  "Set up Plus": "Plus einrichten",
  "Plus could not be saved in this browser just now.": "Plus konnte gerade nicht in diesem Browser gespeichert werden.",
  "Plus cannot be set up in this tab. Reload the page, or use another tab.": "Plus kann in diesem Tab nicht eingerichtet werden. Lade die Seite neu oder nutze einen anderen Tab.",
- "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "Plus kann in diesem Browser nicht gekauft werden. Nutze einen anderen Browser; ein anderswo gekaufter Schlüssel funktioniert auch hier."
+ "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "Plus kann in diesem Browser nicht gekauft werden. Nutze einen anderen Browser; ein anderswo gekaufter Schlüssel funktioniert auch hier.",
+ "Removed in this tab only: this browser still keeps the key.": "Nur in diesem Tab entfernt: Dieser Browser behält den Schlüssel noch.",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "Für dieses Abo wurden innerhalb eines Tages {n} Schlüssel ausgegeben. Verwende einen davon oder versuche es in {m} Min. noch einmal.",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "Für dieses Abo wurden innerhalb eines Tages {n} Schlüssel ausgegeben. Verwende einen davon oder versuche es in {h} Std. noch einmal."
 }

@@ -3567,5 +3567,8 @@
  "Set up Plus": "Налаштувати Plus",
  "Plus could not be saved in this browser just now.": "Зараз не вдалося зберегти Plus у цьому браузері.",
  "Plus cannot be set up in this tab. Reload the page, or use another tab.": "У цій вкладці Plus налаштувати не можна. Перезавантажте сторінку або відкрийте іншу вкладку.",
- "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "У цьому браузері Plus купити не можна. Скористайтеся іншим браузером; ключ, куплений деінде, працює і тут."
+ "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "У цьому браузері Plus купити не можна. Скористайтеся іншим браузером; ключ, куплений деінде, працює і тут.",
+ "Removed in this tab only: this browser still keeps the key.": "Видалено лише в цій вкладці: браузер досі зберігає ключ.",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "За цією підпискою за добу вже видано ключів: {n}. Скористайтеся одним із них або спробуйте ще раз за {m} хв.",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "За цією підпискою за добу вже видано ключів: {n}. Скористайтеся одним із них або спробуйте ще раз за {h} год."
 }

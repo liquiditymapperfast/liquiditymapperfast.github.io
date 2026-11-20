@@ -3284,5 +3284,8 @@
  "Set up Plus": "设置 Plus",
  "Plus could not be saved in this browser just now.": "此浏览器暂时未能保存 Plus。",
  "Plus cannot be set up in this tab. Reload the page, or use another tab.": "无法在此标签页中设置 Plus。请重新加载页面，或使用其他标签页。",
- "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "无法在此浏览器中购买 Plus。请使用其他浏览器；在别处购买的密钥在这里也能用。"
+ "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "无法在此浏览器中购买 Plus。请使用其他浏览器；在别处购买的密钥在这里也能用。",
+ "Removed in this tab only: this browser still keeps the key.": "仅在此标签页中移除：此浏览器仍保存着密钥。",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "这个订阅在一天内已发放 {n} 个密钥。请使用其中一个，或者在 {m} 分钟后重试。",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "这个订阅在一天内已发放 {n} 个密钥。请使用其中一个，或者在 {h} 小时后重试。"
 }

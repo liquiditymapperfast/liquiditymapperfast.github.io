@@ -3562,5 +3562,8 @@
  "Set up Plus": "Настроить Plus",
  "Plus could not be saved in this browser just now.": "Сейчас не удалось сохранить Plus в этом браузере.",
  "Plus cannot be set up in this tab. Reload the page, or use another tab.": "В этой вкладке Plus настроить нельзя. Перезагрузите страницу или откройте другую вкладку.",
- "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "В этом браузере Plus купить нельзя. Воспользуйтесь другим браузером; ключ, купленный в другом месте, работает и здесь."
+ "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "В этом браузере Plus купить нельзя. Воспользуйтесь другим браузером; ключ, купленный в другом месте, работает и здесь.",
+ "Removed in this tab only: this browser still keeps the key.": "Удалён только в этой вкладке: браузер всё ещё хранит ключ.",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "По этой подписке за сутки уже выдано ключей: {n}. Воспользуйтесь одним из них или попробуйте ещё раз через {m} мин.",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "По этой подписке за сутки уже выдано ключей: {n}. Воспользуйтесь одним из них или попробуйте ещё раз через {h} ч."
 }

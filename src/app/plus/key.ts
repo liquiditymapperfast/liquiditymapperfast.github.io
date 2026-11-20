@@ -94,13 +94,15 @@ export interface KeyEntry {
   readonly input: HTMLInputElement;
   /** Give the form up: a key being checked is dropped with its answer, and nothing more is said. */
   destroy(): void;
+  /** Draw its controls again by the rules now (a block lifted: the database opened). */
+  refresh?(): void;
 }
 /**
  * The key form: a field (masked; Reveal shows what is in it), Activate, a status line (checking, on, not recognized, not reached ...) and the
  * line that a key is entered once per browser and address. `onSuccess` runs once Plus is on (the membership's own listeners have been told by
  * then). Its controls carry `data-focus` keys, so a panel drawn again around the same form gives the keyboard back to the same control.
  */
-export function keyEntry(o: { onSuccess?: (outcome: Extract<KeyOutcome, { kind: 'ok' }>) => void; activate?: (text: string, deps: { signal: AbortSignal }) => Promise<KeyOutcome> } = {}): KeyEntry {
+export function keyEntry(o: { onSuccess?: (outcome: Extract<KeyOutcome, { kind: 'ok' }>) => void; activate?: (text: string, deps: { signal: AbortSignal }) => Promise<KeyOutcome>; blocked?: () => boolean } = {}): KeyEntry {
   const id = `plus-key-${++uid}`;
   const input = el('input', { type: 'password', id, class: 'key-in', autocomplete: 'off', spellcheck: false, placeholder: t('Paste your key') });
   input.setAttribute('autocapitalize', 'off'); input.setAttribute('aria-describedby', `${id}m ${id}n`);
@@ -117,7 +119,8 @@ export function keyEntry(o: { onSuccess?: (outcome: Extract<KeyOutcome, { kind: 
   let busy = false, gone = false, pending: AbortController | null = null;
   const mask = (shown: boolean): void => { input.type = shown ? 'text' : 'password'; show.textContent = shown ? t('Hide') : t('Reveal'); show.setAttribute('aria-pressed', String(shown)); };
   show.addEventListener('click', () => { mask(input.type === 'password'); });
-  const sync = (): void => { go.disabled = busy || !input.value.trim(); };
+  // Blocked (the tab's database still opening): disabled, with no word (Sol, code review C2-11).
+  const sync = (): void => { const stop = o.blocked?.() === true; go.disabled = busy || stop || !input.value.trim(); input.disabled = stop && !busy; };
   const say = (tone: '' | 'checking' | 'ok' | 'err', text: string, more = ''): void => {
     msg.className = `key-msg${tone ? ` ${tone}` : ''}`;
     msg.replaceChildren(...(tone ? [el('span', { class: tone === 'checking' ? 'spin' : 'key-mark', ariaHidden: 'true' }), el('span', { textContent: text })] : []));
@@ -127,7 +130,7 @@ export function keyEntry(o: { onSuccess?: (outcome: Extract<KeyOutcome, { kind: 
   form.addEventListener('submit', event => {
     event.preventDefault();
     const text = input.value.trim();
-    if (!text || busy || gone) return;
+    if (!text || busy || gone || o.blocked?.() === true) return;
     const asked = new AbortController();
     pending = asked; busy = true; input.readOnly = true; sync(); say('checking', t('Checking Plus with the server…'));
     void (o.activate ?? ((k, d) => activateKey(k, d)))(text, { signal: asked.signal }).then(outcome => {
@@ -147,5 +150,5 @@ export function keyEntry(o: { onSuccess?: (outcome: Extract<KeyOutcome, { kind: 
     });
   });
   sync();
-  return { root: form, input, destroy: () => { gone = true; pending?.abort(); pending = null; } };
+  return { root: form, input, destroy: () => { gone = true; pending?.abort(); pending = null; }, refresh: sync };
 }

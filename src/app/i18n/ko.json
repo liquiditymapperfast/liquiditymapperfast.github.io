@@ -3284,5 +3284,8 @@
  "Set up Plus": "Plus 설정하기",
  "Plus could not be saved in this browser just now.": "지금은 이 브라우저에 Plus를 저장하지 못했습니다.",
  "Plus cannot be set up in this tab. Reload the page, or use another tab.": "이 탭에서는 Plus를 설정할 수 없습니다. 페이지를 새로고침하거나 다른 탭을 사용하세요.",
- "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "이 브라우저에서는 Plus를 구매할 수 없습니다. 다른 브라우저를 사용하세요. 다른 곳에서 구매한 키는 여기서도 작동합니다."
+ "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "이 브라우저에서는 Plus를 구매할 수 없습니다. 다른 브라우저를 사용하세요. 다른 곳에서 구매한 키는 여기서도 작동합니다.",
+ "Removed in this tab only: this browser still keeps the key.": "이 탭에서만 삭제했습니다. 이 브라우저에는 아직 키가 저장되어 있습니다.",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "이 구독에는 하루 동안 키가 {n}개 발급되었습니다. 그중 하나를 사용하거나 {m}분 후에 다시 시도하세요.",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "이 구독에는 하루 동안 키가 {n}개 발급되었습니다. 그중 하나를 사용하거나 {h}시간 후에 다시 시도하세요."
 }

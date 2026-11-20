@@ -19,6 +19,7 @@ const TXN = /^txn_[a-z0-9]{8,64}$/;
 export class PaidStore {
   #list: Paid[] = [];
   #memory = new Map<string, MemoryRecord>();
+  #ready = false;
   #listeners = new Set<() => void>();
   constructor(private readonly db: PlusDb | null, private readonly now: () => number = Date.now, private readonly channel: PlusChannel | null = null) {}
 
@@ -26,6 +27,13 @@ export class PaidStore {
   list(): Paid[] { const now = this.now(); return this.#list.filter(p => paidWaits(p.at, now)); }
   /** The payment `id` while it waits, or null. */
   get(id: string): Paid | null { return this.list().find(p => p.id === id) ?? null; }
+  /**
+   * Whether the payments were read at least once: until then the page offers no prices (a slow first open must not hide a payment still
+   * waiting; Sol, code review C2-1).
+   */
+  get ready(): boolean { return this.#ready; }
+  /** The payments only this tab holds (their writes refused): what a key or a receipt taken now settles besides the stored ones. */
+  localIds(): string[] { return [...this.#memory.keys()]; }
   /** This tab's own record of `id` (its write was refused), for the gate to check against the seed. */
   memory(id: string): MemoryRecord | null { return this.#memory.get(id) ?? null; }
   /** Told whenever the list changes. */
@@ -38,10 +46,10 @@ export class PaidStore {
 
   /**
    * The records read again (each one outside its window removed as it is read), with this tab's memory records of the seed stored now (one of
-   * another seed is discarded). A database that cannot be read leaves the list as it was.
+   * another seed is discarded). A database that cannot be read leaves the list as it was. Whether it was read.
    */
-  async refresh(): Promise<void> {
-    if (!this.db) { this.#set([]); return; }
+  async refresh(): Promise<boolean> {
+    if (!this.db) { this.#ready = true; this.#set([]); return true; }
     let read: { stored: Paid[]; seed: unknown };
     try {
       read = await this.db.tx('readwrite', async kv => {
@@ -54,13 +62,15 @@ export class PaidStore {
         }
         return { stored, seed: await kv.get(SEED_KEY) };
       });
-    } catch { return; }
+    } catch { return false; }
     const now = this.now(), mine: Paid[] = [];
     for (const [id, record] of this.#memory) {
       if (record.epoch !== read.seed || !paidWaits(record.at, now) || read.stored.some(p => p.id === id)) { this.#memory.delete(id); continue; }
       mine.push({ id, at: record.at, memory: true });
     }
+    this.#ready = true;
     this.#set([...read.stored, ...mine].sort((a, b) => a.at - b.at));
+    return true;
   }
   /**
    * The checkout `id` completed (`epoch`: the seed read just before it opened): its record written now unless one is kept (never dated

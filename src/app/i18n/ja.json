@@ -3284,5 +3284,8 @@
  "Set up Plus": "Plus を設定",
  "Plus could not be saved in this browser just now.": "今は、このブラウザーに Plus を保存できませんでした。",
  "Plus cannot be set up in this tab. Reload the page, or use another tab.": "このタブでは Plus を設定できません。ページを再読み込みするか、別のタブを使ってください。",
- "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "このブラウザーでは Plus を購入できません。別のブラウザーをお使いください。別の場所で購入したキーはここでも使えます。"
+ "Plus cannot be bought in this browser. Use another browser; a key bought elsewhere works here.": "このブラウザーでは Plus を購入できません。別のブラウザーをお使いください。別の場所で購入したキーはここでも使えます。",
+ "Removed in this tab only: this browser still keeps the key.": "このタブでのみ削除しました。このブラウザーにはキーがまだ保存されています。",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "このサブスクリプションには、1 日のうちに {n} 個のキーが発行されました。そのうちの 1 つを使うか、{m} 分後にもう一度試してください。",
+ "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "このサブスクリプションには、1 日のうちに {n} 個のキーが発行されました。そのうちの 1 つを使うか、{h} 時間後にもう一度試してください。"
 }

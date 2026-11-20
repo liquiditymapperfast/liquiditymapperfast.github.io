@@ -29,7 +29,7 @@ import { mountDemo, mountVisuals } from './demo/index.ts';
 import { demoControl } from './demo-levels.ts';
 import { keyEntry, type KeyEntry } from './key.ts';
 import { PaidStore, type Paid } from './paid.ts';
-import { besideMembership, cannotBuy, cannotHere, keySettling, keyShownFor, lateText, restoreBy, setUpPayment, type Answer, type Fresh } from './page-flow.ts';
+import { besideMembership, buyView, cannotBuy, cannotHere, keepAgainSettling, keySettling, keyShownFor, lateText, restoreBy, setUpPayment, type Answer, type Fresh } from './page-flow.ts';
 import { features, hero, trust } from './present.ts';
 
 /** The part of Paddle's script this page uses (Paddle.js v2). */
@@ -243,7 +243,7 @@ async function completed(transactionId: string, via: 'checkout' | 'press'): Prom
 async function restore(email: string, invoice: string): Promise<void> {
   if (state.busy) return;
   state.busy = 'restore'; state.said = null; render();
-  const out = await restoreBy(email, invoice, { db, member, ask: post, paid });
+  const out = await restoreBy(email, invoice, { db, member, ask: post, paid, waits });
   state.busy = '';
   if (out.kind === 'ok') {
     state.unkept = !out.kept; state.shown = out.grant.key;
@@ -278,24 +278,27 @@ function buySection(): HTMLElement {
     return box;
   }
   const pending = paid.list()[0];
-  if (pending) {
+  // Only a tab whose database is open, and whose payments were read once, sells (spec 2.1, 4; Sol, code review C2-1): plain mode never
+  // issues, a tab not ready or unusable here says so, and until the first read nothing shows (no prices over a payment still waiting). The
+  // words replace the buying controls only (the not-on-sale page above is the same in every mode).
+  const view = buyView(member.mode, paid.ready, pending !== undefined);
+  const heading = el('h2', { textContent: member.state === 'ended' ? t('Renew Plus') : t('Get Plus') });
+  if (view === 'pending' && pending) {
     box.append(el('h2', { textContent: t('Get Plus') }), ...pendingNote(pending));
     return box;
   }
-  // Only a tab whose database is open sells (spec 2.1, 4): plain mode never issues, and a tab not ready or unusable here says so; the words
-  // replace the buying controls only (the not-on-sale page above is the same in every mode).
-  if (member.mode === 'plain' || member.mode === 'notready' || member.mode === 'unusable') {
-    box.append(el('h2', { textContent: member.state === 'ended' ? t('Renew Plus') : t('Get Plus') }), el('p', { class: 'said-bad', role: 'status', textContent: member.mode === 'plain' ? cannotBuy() : cannotHere() }));
+  if (view === 'cannot-buy' || view === 'cannot-here') {
+    box.append(heading, el('p', { class: 'said-bad', role: 'status', textContent: view === 'cannot-buy' ? cannotBuy() : cannotHere() }));
     return box;
   }
+  if (view === 'opening') { box.append(heading); return box; }
   const price = (label: string, detail: string, p: PlusPrice, main: boolean, id: string): HTMLButtonElement => {
-    // Disabled with no word while this tab's database is still opening.
-    const button = el('button', { type: 'button', id, class: main ? 'price-main' : 'price-plain', disabled: state.busy !== '' || member.mode === 'opening', onclick: () => { void buy(p); } }, el('b', { textContent: label }), el('span', { textContent: detail }));
+    const button = el('button', { type: 'button', id, class: main ? 'price-main' : 'price-plain', disabled: state.busy !== '', onclick: () => { void buy(p); } }, el('b', { textContent: label }), el('span', { textContent: detail }));
     return button;
   };
   const prices = el('div', { class: 'prices' }, price(t('{price} a month', { price: money(PADDLE.monthly.usd) }), t('renews each month'), PADDLE.monthly, true, 'plus-monthly'));
   if (PADDLE.yearly.id) prices.append(price(t('{price} a year', { price: money(PADDLE.yearly.usd) }), t('renews each year'), PADDLE.yearly, false, 'plus-yearly'));
-  box.append(el('h2', { textContent: member.state === 'ended' ? t('Renew Plus') : t('Get Plus') }), prices, ...said('buy'),
+  box.append(heading, prices, ...said('buy'),
     el('p', { class: 'fine', textContent: t('Prices are before tax; the checkout shows the total in your currency. You can end Plus at any time, and it then runs to the end of the period paid for.') }),
     el('p', { class: 'fine', textContent: t('Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders. Paddle provides all customer service inquiries and handles returns.') }));
   return box;
@@ -337,7 +340,7 @@ function memberSection(buying: boolean): HTMLElement {
     // offers Try again, which stores it without asking the server.
     ...(unkept() && stands === 'on' ? [el('p', { class: 'said-bad', role: 'status', textContent: t('This browser would not keep Plus: it lasts until this tab closes. Copy the key now and enter it again next time.') })] : []),
     ...(member.unstored && member.saveFailed ? [el('p', { class: 'said-bad', textContent: t('Plus could not be saved in this browser just now.') }),
-      el('p', { class: 'actions' }, el('button', { type: 'button', id: 'plus-keep-again', textContent: t('Try again'), onclick: () => { void member.keepAgain().then(() => { render(); }); } }))] : []),
+      el('p', { class: 'actions' }, el('button', { type: 'button', id: 'plus-keep-again', textContent: t('Try again'), onclick: () => { void keepAgainSettling(member, paid).then(() => { render(); }); } }))] : []),
     el('div', { class: 'keyrow' }, el('span', { class: 'label', textContent: t('Your key') }), keyText,
       el('button', { type: 'button', id: 'plus-reveal', textContent: shown ? t('Hide') : t('Reveal'), onclick: () => { state.shown = shown ? null : key || null; render(); } }),
       el('button', { type: 'button', id: 'plus-copy', textContent: t('Copy'), onclick: () => { if (!navigator.clipboard) { copied.textContent = t('Could not copy: show the key and copy it by hand.'); return; } void navigator.clipboard.writeText(key).then(() => { copied.textContent = t('Copied'); }, () => { copied.textContent = t('Could not copy: show the key and copy it by hand.'); }); } }), copied),
@@ -387,6 +390,16 @@ function deviceSection(): HTMLElement {
       el('p', { class: 'fine', textContent: t('What you type here is sent to this site\'s server to find your subscription; it asks Paddle, which sold it, about the invoice number.') })] : []));
 }
 
+/**
+ * A Remove this browser did not store (the overlay holds "none"): the key is gone from this tab only, and comes back with a reload; Try again
+ * stores the removal (Sol, code review C2-6).
+ */
+function removedHereSection(): HTMLElement {
+  return el('section', { class: 'member' }, el('p', { class: 'said-bad', role: 'status', textContent: t('Removed in this tab only: this browser still keeps the key.') }),
+    ...(member.saveFailed ? [el('p', { class: 'said-bad', textContent: t('Plus could not be saved in this browser just now.') }),
+      el('p', { class: 'actions' }, el('button', { type: 'button', id: 'plus-keep-again', textContent: t('Try again'), onclick: () => { void keepAgainSettling(member, paid).then(() => { render(); }); } }))] : []));
+}
+
 /** The page drawn afresh, through the countdown (`redraw`), which tells a scroll the drawing makes from the visitor's. */
 function render(): void { activity.redraw(drawPage); }
 
@@ -407,6 +420,7 @@ function drawPage(): void {
   const focus = active?.id ? { id: active.id, at } : null;
   rest.replaceChildren(
     ...(stands !== 'none' ? [memberSection(buying)] : []),
+    ...(stands === 'none' && member.unstored ? [removedHereSection()] : []),
     ...(buying ? [buySection()] : []),
     ...(stands !== 'on' ? [deviceSection()] : []),
   );
@@ -424,13 +438,26 @@ function drawPage(): void {
   }
 }
 
+/**
+ * The payments read until a read succeeds (one that gives up with a slow open is tried again every two seconds), so the prices can show
+ * (Sol, code review C2-1).
+ */
+let paidRetry = 0;
+async function settlePaid(): Promise<void> {
+  if (await paid.refresh() || paidRetry) return;
+  paidRetry = window.setTimeout(() => { paidRetry = 0; void settlePaid(); }, 2_000);
+}
+// The payments are read again whenever the database or the membership becomes ready (the mode changes).
+let lastMode = member.mode;
+member.subscribe(() => { if (member.mode !== lastMode) { lastMode = member.mode; void settlePaid(); } });
 member.subscribe(render);
 paid.subscribe(render);
 render();
 // Nothing is asked by itself (spec 0): a payment made here and not set up yet is read and shown with its "Set up Plus". The list is read
-// again when the page is shown again and when another tab says it changed.
-void paid.refresh();
+// again when the page is shown again or focused (a window beside another one: Sol, code review C2-2), and when another tab says it changed.
+void settlePaid();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void paid.refresh(); });
+window.addEventListener('focus', () => { void paid.refresh(); member.reload(); });
 if (db) plusChannel()?.addEventListener('message', () => { void paid.refresh(); });
 // How far back the history goes, for the first line of what Plus adds (the public index says).
 const urls = historyUrls(LIQ_LEVELS_URL);

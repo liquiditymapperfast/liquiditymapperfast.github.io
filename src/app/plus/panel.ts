@@ -41,7 +41,9 @@ export interface PopView {
  */
 export function popView(m: { state: PlusState; until: number | null; key: string | null; unverified: boolean; unstored?: boolean; saveFailed?: boolean }, ui: PopUi): PopView {
   // A membership this tab took but could not store (the checkout recovery, 2026-11-20): it lasts until the tab closes; Try again stores it.
-  const notes = m.unstored && m.state !== 'none' ? [t('This browser would not keep Plus: it lasts until this tab closes. Copy the key now and enter it again next time.'), ...(m.saveFailed ? [t('Plus could not be saved in this browser just now.')] : [])] : [];
+  const removedHere = m.state === 'none' && m.unstored === true;
+  const notes = m.unstored && m.state !== 'none' ? [t('This browser would not keep Plus: it lasts until this tab closes. Copy the key now and enter it again next time.'), ...(m.saveFailed ? [t('Plus could not be saved in this browser just now.')] : [])]
+    : removedHere && m.saveFailed ? [t('Plus could not be saved in this browser just now.')] : [];
   const save: PopAction[] = m.unstored && m.saveFailed && ui.mode === 'idle' ? ['save'] : [];
   if (m.state === 'on') {
     const actions: PopAction[] = ui.mode === 'confirm' ? ['remove-yes', 'remove-no'] : ui.mode === 'replace' ? ['cancel'] : [...save, 'replace', 'remove'];
@@ -55,6 +57,8 @@ export function popView(m: { state: PlusState; until: number | null; key: string
     return m.unverified ? { status: { tone: 'error', text: offlineText() }, key: null, actions: [...save, 'retry'], confirm: null, entry: false, notes }
       : { status: { tone: 'checking', text: t('Checking Plus with the server…') }, key: null, actions: save, confirm: null, entry: false, notes };
   }
+  // A Remove this browser did not store: removed in this tab only, with Try again (Sol, code review C2-6).
+  if (removedHere) return { status: { tone: 'error', text: t('Removed in this tab only: this browser still keeps the key.') }, key: null, actions: save, confirm: null, entry: false, notes };
   return { status: ui.removed ? { tone: 'ok', text: t('Key removed from this browser.') } : null, key: null, actions: [], confirm: null, entry: !ui.removed, notes };
 }
 
@@ -99,13 +103,13 @@ const LABELS: Record<PopAction, () => string> = {
 /** What the status pop-up works with: the membership, how it is drawn again and closed, what See what Plus adds opens, the clipboard, the key form. */
 export interface PopDeps {
   /** The membership; with a database also whether this tab takes keys, holds one it could not store, and Try again for it. */
-  member: Pick<Plus, 'state' | 'until' | 'key' | 'unverified' | 'forget' | 'retry' | 'subscribe'> & Partial<Pick<Plus, 'takesKeys' | 'unstored' | 'saveFailed' | 'keepAgain'>>;
+  member: Pick<Plus, 'state' | 'until' | 'key' | 'unverified' | 'forget' | 'retry' | 'subscribe'> & Partial<Pick<Plus, 'takesKeys' | 'unstored' | 'saveFailed' | 'keepAgain' | 'mode'>>;
   /** Draw the pop-up again (the panel's `render`, which gives the keyboard back to the control with the same `data-focus`). */
   redraw(): void;
   close(): void;
   see(): void;
   copy?: (key: string) => Promise<'copied' | 'select'>;
-  entry?: (o: { onSuccess: () => void }) => KeyEntry;
+  entry?: (o: { onSuccess: () => void; blocked?: () => boolean }) => KeyEntry;
 }
 export interface StatusPop {
   /** Draw it into `body` (the panel's, emptied by the panel). */
@@ -195,9 +199,12 @@ export function createStatusPop(deps: PopDeps): StatusPop {
     const want = view.entry ? (member.state === 'on' ? 'replace' : member.state === 'ended' ? 'ended' : 'none') : null;
     if (entry && entry.kind !== want) dropEntry();
     if (want && !entry) {
-      const form = (deps.entry ?? (o => keyEntry(o)))({ onSuccess: () => { if (want === 'replace') { ui = { ...ui, mode: 'idle', revealed: null }; hint = t('Key replaced.'); hintFor = member.key; focusNext = 'replace'; dropEntry(); redraw(); } } });
+      const form = (deps.entry ?? (o => keyEntry(o)))({ onSuccess: () => { if (want === 'replace') { ui = { ...ui, mode: 'idle', revealed: null }; hint = t('Key replaced.'); hintFor = member.key; focusNext = 'replace'; dropEntry(); redraw(); } },
+        // While this tab's database opens the form is disabled with no word, as on the Plus page.
+        blocked: () => member.mode === 'opening' });
       entry = { kind: want, form };
     }
+    entry?.form.refresh?.();
     if (view.confirm) {
       const id = 'pp-confirm-text';
       const box = el('div', { class: 'pp-confirm', role: 'group' }, el('p', { id, textContent: view.confirm }), el('div', { class: 'pp-actions' }, ...buttons(view.actions)));

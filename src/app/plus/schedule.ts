@@ -32,25 +32,44 @@ export type Step =
   | { kind: 'wait'; ms: number }
   | { kind: 'end'; why: 'cooldown' | 'deadline' | 'wall' | 'asks'; cooldownMs: number };
 
+/**
+ * Why the server named a wait: too many tries (`limited`, a 429), too many keys in a day (`keys`), or the server busy or down (`other`): the
+ * words said for it differ (Sol, code review C2-9).
+ */
+export type WaitWhy = 'limited' | 'keys' | 'other';
+
 /** The waits the server named in this tab, kept across attempts: the latest end of any, and the cooldown (both on the monotonic clock). */
 export class TabWaits {
   #notBefore = -Infinity;
+  #notBeforeWhy: WaitWhy = 'other';
   #cooldown = -Infinity;
+  #cooldownWhy: WaitWhy = 'other';
   constructor(readonly clocks: Clocks = pageClocks) {}
-  /** An answer arrived now; it named a wait of `retryAfterSeconds` (or none). */
-  heard(retryAfterSeconds?: number): void {
+  /** An answer arrived now; it named a wait of `retryAfterSeconds` (or none), for `why`. */
+  heard(retryAfterSeconds?: number, why: WaitWhy = 'other'): void {
     if (retryAfterSeconds !== undefined && Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
-      this.#notBefore = Math.max(this.#notBefore, this.clocks.mono() + retryAfterSeconds * 1_000);
+      const end = this.clocks.mono() + retryAfterSeconds * 1_000;
+      if (end > this.#notBefore) { this.#notBefore = end; this.#notBeforeWhy = why; }
     }
   }
   /** No ask goes before this (monotonic ms). */
   get notBefore(): number { return this.#notBefore; }
+  /** Why the latest wait was named. */
+  get notBeforeWhy(): WaitWhy { return this.#notBeforeWhy; }
   /** An attempt that ends with the server's wait reaching past its deadline: no press asks before the wait's end. */
-  coolUntil(at: number): void { this.#cooldown = Math.max(this.#cooldown, at); }
+  coolUntil(at: number, why: WaitWhy = 'other'): void { if (at > this.#cooldown) { this.#cooldown = at; this.#cooldownWhy = why; } }
   /** A wait of `seconds` from now becomes the cooldown (`too_many_keys`: no key can be made before it ends). */
-  coolFor(seconds: number): void { if (Number.isFinite(seconds) && seconds > 0) this.coolUntil(this.clocks.mono() + seconds * 1_000); }
+  coolFor(seconds: number, why: WaitWhy = 'keys'): void { if (Number.isFinite(seconds) && seconds > 0) this.coolUntil(this.clocks.mono() + seconds * 1_000, why); }
   /** How long the cooldown has left (ms), 0 when none. */
   cooldownLeft(): number { return Math.max(0, this.#cooldown - this.clocks.mono()); }
+  /** Why the cooldown was set. */
+  get cooldownWhy(): WaitWhy { return this.#cooldownWhy; }
+  /** How long until anything may be asked at all (the cooldown, or the latest wait named), and why; 0 when nothing holds. */
+  waitLeft(): { ms: number; why: WaitWhy } {
+    const now = this.clocks.mono(), cool = this.#cooldown - now, wait = this.#notBefore - now;
+    if (cool <= 0 && wait <= 0) return { ms: 0, why: 'other' };
+    return cool >= wait ? { ms: cool, why: this.#cooldownWhy } : { ms: wait, why: this.#notBeforeWhy };
+  }
   /** A new attempt, beginning now. */
   attempt(): Attempt { return new Attempt(this); }
 }
@@ -75,7 +94,7 @@ export class Attempt {
 
   #end(why: 'cooldown' | 'deadline' | 'wall' | 'asks'): Step {
     // The server's own wait reaching past the deadline becomes the tab's cooldown (never the backoff's).
-    if (why !== 'cooldown' && this.#waits.notBefore > this.deadline) this.#waits.coolUntil(this.#waits.notBefore);
+    if (why !== 'cooldown' && this.#waits.notBefore > this.deadline) this.#waits.coolUntil(this.#waits.notBefore, this.#waits.notBeforeWhy);
     this.#ended = { kind: 'end', why, cooldownMs: this.#waits.cooldownLeft() };
     return this.#ended;
   }
@@ -94,8 +113,8 @@ export class Attempt {
   }
   /** The ask went now (after `next` said `send`). */
   sent(): void { this.#asks++; this.#lastSend = this.#waits.clocks.mono(); this.#inFlight = true; }
-  /** Its answer arrived now, naming a wait of `retryAfterSeconds` (or none). */
-  answered(retryAfterSeconds?: number): void { this.#inFlight = false; this.#waits.heard(retryAfterSeconds); }
+  /** Its answer arrived now, naming a wait of `retryAfterSeconds` (or none), for `why`. */
+  answered(retryAfterSeconds?: number, why: WaitWhy = 'other'): void { this.#inFlight = false; this.#waits.heard(retryAfterSeconds, why); }
   /** No answer came (not reached, or given up): the backoff alone decides the next ask. */
   lost(): void { this.#inFlight = false; }
 }

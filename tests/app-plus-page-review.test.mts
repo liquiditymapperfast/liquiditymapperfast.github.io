@@ -95,7 +95,7 @@ test('Sol 1 (P1): the page takes a key, a checkout\'s key and a receipt\'s membe
   assert.ok(!/member\.accept\(/.test(page), 'no unconditional accept on the page');
   assert.match(page, /keyEntry\(\{ activate: \(text, deps\) => keySettling\(text, \{ \.\.\.deps, paid \}\), onSuccess:/, 'the key box is the app\'s key form (activateKey: acceptIf)');
   assert.match(page, /await setUpPayment\(transactionId, \{ db, member, paid, ask: post, waits \}\)/, 'the attempt, through the gate');
-  assert.match(page, /await restoreBy\(email, invoice, \{ db, member, ask: post, paid \}\)/, 'restoreBy');
+  assert.match(page, /await restoreBy\(email, invoice, \{ db, member, ask: post, paid, waits \}\)/, 'restoreBy, with the waits of this tab');
   assert.ok(!/\/pass\/renew/.test(page), 'the page sends no key of its own');
   assert.ok(!/lmf\.plus/.test(page) && !/PAID_STORE/.test(page), 'the payments waiting are kept by paid.ts alone');
 });

@@ -127,7 +127,11 @@ export const errorOf = (body: unknown): string => { const e = body && typeof bod
 export const webPost: Post = (url, body, given) => withTimeout(async signal => {
   const answer = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store', signal });
   let parsed: unknown = null;
-  try { parsed = await answer.json(); } catch { /* an answer without a JSON body says enough with its status */ }
+  try { parsed = await answer.json(); } catch (error) {
+    // Given up while the body was read (the timeout or the caller): no answer at all, as when the request never came back (Sol, C2-7).
+    if (signal.aborted) throw signal.reason ?? error;
+    /* an answer without a JSON body says enough with its status */
+  }
   const wait = Number(answer.headers.get('retry-after'));
   return { status: answer.status, body: parsed, ...(Number.isFinite(wait) && wait > 0 ? { retryAfter: wait } : {}) };
 }, given);
@@ -501,6 +505,8 @@ export class Plus {
   get takesKeys(): boolean { return this.#mode === 'idb' || this.#mode === 'plain'; }
   /** Whether this tab holds a membership it could not store (the overlay): it lasts until the tab closes. */
   get unstored(): boolean { return this.#overlay !== null; }
+  /** The payments the overlay settles when it is stored (`keepAgain`): what the page's list drops then. */
+  get overlaySettle(): readonly string[] { return this.#overlay?.settle ?? []; }
   /** Whether storing it failed for another reason than a full storage: then Try again (`keepAgain`) is offered. */
   get saveFailed(): boolean { return this.#overlay !== null && !this.#overlay.quota; }
   #setMode(mode: PlusMode): void {
