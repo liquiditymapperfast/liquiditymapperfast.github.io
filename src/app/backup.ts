@@ -1,10 +1,11 @@
-import { DONE_KEY, handedKey } from './handover.ts';
+import { DONE_KEY, handedKey, plusKey } from './handover.ts';
 
 /**
  * A backup: everything this page keeps in this browser's storage, in one file a person can keep or carry to another browser or computer:
  * the settings, the saved layouts, the scripts, the drawings, their own themes, the coin and the venues (every key `handedKey` lets through:
- * the page's own `hlm-…` and `lmf.…` keys, never the cached coin list or the page's own marks). Not the recorded market history, which lives
- * in IndexedDB and is rebuilt as the page runs.
+ * the page's own `hlm-…` and `lmf.…` keys, never the cached coin list, a Plus key (`lmf.plus*`) or the page's own marks). Not the recorded
+ * market history, which lives in IndexedDB and is rebuilt as the page runs, and never the Plus database (`plus/plus-db.ts`: the seed, the
+ * membership and the payments belong to this browser).
  *
  * Restoring replaces what the page keeps, all or none, and never mixes a backup into a running page: the backup is left in `sessionStorage`
  * and the page reloads; `takeRestore`, the second thing boot.ts runs (after the hand-over from the old address), writes it before anything
@@ -70,6 +71,8 @@ export function readBackup(text: string): BackupRead {
   if (!r.items || typeof r.items !== 'object' || Array.isArray(r.items)) return { error: 'not-backup' };
   const items: Record<string, string> = {};
   for (const [key, value] of Object.entries(r.items)) {
+    // A Plus key never travels; a backup made before 2026-11-20 may hold `lmf.plus.gen`, and is read without it rather than refused.
+    if (plusKey(key) && typeof value === 'string') continue;
     if (!handedKey(key) || typeof value !== 'string') return { error: 'not-backup' };
     // This browser's own bookkeeping in a file from another one is left out, never written.
     if (!backedKey(key)) continue;

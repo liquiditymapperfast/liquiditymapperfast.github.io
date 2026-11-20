@@ -30,7 +30,7 @@
       var MAX_URL = 1000000;
       function handed(key) {
         if (!/^(?:hlm-[a-z0-9][a-z0-9:._-]{0,79}|lmf\.[a-z0-9][a-z0-9._-]{0,79})$/.test(key)) return false;
-        return key !== 'lmf.coins' && key !== 'hlm-stale' && key !== 'hlm-stale-reload' && key !== 'hlm-handover-v1';
+        return key !== 'lmf.coins' && key !== 'lmf.plus' && key.indexOf('lmf.plus.') !== 0 && key !== 'hlm-stale' && key !== 'hlm-stale-reload' && key !== 'hlm-handover-v1';
       }
       function base64url(bytes) {
         var binary = '';

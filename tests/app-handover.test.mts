@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { buildIn } from '../src/app/update-check.ts';
-import { DONE_KEY, MAX_BYTES, MAX_CHARS, OLD_ORIGIN, PREFIX, decode, encode, gate, guideOf, handedKey, itemsOf, takeHandover, withHash, write } from '../src/app/handover.ts';
+import { DONE_KEY, MAX_BYTES, MAX_CHARS, OLD_ORIGIN, PREFIX, decode, encode, gate, guideOf, handedKey, itemsOf, plusKey, takeHandover, withHash, write } from '../src/app/handover.ts';
+import { backupFile, collectItems, readBackup } from '../src/app/backup.ts';
 
 const NEW = 'https://liquiditymapper.com/';
 const REFERRER = `${OLD_ORIGIN}/`;
@@ -160,4 +161,43 @@ test('on the page it takes what the navigation entry says, puts the guide back, 
 
   assert.equal((await run({ loaded: `${NEW}${PREFIX}${data}`, type: 'reload' })).store.size, 0, 'a reload takes nothing');
   assert.equal((await run({ loaded: `${NEW}${PREFIX}${data}`, referrer: 'https://evil.example/' })).store.size, 0, 'another referrer takes nothing');
+});
+
+/** Every Plus key this browser may hold (the membership, its generation, payment records old and new, the database's marker, a seed). */
+const PLUS_KEYS = ['lmf.plus', 'lmf.plus.gen', 'lmf.plus.paid', 'lmf.plus.paid.txn_01hzaaaaaaaaaaaaaaaaaaaaaa', 'lmf.plus.idb', 'lmf.plus.seed'];
+
+test('no Plus key ever travels: the hand-over refuses lmf.plus and every lmf.plus.* (the checkout recovery, 2026-11-20)', () => {
+  for (const key of PLUS_KEYS) { assert.equal(plusKey(key), true, key); assert.equal(handedKey(key), false, key); }
+  for (const key of ['lmf.plusx', 'lmf.coin', 'hlm-plus']) { assert.equal(plusKey(key), false, key); assert.equal(handedKey(key), true, key); }
+  assert.equal(itemsOf(JSON.stringify({ v: 1, items: { 'hlm-app-v2': '{}', 'lmf.plus.gen': '3' } })), null, 'a hand-over carrying one is refused whole');
+});
+
+test('the page at the old address leaves every Plus key out of what it sends, and sends nothing when they are all it holds', async () => {
+  const html = readFileSync('moved-site/index.html', 'utf8');
+  assert.equal(readFileSync('moved-site/404.html', 'utf8'), html, 'one page for both');
+  const code = /<script>([\s\S]*?)<\/script>/.exec(html)![1]!;
+  const context: Record<string, unknown> = { TextEncoder, btoa, Blob, Response, CompressionStream, Uint8Array, Promise, JSON };
+  vm.runInNewContext(code, context);
+  const moved = context.Moved as { target(loc: { pathname: string; search: string; hash: string }, storage: unknown): Promise<string>; handed(key: string): boolean };
+  for (const key of PLUS_KEYS) assert.equal(moved.handed(key), false, key);
+  const storageOf = (entries: [string, string][]) => ({ length: entries.length, key: (i: number) => entries[i]?.[0] ?? null, getItem: (k: string) => entries.find(e => e[0] === k)?.[1] ?? null });
+  const to = await moved.target({ pathname: '/', search: '', hash: '' }, storageOf([['hlm-app-v2', '{"tf":"5m"}'], ...PLUS_KEYS.map((k): [string, string] => [k, 'secret-ish'])]));
+  const verdict = gate(to, 'navigate', REFERRER, none);
+  assert.ok('data' in verdict);
+  assert.deepEqual(itemsOf((await decode(verdict.data))!), { 'hlm-app-v2': '{"tf":"5m"}' }, 'only the settings');
+  assert.equal(await moved.target({ pathname: '/', search: '', hash: '' }, storageOf(PLUS_KEYS.map((k): [string, string] => [k, 'x']))), NEW, 'Plus keys alone: the plain address');
+});
+
+test('a backup never holds a Plus key nor anything of the Plus database, and an older backup holding lmf.plus.gen is read without it', () => {
+  const entries: [string, string][] = [['hlm-app-v2', '{"theme":"dark"}'], ['lmf.coin', '"ETH"'], ...PLUS_KEYS.map((k): [string, string] => [k, 'mine'])];
+  const storage = { length: entries.length, key: (i: number) => entries[i]?.[0] ?? null, getItem: (k: string) => entries.find(e => e[0] === k)?.[1] ?? null };
+  const items = collectItems(storage);
+  assert.deepEqual(Object.keys(items).sort(), ['hlm-app-v2', 'lmf.coin']);
+  const file = backupFile(items, 1_800_000_000_000);
+  assert.ok(!/lmf\.plus|lmf-plus/.test(file), 'no trace in the file');
+  const older = JSON.stringify({ format: 'liquiditymapperfast-backup', version: 1, savedAt: 1, items: { ...items, 'lmf.plus.gen': '4' } });
+  assert.deepEqual(readBackup(older), { items, savedAt: 1 }, 'read, the Plus key left out');
+  assert.deepEqual(readBackup(JSON.stringify({ format: 'liquiditymapperfast-backup', version: 1, items: { 'lmf.plus.gen': '4' } })), { error: 'empty' });
+  const source = readFileSync('src/app/backup.ts', 'utf8');
+  assert.ok(!/indexedDB|plus-db|plusDb|'lmf-plus'/.test(source.replace(/\/\*[\s\S]*?\*\//g, '')), 'the backup never opens the Plus database');
 });

@@ -26,6 +26,14 @@ export const PADDLE: { readonly environment: 'sandbox' | 'production'; readonly 
   environment: 'sandbox', token: '', portal: '', monthly: { id: '', usd: 10 }, yearly: { id: '', usd: 0 },
 };
 export const plusOnSale = (): boolean => PADDLE.token !== '' && PADDLE.monthly.id !== '';
+/**
+ * Whether the receipt form (the email and the invoice number bring Plus back) is offered while the checkout is closed. Set it to true when the
+ * sale opens, so that a buyer whose browser lost its key can still come back if the checkout is ever closed again (a test fails while Plus is
+ * on sale and this is false).
+ */
+export const PLUS_RESTORE: boolean = false;
+/** Whether the Plus page offers the receipt form: while Plus is on sale, and whenever `PLUS_RESTORE` says so. */
+export const offersReceipt = (restore: boolean = PLUS_RESTORE, onSale: () => boolean = plusOnSale): boolean => restore || onSale();
 /** How many keys a subscription holds at most (the server's limit): a newer one replaces the oldest, and no more are given within a day. */
 export const PLUS_KEYS = 5;
 /** Where a buyer writes about the page itself (billing questions go to Paddle, the seller of record). */

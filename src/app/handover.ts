@@ -23,10 +23,15 @@ export const MAX_CHARS = 1_000_000;
 /** The most a hand-over unpacks to (bytes): more than a browser lets a site store, and a bound on what a small fragment may inflate to. */
 export const MAX_BYTES = 6_000_000;
 
-/** The keys a hand-over may write: the page's own (`hlm-…`, `lmf.…`), never the cached coin list, the stale-build marks or the marker. */
+/**
+ * A Plus key (`lmf.plus` and every `lmf.plus.…`: the membership, its generation, the marker of the Plus database, payment records): it belongs
+ * to this browser and never travels, in a hand-over or a backup (the checkout recovery, 2026-11-20).
+ */
+export const plusKey = (key: string): boolean => key === 'lmf.plus' || key.startsWith('lmf.plus.');
+/** The keys a hand-over may write: the page's own (`hlm-…`, `lmf.…`), never the cached coin list, a Plus key, the stale-build marks or the marker. */
 export function handedKey(key: string): boolean {
   if (!/^(?:hlm-[a-z0-9][a-z0-9:._-]{0,79}|lmf\.[a-z0-9][a-z0-9._-]{0,79})$/.test(key)) return false;
-  return key !== 'lmf.coins' && key !== 'lmf.plus' && key !== 'lmf.plus.paid' && key !== 'hlm-stale' && key !== 'hlm-stale-reload' && key !== DONE_KEY;
+  return key !== 'lmf.coins' && !plusKey(key) && key !== 'hlm-stale' && key !== 'hlm-stale-reload' && key !== DONE_KEY;
 }
 
 const toBase64Url = (bytes: Uint8Array): string => {
