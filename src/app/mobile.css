@@ -308,10 +308,10 @@ html[data-layout^="phone"] main[data-tab="map"] .pane.lt:not([hidden]) { display
 /* Funding has no tab either (2026-11-07): switched on in Settings, it sits under the map on the Map tab, as LT does. */
 html[data-layout^="phone"] main[data-tab="map"] .pane.funding:not([hidden]) { display: flex; flex: 0 0 32% !important; min-height: 0 !important; }
 /* Flow history has no tab either (2026-11-20): switched on in Settings, it sits under the map on the Map tab. Its eight rows want the height
-   (38 %, half of a phone held sideways), so beside LT or Funding it gives some up, and with both it keeps 30 % and they 20 % each, so the map
-   keeps 30 %. */
+   (38 %; half of a phone held sideways, not of a tablet, whose 38 % is already taller than a desktop's pane), so beside LT or Funding it
+   gives some up, and with both it keeps 30 % and they 20 % each, so the map keeps 30 %. */
 html[data-layout^="phone"] main[data-tab="map"] .pane.sizes:not([hidden]) { display: flex; flex: 0 0 38% !important; min-height: 0 !important; }
-html[data-layout="phone-landscape"] main[data-tab="map"] .pane.sizes:not([hidden]) { flex-basis: 50% !important; }
+@media (max-height: 520px) { html[data-layout="phone-landscape"] main[data-tab="map"] .pane.sizes:not([hidden]) { flex-basis: 50% !important; } }
 html[data-layout^="phone"] main[data-tab="map"]:is(:has(.pane.lt:not([hidden])), :has(.pane.funding:not([hidden]))) .pane.sizes:not([hidden]) { flex-basis: 30% !important; }
 html[data-layout^="phone"] main[data-tab="map"]:has(.pane.lt:not([hidden])):has(.pane.funding:not([hidden])):has(.pane.sizes:not([hidden])) :is(.pane.lt, .pane.funding):not([hidden]) { flex-basis: 20% !important; }
 /* Held sideways its line goes on the title's row, as the flow column's does: there is the width, and the rows need the height. */
