@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { barAt, columnAt, depthCardLines, liqCardLines, liqColumnRows, liqReadRow, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from '../src/app/panes/pane-cards.ts';
+import { barAt, columnAt, depthCardLines, liqCardLines, liqColumnRows, liqReading, liqRowAt, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from '../src/app/panes/pane-cards.ts';
 import { layoutInfo } from '../src/app/infobox.ts';
 
 const MIN = 60_000;
@@ -136,9 +136,9 @@ test('the Depth pane reads the liquidation levels at a moment, never at a column
     assert.equal(rowAt[last], newest, `the newest column draws the newest snapshot (${what})`);
     assert.ok(t0 + last / w * (t1 - t0) <= now && now <= t0 + (last + 1) / w * (t1 - t0), `it is the column holding now (${what})`);
     for (let x = last + 1; x < w; x++) assert.equal(rowAt[x], -1, 'nothing is drawn past now');
-    assert.equal(liqReadRow(rows, Math.min(now, t1), Math.min(now, t1), HOLD), newest, `with no pointer the table reads the newest snapshot (${what})`);
-    assert.equal(liqReadRow(rows, pointer, now, HOLD), 60, `a pointer reads the snapshot in force at its time (${what})`);
-    assert.equal(liqReadRow(rows, now + 20 * MIN, now, HOLD), newest, `a pointer past now reads the newest (${what})`);
+    assert.deepEqual(liqReading(rows, null, null, t1, now, HOLD), { row: newest, take: -1, at: now }, `with no pointer the table reads the newest snapshot (${what})`);
+    assert.equal(liqReading(rows, null, pointer, t1, now, HOLD).row, 60, `a pointer reads the snapshot in force at its time (${what})`);
+    assert.deepEqual(liqReading(rows, null, now + 20 * MIN, t1, now, HOLD), { row: newest, take: -1, at: now }, `a pointer past now reads the newest moment (${what})`);
   }
   // Read at their middles, as before, 26-minute columns left the newest snapshot out of the drawing and the table read the one before it.
   const w = 600, t1 = now + 15 * MIN, t0 = t1 - w * SNAP, mid = (x: number): number => t0 + (x + 0.5) / w * (t1 - t0);
@@ -147,29 +147,51 @@ test('the Depth pane reads the liquidation levels at a moment, never at a column
   assert.ok(rows.filter(r => r.fetchedAt <= mid(x)).length - 1 < newest, 'the old reading of that view was an older snapshot');
 });
 
-test('a snapshot stands its hold and no longer in the drawing; a reading past the newest keeps it, a gap between two reads nothing', () => {
+test('a snapshot stands its hold and no longer: a pointer in a gap reads nothing wherever the view ends, the newest moment keeps the newest snapshot', () => {
   const HOLD = 90 * MIN, rows = [{ fetchedAt: 0 }, { fetchedAt: 30 * MIN }, { fetchedAt: 300 * MIN }, { fetchedAt: 330 * MIN }];
   const now = 600 * MIN, rowAt = liqColumnRows(rows, 0, 600 * MIN, 600, now, HOLD);
   assert.equal(rowAt[100], 1, 'held for its 90 minutes');
   assert.equal(rowAt[200], -1, 'then a gap until the next snapshot');
   assert.equal(rowAt[400], 3);
   assert.equal(rowAt[500], -1, 'the snapshots stopped: past the hold nothing is drawn');
-  assert.equal(liqReadRow(rows, 200 * MIN, now, HOLD), -1, 'a pointer in the gap reads nothing');
-  assert.equal(liqReadRow(rows, 500 * MIN, now, HOLD), 3, 'at or past the newest snapshot, the reading keeps it (its positions time says how old it is)');
-  assert.equal(liqReadRow(rows, now, now, HOLD), 3, 'and so does the newest moment');
-  assert.equal(liqReadRow([], now, now, HOLD), -1);
+  // The rows a view holds end at its end (the history gives every row fetched in it and the last before it): the reading of a pointer in the
+  // gap must not depend on whether the view reaches the next snapshot (review 2026-11-21).
+  for (const [held, t1] of [[rows.slice(0, 2), 250 * MIN], [rows, 600 * MIN]] as const) assert.equal(liqReading(held, null, 200 * MIN, t1, now, HOLD).row, -1, 'a pointer in the gap reads nothing');
+  assert.equal(liqReading(rows, null, 500 * MIN, 600 * MIN, now, HOLD).row, -1, 'nor in the stretch after the snapshots stopped');
+  assert.equal(liqReading(rows, null, null, 600 * MIN, now, HOLD).row, 3, 'the newest moment keeps the newest snapshot, its positions time saying how old it is');
+  assert.equal(liqReading(rows, null, now, 650 * MIN, now, HOLD).row, 3, 'and so does a pointer at now or past it');
+  assert.equal(liqReading(rows, null, null, 320 * MIN, now, HOLD).row, 2, 'a view ending before now reads its own end');
+  assert.equal(liqReading([], null, null, 600 * MIN, now, HOLD).row, -1);
+  assert.equal(liqRowAt(rows, 120 * MIN, HOLD), 1);
+  assert.equal(liqRowAt(rows, 121 * MIN, HOLD), -1, 'a hold is 90 minutes to the millisecond');
 });
 
-test('a replay reads no snapshot after its moment, and nothing is read before a stretch closed to the visitor (Plus)', () => {
+test('take profits are read at the same moment as the levels and only while they stand: an orders file that lags prints none (review 2026-11-21)', () => {
+  const HOLD = 90 * MIN, rows = Array.from({ length: 12 }, (_, i) => ({ fetchedAt: i * 26 * MIN })), now = 11 * 26 * MIN + 5 * MIN;
+  const takes = [{ fetchedAt: 0 }, { fetchedAt: 52 * MIN }, { fetchedAt: 104 * MIN }];
+  assert.deepEqual(liqReading(rows, takes, null, now, now, HOLD), { row: 11, take: -1, at: now }, 'the newest take profits are three hours old: not beside the levels of now');
+  assert.deepEqual(liqReading(rows, takes, 110 * MIN, now, now, HOLD), { row: 4, take: 2, at: 110 * MIN }, 'where they stand they are read with the levels');
+  const kept = [{ fetchedAt: 0 }, { fetchedAt: 26 * MIN }];
+  assert.deepEqual(liqReading(kept, kept, null, 300 * MIN, 300 * MIN, HOLD), { row: 1, take: -1, at: 300 * MIN }, 'the levels are kept past their hold, the take profits are not');
+});
+
+test('a replay reads no snapshot after its moment; nothing closed to the visitor (Plus) is drawn or read, a view wholly closed included', () => {
   const HOLD = 90 * MIN, rows = Array.from({ length: 20 }, (_, i) => ({ fetchedAt: i * 30 * MIN }));
   const moment = 300 * MIN + 10 * MIN, rowAt = liqColumnRows(rows, 0, 600 * MIN, 120, moment, HOLD);
   let last = -1;
   for (let x = 0; x < 120; x++) if (rowAt[x]! >= 0) last = x;
   assert.equal(rowAt[last], 10, "the replay's newest column draws the snapshot in force at its moment");
-  assert.equal(liqReadRow(rows, 500 * MIN, moment, HOLD), 10, 'a pointer later than the moment reads the moment');
-  assert.equal(liqReadRow(rows, moment, moment, HOLD), 10);
+  assert.equal(liqReading(rows, null, 500 * MIN, 600 * MIN, moment, HOLD).row, 10, 'a pointer later than the moment reads the moment');
+  assert.equal(liqReading(rows, null, null, 600 * MIN, moment, HOLD).row, 10);
+  // Closed until 200 minutes; the history still holds the rows before (a pass that lapsed): none of them is drawn or read.
   const closed = liqColumnRows(rows, 0, 600 * MIN, 120, 600 * MIN, HOLD, 200 * MIN);
-  for (let x = 0; x < 120; x++) if ((x + 1) * 5 * MIN < 200 * MIN) assert.equal(closed[x], -1, 'a column read before the closed stretch ends draws nothing');
-  assert.equal(liqReadRow(rows, 100 * MIN, 600 * MIN, HOLD, 200 * MIN), -1, 'nor is anything read there');
-  assert.equal(liqReadRow(rows, 250 * MIN, 600 * MIN, HOLD, 200 * MIN), 8);
+  for (let x = 0; x < 41; x++) assert.equal(closed[x], -1, `column ${x}: read before the boundary, or from the row fetched at 180 minutes`);
+  assert.equal(closed[41], 7, 'the column ending at 210 minutes draws the first row fetched after the boundary');
+  assert.equal(liqReading(rows, null, 100 * MIN, 600 * MIN, 600 * MIN, HOLD, 200 * MIN).row, -1, 'nor is anything read before the boundary');
+  assert.equal(liqReading(rows, null, 205 * MIN, 600 * MIN, 600 * MIN, HOLD, 200 * MIN).row, -1, 'nor a closed row standing after it');
+  assert.equal(liqReading(rows, null, 250 * MIN, 600 * MIN, 600 * MIN, HOLD, 200 * MIN).row, 8);
+  // A view wholly closed: its boundary lies past the view's end, so its last column, which ends at the view's end, is closed too.
+  const wholly = liqColumnRows(rows, 0, 150 * MIN, 60, 600 * MIN, HOLD, 200 * MIN);
+  assert.ok(wholly.every(i => i === -1), 'nothing of a wholly closed view is drawn');
+  assert.equal(liqReading(rows, null, null, 150 * MIN, 600 * MIN, HOLD, 200 * MIN).row, -1, 'nor read');
 });

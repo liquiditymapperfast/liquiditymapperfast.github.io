@@ -23,7 +23,7 @@ import { flowHistoryRows } from '../size-history/switch.ts';
 import { BROWSER_RETENTION_MS } from '../../shared/recorder.ts';
 import { CARD_GAP, HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
-import { barAt, columnAt, depthCardLines, depthColumns, depthKey, liqCardLines, liqColumnRows, liqReadRow, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
+import { barAt, columnAt, depthCardLines, depthColumns, depthKey, liqCardLines, liqColumnRows, liqReading, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
 import { LiqHistory, bandIndex, bandOnEdge, type LiqRow } from '../liq-history.ts';
 import { TAKE_DASH } from '../liq-levels.ts';
 import { curveOf, groupTitle, kindName, levelsDescription, liveDepthView, liveSplit, viewKey, type LiqView } from '../liq-view.ts';
@@ -376,13 +376,15 @@ export function oiSourceText(state: Pick<AppState, 'oiParts' | 'oiInstrument' | 
   return state.oiInstrument && state.oiInstrument !== state.seriesInstrument ? t('from {venue}', { venue: `${venueLabel(state.oiInstrument)} ${state.oiInstrument.split(':').slice(1).join(':')}` }) : null;
 }
 
-/** The Depth pane's Liquidation levels series: the Depth series' shape, the rows it was built from and the row in force in each pixel column (-1: none), and what it was built for. */
+/** The Depth pane's Liquidation levels series: the Depth series' shape, the rows it was built from and the row each pixel column draws (-1: none; `liqColumnRows`: the row in force at its end), and what it was built for. */
 type LiqSeries = {
   key: string; series: { t0: number; t1: number; w: number; radii: readonly number[]; answer: DepthAnswer }; rowAt: Int32Array; rows: LiqRow[];
   /** The history bucket each band reads (-1: none), and the bands asked beyond its reach (or, from the rollups, not one of their bands). */
   idx: number[]; omitted: number[];
   /** The stretch of the view whose history is Plus and closed to this visitor (`LiqHistory.closedBefore`), from where the recording begins, or null. */
   closed: { from: number; to: number } | null;
+  /** Where what is closed to this visitor ends (`LiqHistory.closedBefore`, not cut to the view, so a view wholly closed draws and reads nothing), or -Infinity. */
+  closedTo: number;
   /** What it shows (`liq-view.ts`), how long a row stands without a later one (90 minutes; a rollup's four hours and that), whether it is the rollups. */
   view: LiqView; holdMs: number; wide: boolean;
   /** The profitable traders' orders the view shows are not on the server for some of this stretch (`LiqHistory.ordersAbsent`): said, never borrowed. */
@@ -621,8 +623,8 @@ export class DepthPane extends TimePane {
 
   /**
    * The Liquidation levels series for the view, in the Depth series' shape, or why there is none: each pixel column holds the snapshot in force
-   * at its time, from when it was fetched until the next, at most 90 minutes (past that the snapshots stopped and the column is empty), its
-   * bands read from the snapshot's buckets. Never past now, or past the replay's moment.
+   * at its end (the column holding now, at now: `liqColumnRows`), from when it was fetched until the next, at most 90 minutes (past that the
+   * snapshots stopped and the column is empty), its bands read from the snapshot's buckets. Never past now, or past the replay's moment.
    */
   #liqSeries(pw: number, asked: readonly number[]): string | LiqSeries {
     let radii = asked;
@@ -651,13 +653,13 @@ export class DepthPane extends TimePane {
     // Only where something was recorded and is in view: a view wholly before the recording began has nothing closed in it.
     const closedEnd = closedTo === null ? -Infinity : Math.min(closedTo, t1);
     const closed = closedEnd > closedFrom ? { from: closedFrom, to: closedEnd } : null;
-    const key = `${this.#history.version}|${vk}|${shape.wide}|${t0}|${t1}|${w}|${radii.join(',')}|${Math.floor(until / 5_000)}|${closed ? closed.to : ''}`;
+    const key = `${this.#history.version}|${vk}|${shape.wide}|${t0}|${t1}|${w}|${radii.join(',')}|${Math.floor(until / 5_000)}|${closedTo ?? ''}`;
     if (this.#liq?.key === key) return this.#liq;
     const s = this.#history.series(t0, t1, view), idx = radii.map(bucket);
     // Each pixel column holds the row in force at its end (the one holding now, at now), from its fetch until the next, at most `holdMs`.
     const build = (rows: LiqRow[]): { bid: Float32Array; ask: Float32Array; bidCoin: Float32Array; askCoin: Float32Array; rowAt: Int32Array } => {
       const bid = new Float32Array(w * k), ask = new Float32Array(w * k), bidCoin = new Float32Array(w * k), askCoin = new Float32Array(w * k);
-      const rowAt = liqColumnRows(rows, t0, t1, w, until, s.holdMs, closed ? closed.to : -Infinity);
+      const rowAt = liqColumnRows(rows, t0, t1, w, until, s.holdMs, closedTo ?? -Infinity);
       for (let x = 0; x < w; x++) {
         const row = rows[rowAt[x]!];
         if (!row) continue;
@@ -670,7 +672,7 @@ export class DepthPane extends TimePane {
     };
     const main = build(s.rows);
     this.#liq = { key, series: { t0, t1, w, radii, answer: { k, bid: main.bid, ask: main.ask, bidCoin: main.bidCoin, askCoin: main.askCoin } }, rowAt: main.rowAt, rows: s.rows, idx, omitted, closed,
-      view, holdMs: s.holdMs, wide: s.wide, absent: s.ordersAbsent, takes: s.takes ? build(s.takes) : null, takeRows: s.takes };
+      view, holdMs: s.holdMs, wide: s.wide, absent: s.ordersAbsent, takes: s.takes ? build(s.takes) : null, takeRows: s.takes, closedTo: closedTo ?? -Infinity };
     return this.#liq;
   }
 
@@ -736,7 +738,9 @@ export class DepthPane extends TimePane {
     // A column holds something where the book had depth, or (liquidation levels) where a snapshot is in force, money in its bands or not.
     const has = (x: number): boolean => x >= 0 && x < s.w && (liqHeld ? liqHeld.rowAt[x]! >= 0 : bid[at(x, k - 1)]! > 0 || ask[at(x, k - 1)]! > 0);
     // Replay: only the columns up to its moment speak (the rest is covered).
-    const cutW = replaying() ? Math.max(0, Math.min(s.w, Math.floor((pageNow() - s.t0) / (s.t1 - s.t0) * s.w))) : s.w;
+    // Liquidation levels: the column holding the moment speaks too, drawn at the moment itself (`liqColumnRows`); a book column holding it is a
+    // mean of minutes after it.
+    const cutW = replaying() ? Math.max(0, Math.min(s.w, Math.floor((pageNow() - s.t0) / (s.t1 - s.t0) * s.w) + (liqHeld ? 1 : 0))) : s.w;
     // The take profits (a dashed line each side, never added to the levels: they sit on the other side of the price), on the same scale.
     const takes = liqHeld?.takes ?? null, takeBid = takes ? (coins ? takes.bidCoin : takes.bid) : null, takeAsk = takes ? (coins ? takes.askCoin : takes.ask) : null;
     let max = 0, lastX = -1;
@@ -761,23 +765,26 @@ export class DepthPane extends TimePane {
     // pointer, or past the newest column, the books as they stand now (the worker's live columns) while the view reaches the live edge, since
     // a column is a mean over its whole width; else the newest column.
     const until = replaying() ? pageNow() : Date.now(), newestT = Math.min(until, s.t1);
-    const liqRead = (time: number, upTo: number): { row: LiqRow; take: LiqRow | null } | null => {
-      if (!liqHeld) return null;
-      const closedTo = closed ? closed.to : -Infinity, i = liqReadRow(liqHeld.rows, time, upTo, liqHeld.holdMs, closedTo);
-      if (i < 0) return null;
-      const tk = liqHeld.takeRows ? liqReadRow(liqHeld.takeRows, time, upTo, liqHeld.holdMs, closedTo) : -1;
-      return { row: liqHeld.rows[i]!, take: tk >= 0 ? liqHeld.takeRows![tk]! : null };
+    const liqRead = (pointer: number | null): { row: LiqRow | null; take: LiqRow | null } => {
+      if (!liqHeld) return { row: null, take: null };
+      const read = liqReading(liqHeld.rows, liqHeld.takeRows, pointer, s.t1, until, liqHeld.holdMs, liqHeld.closedTo);
+      return { row: liqHeld.rows[read.row] ?? null, take: liqHeld.takeRows?.[read.take] ?? null };
     };
     // A row's figure for band `j` in the pane's units (0 for a band it has no bucket for): longs (or take profits) below the price, shorts above.
     const liqFigure = (row: LiqRow, side: 'long' | 'short', j: number): number => {
       const b = liqHeld!.idx[j]!; if (b < 0) return 0;
       return (coins ? (side === 'long' ? row.longCoin : row.shortCoin) : (side === 'long' ? row.long : row.short))[b] ?? 0;
     };
-    const liveNow = !liq && !replaying() && s.t1 >= until - 2 * MINUTE ? (s.answer.newest ?? null) : null;
+    // The books now, while the view reaches the live edge and the live feed is fresh (a dropped stream leaves the worker its last books).
+    const fresh = s.answer.newest && until - s.answer.newest.at <= 2 * MINUTE ? s.answer.newest : null;
+    const liveNow = !liq && !replaying() && s.t1 >= until - 2 * MINUTE ? fresh : null;
     const liveFigure = (side: 'bid' | 'ask', j: number): number => (coins ? (side === 'bid' ? liveNow!.bidCoin : liveNow!.askCoin) : (side === 'bid' ? liveNow!.bid : liveNow!.ask))[j] ?? 0;
+    // A book missing from the live feed (a venue reconnecting) is missing from the books now, so the reading says how many it counted: three
+    // venues out for half a minute took a quarter off the ±5 % band (2026-11-21).
+    const asked = this.#series?.ids?.length ?? 0, liveShort = liveNow && asked > 0 && liveNow.present < asked ? t('{n} of {total} markets', { n: liveNow.present, total: asked }) : '';
     // The header reads the watched band at the newest moment (Liquidation levels: longs and shorts, and when those positions stood).
     if (liq) {
-      const read = liqRead(newestT, newestT), row = read?.row ?? null, take = read?.take ?? null;
+      const { row, take } = liqRead(null);
       const b = row ? liqFigure(row, 'long', top) : NaN, a = row ? liqFigure(row, 'short', top) : NaN, view = liqHeld!.view, r = sideRatio(b, a);
       // Whose levels (the Source names which), and the take profits beside them: the sells that close longs above, the buys that close shorts below.
       const whose = view.group !== 'all' ? `${groupTitle(view.group)} · ` : '';
@@ -790,7 +797,7 @@ export class DepthPane extends TimePane {
       const b = liveNow ? liveFigure('bid', top) : bid[at(lastX, top)]!, a = liveNow ? liveFigure('ask', top) : ask[at(lastX, top)]!;
       const total = b + a, lean = total > 0 ? (b - a) / total : 0, r = sideRatio(b, a);
       const dominant = Math.abs(lean) < 0.005 ? '' : ` <b class="${lean > 0 ? 'bid' : 'ask'}">${lean > 0 ? t('bids') : t('asks')} +${(Math.abs(lean) * 100).toFixed(1)}%${r ? ` · ${ratioFigure(r.ratio)}` : ''}</b>`;
-      setHtml(readout, `±${bandText(s.radii[top]!)}% B <b class="bid">${amountText(b, coins)}</b> A <b class="ask">${amountText(a, coins)}</b> Δ <b>${coins ? tableSigned(b - a) : signedText(b - a)}</b>${unit}${dominant}`);
+      setHtml(readout, `±${bandText(s.radii[top]!)}% B <b class="bid">${amountText(b, coins)}</b> A <b class="ask">${amountText(a, coins)}</b> Δ <b>${coins ? tableSigned(b - a) : signedText(b - a)}</b>${unit}${dominant}${liveNow && liveShort ? ` · ${liveShort}` : ''}`);
     } else setHtml(readout, '');
     // The order book's column under the pointer, past the newest the newest; with no pointer the newest.
     let readX = lastX, readTime = lastX >= 0 ? colT(lastX) : NaN, pointed = false, under = -1;
@@ -801,7 +808,7 @@ export class DepthPane extends TimePane {
       under = column < cutW ? column : -1;
       const found = readAt(has(under) ? under : -1, hv.t, lastX, lastX >= 0 ? colT(lastX) : undefined);
       // Past the newest the crosshair stands where the reading is: the newest column, or (Liquidation levels) the newest moment.
-      if (liq) { if (hv.t > until) this.cursorT = until; } else if (found >= 0 && found !== under) this.cursorT = colT(found + 0.5);
+      if (liq) { if (hv.t >= until) this.cursorT = newestT; } else if (found >= 0 && found !== under) this.cursorT = colT(found + 0.5);
       readX = found >= 0 && has(found) ? found : -1;
       readTime = readX >= 0 ? colT(readX) : hv.t;
     }
@@ -895,17 +902,18 @@ export class DepthPane extends TimePane {
     // The table's reading (see above): each band's figures, and what its foot says of them.
     let rows: { r: number; bid: number; ask: number }[], foot: string, readRow: LiqRow | null = null, readTake: LiqRow | null = null, live = false;
     if (liq) {
-      const read = pointed ? liqRead(hv!.t, until) : liqRead(newestT, newestT);
-      readRow = read?.row ?? null; readTake = read?.take ?? null;
+      ({ row: readRow, take: readTake } = liqRead(pointed ? hv!.t : null));
       rows = s.radii.map((r, j) => ({ r, bid: readRow ? liqFigure(readRow, 'long', j) : NaN, ask: readRow ? liqFigure(readRow, 'short', j) : NaN }));
       foot = readRow ? t('positions as of {time}', { time: clock(readRow.asOf, true) }) : '';
     } else {
-      live = !!liveNow && (!pointed || (readX >= 0 && readX === lastX && !has(under)));
+      // Pointing at the column that holds now, or past the newest column, reads the books now too: that column is a mean of the minutes in it.
+      const nowX = Math.max(0, Math.min(s.w - 1, Math.floor((newestT - s.t0) / (s.t1 - s.t0) * s.w)));
+      live = !!liveNow && (!pointed || hv!.t >= colT(nowX) || (readX >= 0 && readX === lastX && !has(under)));
       rows = s.radii.map((r, j) => ({ r, bid: live ? liveFigure('bid', j) : readX >= 0 ? bid[at(readX, j)]! : NaN, ask: live ? liveFigure('ask', j) : readX >= 0 ? ask[at(readX, j)]! : NaN }));
-      if (live) { readTime = newestT; if (pointed) this.cursorT = newestT; }
+      if (live) { readTime = liveNow!.at; if (pointed) this.cursorT = newestT; }
       foot = Number.isFinite(readTime) ? (pointed && !live ? clock(readTime, true) : `${t('newest')} ${clock(readTime)}`) : '';
     }
-    const drawn = settings.table && this.#drawTable(rows, this.pointer !== null, focused ? top : -1, foot, unit, liq ? [t('Longs'), t('Shorts')] : [t('Bid'), t('Ask')]);
+    const drawn = settings.table && this.#drawTable(rows, this.pointer !== null, focused ? top : -1, foot, unit, liq ? [t('Longs'), t('Shorts')] : [t('Bid'), t('Ask')], live ? liveShort : '');
     if (!drawn && pointed && liq) {
       const tk = readTake ? { bid: liqFigure(readTake, 'long', top), ask: liqFigure(readTake, 'short', top) } : null;
       if (readRow) this.#lines = liqCardLines({ asOf: readRow.asOf, bands: rows, watched: top, units: settings.units, coin, view: liqHeld!.view, takes: tk });
@@ -923,11 +931,11 @@ export class DepthPane extends TimePane {
    * under them. The header reads the watched band; where even a row a band does not fit, the table is not drawn and the card says it instead. Returns whether it was drawn
    * (a plate is drawn whole or not at all, so one that cannot hold the × column leaves the card, which says the watched band's ratio).
    */
-  #drawTable(rows: readonly { r: number; bid: number; ask: number }[], pointing: boolean, focus: number, time: string, unit: string, sides: readonly [string, string]): boolean {
+  #drawTable(rows: readonly { r: number; bid: number; ask: number }[], pointing: boolean, focus: number, time: string, unit: string, sides: readonly [string, string], note = ''): boolean {
     const { ctx, palette: p } = this;
     const heads = ['', sides[0], sides[1], 'Δ', '×'];
     return this.#table.draw(ctx, p, { w: this.w, h: this.h, plotW: this.plotW, axisW: AXIS_W, pointing }, {
-      heads, minCols: 3, focus, foot: `${time}${unit}`, rows: depthTableRows(rows, p),
+      heads, minCols: 3, focus, foot: `${time}${unit}${note ? ` · ${note}` : ''}`, rows: depthTableRows(rows, p),
     }) !== null;
   }
 

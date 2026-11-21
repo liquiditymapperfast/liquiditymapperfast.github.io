@@ -664,7 +664,7 @@ export class Hub {
       onLevels: frame => {
         const s = this.store.state, bookGone = nextBookGone(s.levels, frame, s.bookGone);
         this.store.set(bookGone === s.bookGone ? { levels: frame } : { levels: frame, bookGone });
-        this.#post({ type: 'live', books: frame.books, now: Date.now() });
+        this.#post({ type: 'live', books: frame.books, now: Date.now(), asOf: frame.asOf });
       },
       onTick: tick => this.#tick(tick),
       onLayers: message => this.store.set({ layers: message.layers }),
