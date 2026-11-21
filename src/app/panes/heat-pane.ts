@@ -1323,7 +1323,7 @@ export class HeatPane {
     const markets = this.footprintMarkets(state);
     if (!markets.length) this.#footprint.clear();
     // The table's running sums from each day's start need the bars from the start of the day the left edge falls in, and the Flow history's
-    // baselines the Highlights' length of candles before the view (at least six hours: size-history/model.ts).
+    // baselines the Highlights' length of candles before the view (at least 36 candles and six hours: size-history/model.ts).
     let from = v.t0;
     if (state.show.stats && state.barStatOptions.cvdFrom === 'day') from = Math.min(from, dayStartOf(v.t0, resolveZone('page', state.timeZone)));
     if (state.show.sizes && state.highlight.on) from = Math.min(from, v.t0 - preRollMs(state.highlight.length, tfMs));

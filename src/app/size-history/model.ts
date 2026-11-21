@@ -131,8 +131,8 @@ export const SHARE_MIN_SLOTS = 36;
  * under $100K, which look large only when the large ones step away). Its share is unusual where it is above the mean plus `mult` standard
  * deviations of the band's non-zero shares on the candles among those same slots that reach the same floor, from the twelfth (`anomalies`'
  * rule). Floor and baseline read those slots alone, so a share has one verdict wherever the view starts, given the history before it the pane
- * loads (`preRollMs`). Measured on seven days of the recording (SHARE-1f), a mark the bar's own brightness does not already give falls on
- * about 7 to 9 % of candles at 1 to 15 minutes.
+ * loads (`preRollMs`). Measured on seven days of the recording (SHARE-1h), the dot (`shareDot`) falls on about 6 to 7 % of candles with
+ * Delta bars and 5 to 6 % with Buys and sells at 1 to 15 minutes, nine or ten in a view of 150.
  */
 export function shareMarks(parts: readonly ArrayLike<number>[], whole: (i: number) => boolean, h: Pick<HighlightOptions, 'mult' | 'length'>): ShareMark[] {
   const n = parts[0]?.length ?? 0, span = Math.max(h.length, SHARE_MIN_SLOTS), sum = new Float64Array(n).fill(NaN), floor = new Float64Array(n).fill(NaN);
@@ -176,12 +176,12 @@ export function shareMarks(parts: readonly ArrayLike<number>[], whole: (i: numbe
 
 /**
  * Whether a size row's bar at slot `i` gets the share dot: its share was unusual (`shareMarks`), the candle is whole, and no side of the bar is
- * lit past half (from three quarters of the multiple, where the card says Close to unusual: its brightness speaks for it). The pane draws it
+ * lit half or more (from three quarters of the multiple, where the card says Close to unusual: its brightness speaks for it). The pane draws it
  * where the row and the candle are wide enough; the card explains it where it is drawn.
  */
 export function shareDot(model: Pick<HistoryModel, 'share' | 'partial'>, row: HistoryRow, i: number, mult: number): boolean {
   const mark = row.band === undefined ? null : model.share?.[row.band] ?? null;
-  return !!mark && mark.flag[i] === 1 && model.partial[i] !== 1 && row.parts.every(p => emphasis(p.sigma[i]!, p.flag[i] === 1, mult) <= 0.5);
+  return !!mark && mark.flag[i] === 1 && model.partial[i] !== 1 && row.parts.every(p => emphasis(p.sigma[i]!, p.flag[i] === 1, mult) < 0.5);
 }
 
 /**
@@ -351,7 +351,7 @@ export function cardLines(model: HistoryModel, r: number, i: number, ctx: CardCo
     if (model.shareKind === 'net' && mark && Number.isFinite(mark.value[i]!)) out.push(shareLine(t('Share of the net'), mark.value[i]!));
     if (row.parts.length === 1) judged(row.parts[0]!, null, partial);
     else { judged(row.parts[0]!, t('Buys'), partial); judged(row.parts[1]!, t('Sells'), partial); }
-    if (ctx.judging && ctx.dots !== false && shareDot(model, row, i, ctx.mult)) dotNote = ({ text: model.shareKind === 'net' ? t('The dot: this size\'s net was an unusually large part of the six sizes\' nets counted without their signs, on a candle at least as busy as usual.') : t('The dot: this size\'s buys and sells were an unusually large part of the candle\'s market orders, on a candle at least as busy as usual.'), color: 'muted', wrap: true });
+    if (ctx.judging && ctx.dots !== false && shareDot(model, row, i, ctx.mult)) dotNote = ({ text: model.shareKind === 'net' ? t('The dot: this size\'s net was an unusually large part of the six sizes\' nets counted without their signs, on a candle with at least the usual net trading.') : t('The dot: this size\'s buys and sells were an unusually large part of the candle\'s market orders, on a candle at least as busy as usual.'), color: 'muted', wrap: true });
   } else if (row.kind === 'liq') {
     const [shorts, longs] = row.parts as [Part, Part], s = shorts.values[i]!, l = longs.values[i]!, cut = model.liqCut[i] === 1;
     if (!Number.isFinite(s) || !Number.isFinite(l)) { out.push({ text: t('Not known for this candle: the record does not reach it.'), color: 'muted', rule: true }); return out; }

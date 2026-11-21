@@ -317,8 +317,12 @@ test('the dot: an unusual share on a whole candle whose bar is not lit past half
   assert.equal(shareDot(m, m.rows[2]!, 81, 2), false, 'another size');
   assert.equal(shareDot({ ...m, partial: m.partial.map((p, i) => i === 81 ? 1 : p) }, row, 81, 2), false, 'a candle recorded in part');
   // Its amount at 1.9 standard deviations: the bar is almost fully lit (the card says Close to unusual), so the dot would only repeat it.
-  const nearly = { ...row, parts: row.parts.map(p => ({ ...p, sigma: p.sigma.map((s, i) => i === 81 ? 1.9 : s), flag: p.flag })) };
-  assert.equal(shareDot(m, nearly, 81, 2), false);
+  const at = (z: number) => ({ ...row, parts: row.parts.map(p => ({ ...p, sigma: p.sigma.map((s, i) => i === 81 ? z : s), flag: p.flag })) });
+  assert.equal(shareDot(m, at(1.9), 81, 2), false);
+  assert.equal(shareDot(m, at(1.6), 81, 2), false, 'past three quarters of the multiple: Close to unusual on the card');
+  assert.equal(shareDot(m, at(1.5), 81, 2), false, 'on it too, where the card starts saying so');
+  assert.equal(shareDot(m, at(1.4), 81, 2), true, 'short of it: Not unusual');
+  assert.equal(shareDot(m, at(2.9), 81, 4), true, 'three quarters of a multiple of 4 is 3');
   assert.ok(cardLines(m, 4, 81, ctx).some(l => l.text.startsWith('The dot: this size\'s net was an unusually large part of the six sizes\' nets counted without their signs')));
   assert.equal(cardLines(m, 4, 81, { ...ctx, dots: false }).some(l => l.text.startsWith('The dot:')), false, 'a row too thin, or candles too narrow, for a dot');
   assert.equal(cardLines(m, 4, 81, { ...ctx, dots: false }).find(l => l.label === 'Share of the net')?.wrap, true, 'the share still said, on a line that wraps');
@@ -326,15 +330,15 @@ test('the dot: an unusual share on a whole candle whose bar is not lit past half
 
 test('shareMarks equals the rule written out plainly (a sort for each candle, two passes for the spread) on random candles at every baseline length', () => {
   let seed = 12345;
-  const rand = (): number => { seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648; return seed / 2_147_483_648; };
-  for (const length of [12, 24, 72, 150]) {
+  const rand = (): number => { seed = (Math.imul(seed, 1_103_515_245) + 12_345) >>> 0; return seed / 4_294_967_296; };
+  for (const [length, mult] of [[12, 2], [24, 1], [72, 2], [150, 4], [36, 1.5]] as const) {
     const n = 400, parts = BANDS.map(() => new Float64Array(n)), admitted = Array.from({ length: n }, () => rand() > 0.04);
     for (let i = 0; i < n; i++) {
       const busy = rand() < 0.5 ? 1 : 3;
       parts.forEach((p, b) => { p[i] = rand() < 0.1 * b ? 0 : busy * (50 + 100 * rand()) * (b === 0 && rand() < 0.3 ? 4 : 1); });
       if (rand() < 0.02) parts[2]![i] = NaN;
     }
-    const got = shareMarks(parts, i => admitted[i]!, { mult: 2, length });
+    const got = shareMarks(parts, i => admitted[i]!, { mult, length });
     // The rule as the doc says it, with no shortcut.
     const span = Math.max(length, SHARE_MIN_SLOTS), sum = Array.from({ length: n }, (_, i) => {
       if (!admitted[i]) return NaN;
@@ -353,14 +357,28 @@ test('shareMarks equals the rule written out plainly (a sort for each candle, tw
             for (let j = Math.max(0, i - span); j < i; j++) { const x = p[j]! / sum[j]!; if (sum[j]! >= floor && x > 0) base.push(x); }
             if (base.length >= 12) {
               const mean = base.reduce((a, x) => a + x, 0) / base.length, sd = Math.sqrt(base.reduce((a, x) => a + (x - mean) ** 2, 0) / base.length);
-              usual = mean; flag = x0 > mean + 2 * sd ? 1 : 0;
+              usual = mean; flag = x0 > mean + mult * sd ? 1 : 0;
             }
           }
         }
-        assert.equal(got[b]!.flag[i], flag, `length ${length}, band ${b}, candle ${i}`);
+        assert.equal(got[b]!.flag[i], flag, `length ${length}, mult ${mult}, band ${b}, candle ${i}`);
         if (Number.isNaN(usual)) assert.ok(Number.isNaN(got[b]!.usual[i]!), `length ${length}, band ${b}, candle ${i}: not judged`);
         else assert.ok(Math.abs(got[b]!.usual[i]! - usual) < 1e-12, `length ${length}, band ${b}, candle ${i}: ${got[b]!.usual[i]} against ${usual}`);
       }
     });
   }
+});
+
+test('with Buys and sells either side lit takes the dot away; a candle exactly at the floor is judged', () => {
+  const split = buildHistory(input(Array.from({ length: 90 }, (_, i) => shareBar(i, { at: 81, band: 2, add: 40 })), { mode: 'split' }));
+  const row = split.rows[4]!;
+  assert.equal(shareDot(split, row, 81, 2), true, 'neither side lit');
+  const lit = (side: number) => ({ ...row, parts: row.parts.map((p, k) => k === side ? { ...p, sigma: p.sigma.map((s, i) => i === 81 ? 1.9 : s) } : p) });
+  assert.equal(shareDot(split, lit(0), 81, 2), false, 'the buys lit');
+  assert.equal(shareDot(split, lit(1), 81, 2), false, 'the sells lit');
+  // Every candle the same: each one's sum is the median of the ones before it, and it is judged (at least the usual, not more).
+  const even = (i: number): Bar => { const buy = boxes({}), sell = boxes({}); BANDS.forEach(([lo]) => { buy[lo] = 150; sell[lo] = 100; }); return bar(i, buy, sell); };
+  const m = buildHistory(input(Array.from({ length: 60 }, (_, i) => even(i))));
+  assert.equal(m.share![2]!.usual[50], 1 / 6, 'judged, against a sixth');
+  assert.equal(m.share![2]!.flag[50], 0);
 });
