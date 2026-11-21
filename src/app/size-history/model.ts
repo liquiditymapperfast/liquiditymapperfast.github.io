@@ -308,6 +308,8 @@ export interface CardContext {
   /** Whose open interest the row shows (oiSourceText), and why there is none or it is not judged. */
   oiSource: string | null;
   oiNote: 'spot' | 'minute' | null;
+  /** Why the liquidations row has no values: only spot markets are counted (the chart market, or chosen markets). Absent: it has. */
+  liqNote?: 'spot' | null;
   /** The Highlights' multiple (where the rule flags; a bar is lit from half of it). */
   mult: number;
   /** Whether the pane draws share dots on this row (it is tall enough, its candles wide enough): the card explains a dot only where one is. Absent: it does. */
@@ -354,6 +356,7 @@ export function cardLines(model: HistoryModel, r: number, i: number, ctx: CardCo
     if (ctx.judging && ctx.dots !== false && shareDot(model, row, i, ctx.mult)) dotNote = ({ text: model.shareKind === 'net' ? t('The dot: this size\'s net was an unusually large part of the six sizes\' nets counted without their signs, on a candle with at least the usual net trading.') : t('The dot: this size\'s buys and sells were an unusually large part of the candle\'s market orders, on a candle at least as busy as usual.'), color: 'muted', wrap: true });
   } else if (row.kind === 'liq') {
     const [shorts, longs] = row.parts as [Part, Part], s = shorts.values[i]!, l = longs.values[i]!, cut = model.liqCut[i] === 1;
+    if (ctx.liqNote === 'spot') { out.push({ text: t('Only spot markets are counted: they have no liquidations.'), color: 'muted', wrap: true, rule: true }); return out; }
     if (!Number.isFinite(s) || !Number.isFinite(l)) { out.push({ text: t('Not known for this candle: the record does not reach it.'), color: 'muted', rule: true }); return out; }
     const at = (v: number): string => cut ? `≥ ${plainUsd(v)}` : plainUsd(v);
     out.push({ label: t('Shorts liquidated'), text: at(s), color: 'buy', rule: true });

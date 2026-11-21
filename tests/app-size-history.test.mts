@@ -139,6 +139,10 @@ test('the card says the amounts, how unusual, what it is judged against, and the
   assert.equal(liqCard.filter(l => l.startsWith('Shorts liquidated|')).length, 1, 'the judgement is named apart from the amount');
   const spot = cardLines(m, 1, 39, { ...ctx, oiNote: 'spot' }).map(l => l.text);
   assert.ok(spot.includes('Only spot markets are counted: they have no open interest.'));
+  // A chart market or chosen markets that are all spot: the liquidations row says why it has none, not "$0 liquidated".
+  const spotLiq = cardLines(m, 0, 39, { ...ctx, live: false, liqNote: 'spot' }).map(l => `${l.label ?? ''}|${l.text}`);
+  assert.ok(spotLiq.includes('|Only spot markets are counted: they have no liquidations.'), spotLiq.join('\n'));
+  assert.ok(!spotLiq.some(l => l.startsWith('Shorts liquidated|')), 'no amounts beside the note');
   const partialBars = bars.map((b, i) => i === 20 ? { ...b, minutes: 5 } : b);
   const p = buildHistory(input(partialBars, { liquidations: liq })), lines = cardLines(p, 4, 20, ctx).map(l => `${l.label ?? ''}|${l.text}`);
   assert.ok(lines.includes('Unusual|Not judged: part of the candle was not recorded'), lines.join('\n'));

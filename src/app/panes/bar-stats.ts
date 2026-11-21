@@ -449,7 +449,7 @@ export const BAR_STATS: readonly StatDef[] = [
     compute: input => { if (input.perps === false) return input.bars.map(() => null); const delta = input.oiChange ?? oiDeltaByTime(input.oi.values()); return perBar(input, (bar, i) => { const change = delta.get(slotTime(input, i)), d = bar.buyUsd - bar.sellUsd; if (change === undefined) return null; return change === 0 || d === 0 ? 0 : change > 0 ? (d > 0 ? 1 : 2) : (d > 0 ? 3 : 4); }); },
     view: markView(() => statDef('oiQuad')!) },
   { id: 'liq', label: t('liq'), group: 'market', source: 'market', scale: 'sequential', format: volText,
-    title: t('Liquidations reported in the candle on the markets counted (USD): shorts liquidated and longs liquidated together. Only the venues that publish them count, so it is what was reported, not all there was.'),
+    title: t('Liquidations reported in the candle on the perpetuals counted (USD; the Spot filter does not hide them): shorts liquidated and longs liquidated together. Only the venues that publish them count, so it is what was reported, not all there was.'),
     compute: input => input.bars.map((_, i) => { const l = liquidated(input, i); return l ? l[0] + l[1] : null; }),
     approx: input => !!input.liquidations?.cut, approxNote: liquidationNote, view: sumView(volText, false) },
   { id: 'liqNet', label: t('liq Δ'), group: 'market', source: 'market', scale: 'diverging', format: signedVol,

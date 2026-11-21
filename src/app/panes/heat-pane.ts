@@ -35,7 +35,7 @@ import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, t
 import { MEASURES, measureDef, metricWords, type ProfileMetric } from '../measures/registry.ts';
 import { lineMetric, onPriceAxis, placedOn } from '../traded/profiles.ts';
 import { MAX_BANDS, arrangeProfiles, arrangeSides, columnHit, type Arranged, type ProfileRoom } from '../traded/arrange.ts';
-import { flowIds, flowLoadIds, instrumentShown, mapVenues, oiFlowIds, shownKey } from '../cvd/ids.ts';
+import { flowIds, flowLoadIds, instrumentShown, liquidationIds, mapVenues, oiFlowIds, shownKey } from '../cvd/ids.ts';
 import { aggregateIds } from '../cvd/model.ts';
 import { resolvePicks } from '../market-choice.ts';
 import { iconsOf, markLines, markSize, sameMarks, type AbsorptionMark, type MarkIcon } from '../absorption.ts';
@@ -1305,6 +1305,19 @@ export class HeatPane {
     if (!this.#footprintIds || this.#footprintIds.key.length !== key.length || this.#footprintIds.key.some((k, i) => k !== key[i])) this.#footprintIds = { key, ids: aggregateIds(this.hub.flow, flowIds(state, this.hub.flow.ids), id => kindOf(state.markets, id)).sort().slice(0, MAX_PROFILE_INSTRUMENTS) };
     // None (every venue off, or none inside the filter) counts none: the chart market is not put in their place.
     return this.#footprintIds.ids;
+  }
+
+  #liquidationIds: { key: unknown[]; ids: string[] } | null = null;
+  /**
+   * The markets whose liquidations the Flow history and the Bar stats count (one list: they share the liquidation loader). With the footprint's
+   * Aggregated markets the perpetuals of every venue switched on, whatever the Spot / Perp filter (`liquidationIds`); with the chart market or
+   * chosen markets those, as picked. Worked out again only when what it depends on changes (the filter is not part of it).
+   */
+  liquidationMarkets(state: AppState): string[] {
+    if (state.footprint.markets === 'chart' || state.footprint.markets === 'custom') return this.footprintMarkets(state);
+    const onMap = mapVenues(state), key = [state.markets, state.disabledVenues, onMap ? [...onMap].sort().join(',') : null, this.hub.flow.ids.length, this.hub.flow.loads];
+    if (!this.#liquidationIds || this.#liquidationIds.key.length !== key.length || this.#liquidationIds.key.some((k, i) => k !== key[i])) this.#liquidationIds = { key, ids: liquidationIds(state, this.hub.flow, id => kindOf(state.markets, id)) };
+    return this.#liquidationIds.ids;
   }
 
   /**

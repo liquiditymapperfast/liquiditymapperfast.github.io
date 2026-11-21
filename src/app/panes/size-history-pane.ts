@@ -128,14 +128,15 @@ export class SizeHistoryPane extends TimePane {
     for (const b of data.bars.values()) if (near(b.t)) starts.add(b.t);
     const times = [...starts].sort((a, b) => a - b);
     if (!times.length || !times.some(s => data.bars.has(s))) { this.#message(t('Flow history appears once market orders are recorded for these candles.')); this.#held = null; return; }
-    // Liquidations of the markets counted, a UTC day per answer (the shared loader), over the candles held; a candle before the record reaches
-    // (a week on a server, a day in a page's own engine, and only since the recording started) is not known.
+    // Liquidations and open interest are the perpetuals': they count with the Spot filter on too, the size rows counting only its spot markets
+    // (`liquidationMarkets`; Karl, 2026-11-21: they "don't show up"). Only a chart market or chosen markets that are all spot leave the two
+    // rows without values, and their cards say why. Liquidations a UTC day per answer (the shared loader), over the candles held; a candle
+    // before the record reaches (a week on a server, a day in a page's own engine, and only since the recording started) is not known.
+    const liqMarkets = this.heat.liquidationMarkets(state), perps = liqMarkets.some(id => kindOf(state.markets, id) !== 'spot');
     const retention = this.hub.source.kind === 'browser' ? BROWSER_RETENTION_MS : LIQUIDATION_RETENTION_MS;
     const liqTo = Math.min(times[times.length - 1]! + tfMs, Date.now()), liqCover = Math.max(Math.ceil((Date.now() - retention) / 60_000) * 60_000, this.hub.recordedSince > 0 ? this.hub.recordedSince : 0);
     let liquidations: StatInput['liquidations'];
-    if (this.hub.source.liquidations) { this.liqDays.ensure('sizes', markets.join(','), Math.max(times[0]!, liqCover), liqTo); liquidations = this.#liquidations(markets, times, tfMs, liqCover); }
-    // Open interest is the perpetuals': with spot markets alone counted, the row has none (no perpetual's change beside spot flow).
-    const perps = markets.some(id => kindOf(state.markets, id) !== 'spot');
+    if (this.hub.source.liquidations && perps) { this.liqDays.ensure('sizes', liqMarkets.join(','), Math.max(times[0]!, liqCover), liqTo); liquidations = this.#liquidations(liqMarkets, times, tfMs, liqCover); }
     const parts = oiPartsUntil(state.oiParts, tfMs, live ? Infinity : Math.floor(now / tfMs) * tfMs);
     const oiHeld = perps ? this.#oi(state, parts, tfMs) : undefined, oi = oiHeld?.usd, oiJudged = tfMs > 60_000, mode = state.sizeBars, h = state.highlight;
     const key = [data.version, state.oi, parts, state.oiPrice, mode, h.on, h.mult, h.length, liquidations, oi, times[0], times.length, times[times.length - 1], tfMs, Math.floor(now / 60_000), perps];
@@ -222,6 +223,7 @@ export class SizeHistoryPane extends TimePane {
       time: clock(times[i]!, true), live: live && times[i]! + tfMs > now, judging: state.highlight.on, mult: state.highlight.mult,
       dots: this.#dotsOn(this.#layout.find(b => b.row === r)?.h ?? 0),
       oiSource: row.kind === 'oi' ? oiSourceText(state) : null, oiNote: row.kind !== 'oi' ? null : !perps ? 'spot' : tfMs <= 60_000 ? 'minute' : null,
+      liqNote: row.kind === 'liq' && !perps ? 'spot' : null,
       oiCoins: row.kind === 'oi' && inCoins !== undefined ? { value: inCoins, coin } : null,
     });
   }
