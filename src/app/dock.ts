@@ -124,6 +124,9 @@ export class Dock {
     this.#apply(resolveTab(this.#wanted ?? defaultTab(layoutMode()), show));
   }
 
+  /** Open `tab` for this visit, as the page decides (a pane switched on that sits there), without saving it as the tab a phone opens on. */
+  show(tab: DockTab): void { this.#wanted = tab; this.#apply(tab); }
+
   select(tab: DockTab): void {
     // Tapping the tab that is already open closes the pane: the quickest way back to a full-screen map.
     const next = tab === this.#tab && tab !== 'map' ? 'map' : tab;

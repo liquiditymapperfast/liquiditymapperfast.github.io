@@ -265,7 +265,7 @@ async function main(): Promise<void> {
   arrange.canMaximize = () => !store.state.rangeTool && !store.state.vwapAnchoring && !store.state.profileAnchoring && !heat.draw?.placing;
   heat.onMaximize = () => arrange.toggleMax('heat');
   toolbar.onMapMax = () => { arrange.toggleMax('heat'); };
-  toolbar.onShowMap = () => dock.select('map');
+  toolbar.onShowMap = () => dock.show('map');
   const syncMapMax = (): void => toolbar.setMapMax(arrange.canMax('heat'), arrange.maximized === 'heat');
   // The panes under the map that a maximized pane covers draw nothing meanwhile and put their cards away (TimePane.cover). Delta stays
   // drawn under a maximized map: its drawing works out the CVD divergences the map draws (review r2), and a finger's pin on it is let go
@@ -632,7 +632,7 @@ async function main(): Promise<void> {
   // The Flow history sits under the map on a phone's Map tab: switched on from any of its switches there, that tab opens so it is seen.
   let sizesOn = store.state.show.sizes;
   store.subscribe((state, changed) => {
-    if (changed.has('show') && state.show.sizes !== sizesOn) { sizesOn = state.show.sizes; if (sizesOn && isPhone()) dock.select('map'); }
+    if (changed.has('show') && state.show.sizes !== sizesOn) { sizesOn = state.show.sizes; if (sizesOn && isPhone()) dock.show('map'); }
     if (changed.has('keepAwake')) wake.set(state.keepAwake);
     // Every time on the page is written from the one setting: say it changed, and have what shows times draw again.
     if (changed.has('timeZone')) { setTimeZone(state.timeZone); heat.invalidate(); lower(); cvd.invalidate(); showStatus(); }

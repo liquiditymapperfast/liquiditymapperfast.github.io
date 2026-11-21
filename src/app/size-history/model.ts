@@ -137,12 +137,14 @@ export function heightOf(value: number, cap: number): { share: number; cut: bool
 
 const sum = (values: readonly number[], lo: number, hi: number): number => { let s = 0; for (let k = lo; k <= hi; k++) s += values[k]!; return s; };
 /**
- * Whether a candle is recorded too little to judge: under `PARTIAL_SHARE` of its minutes (of those that have passed, for the candle under
- * way) AND more than one minute short, so the minute under way, not counted yet, never makes a live candle hollow (the dot rows' rule).
+ * Whether a candle is recorded too little to judge: under `PARTIAL_SHARE` of its minutes, as Bar stats fades it; the candle under way only
+ * when more than one of the minutes that have passed is missing too, so the minute under way, not counted yet, never makes it hollow.
  */
 export function isPartial(bar: Pick<Bar, 'minutes'>, start: number, tfMs: number, now: number, share: number): boolean {
-  const minutes = Math.max(1, Math.ceil((Math.min(now, start + tfMs) - start) / 60_000));
-  return share < PARTIAL_SHARE && minutes - (bar.minutes ?? minutes) > 1;
+  if (!(share < PARTIAL_SHARE)) return false;
+  if (now >= start + tfMs) return true;
+  const minutes = Math.max(1, Math.ceil((now - start) / 60_000));
+  return minutes - (bar.minutes ?? minutes) > 1;
 }
 const unjudged = (side: Part['side'], values: Float64Array): Part => ({ side, values, sigma: new Float64Array(values.length).fill(NaN), flag: new Uint8Array(values.length), seen: new Uint16Array(values.length), short: new Uint8Array(values.length) });
 const part = (side: Part['side'], values: Float64Array, judged: (i: number) => boolean, h: HistoryInput['highlight'], on: boolean): Part =>
@@ -195,7 +197,8 @@ export function unusualRows(model: Pick<HistoryModel, 'rows'>, i: number): { fla
 /**
  * What a part's judgement says at slot `i`, as one card line (null: nothing to say: a zero, a value not known, or nothing judged). `label`
  * names the line, or, for a row of one series, is null: the line is then called Unusual where the rule flags it, Close to unusual where its
- * bar is lit (from half the multiple) without being flagged, and Not unusual below that, so the words match how bright the bar is.
+ * bar is at least half lit (from three quarters of the multiple) without being flagged, and Not unusual below that, so the words match how
+ * bright the bar is.
  */
 function judgement(p: Part, i: number, label: string | null, partial: boolean, mult: number): InfoLine | null {
   const v = p.values[i]!;
@@ -205,7 +208,7 @@ function judgement(p: Part, i: number, label: string | null, partial: boolean, m
   const z = p.sigma[i]!;
   if (p.flag[i]) return { label: label ?? t('Unusual'), text: z > 0 ? t('{z}σ above its baseline', { z: z.toFixed(1) }) : t('Above a flat baseline'), bold: true };
   if (!Number.isFinite(z)) return null;
-  return { label: label ?? (z >= mult / 2 ? t('Close to unusual') : t('Not unusual')), text: t('{z}σ from its baseline', { z: `${z < 0 ? '−' : ''}${Math.abs(z).toFixed(1)}` }), color: 'muted' };
+  return { label: label ?? (z >= 0.75 * mult ? t('Close to unusual') : t('Not unusual')), text: t('{z}σ from its baseline', { z: `${z < 0 ? '−' : ''}${Math.abs(z).toFixed(1)}` }), color: 'muted' };
 }
 
 /** What a row's bars are judged against, said once under its judgements. */

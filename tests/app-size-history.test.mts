@@ -147,24 +147,27 @@ test('the card says the amounts, how unusual, what it is judged against, and the
   assert.equal(cardLines(p, 0, 20, ctx).some(l => l.label === 'Recorded'), false);
 });
 
-test('the words follow the brightness: Not unusual, Close to unusual from half the multiple, Unusual where the rule flags', () => {
-  const values = Array.from({ length: 60 }, (_, i) => 100 + (i % 5) * 10);
+test('the words follow the brightness: Not unusual, Close to unusual from three quarters of the multiple, Unusual where the rule flags', () => {
+  // Forty candles alternating 100 and 120 (mean 110, sd 10), then 128 (1.8 sigma: lit, not flagged), 112 (about 0.2) and 160 (flagged).
+  const values = [...Array.from({ length: 40 }, (_, i) => i % 2 ? 120 : 100), 128, 112, 160];
   const bars = values.map((v, i) => bar(i, boxes({ 0: v }), boxes({ 0: 0 })));
-  const base = buildHistory(input(bars)), part = base.rows[2]!.parts[0]!;
-  const z = Array.from(part.sigma).findIndex(s => s >= 1 && s < 2 && Number.isFinite(s));
-  const quiet = Array.from(part.sigma).findIndex(s => s < 1 && Number.isFinite(s));
-  const ctx = { time: 't', live: false, judging: true, oiSource: null, oiNote: null, mult: 2 } as const;
-  if (z >= 0) assert.ok(cardLines(base, 2, z, ctx).some(l => l.label === 'Close to unusual'));
-  assert.ok(cardLines(base, 2, quiet, ctx).some(l => l.label === 'Not unusual'));
+  const m = buildHistory(input(bars)), ctx = { time: 't', live: false, judging: true, oiSource: null, oiNote: null, mult: 2 } as const;
+  const label = (i: number): string | undefined => cardLines(m, 2, i, ctx).find(l => /σ/.test(l.text))?.label;
+  assert.equal(label(40), 'Close to unusual');
+  assert.equal(label(41), 'Not unusual');
+  assert.equal(label(42), 'Unusual');
 });
 
-test('the candle under way is not hollow for the minute under way alone; a candle missing more than a minute is', () => {
+test('a closed candle is partial under 95 % of its minutes; the one under way only when more than its minute under way is missing', () => {
   const at = T0 + 30 * TF;
   // Ten minutes into the candle: nine recorded (the tenth not counted yet) is whole; seven recorded is partial.
   const one = buildHistory(input([bar(30, boxes({ 0: 1 }), boxes({ 0: 1 }), 9)], { times: [at], now: at + 9.5 * MIN }));
   assert.equal(one.partial[0], 0);
   const three = buildHistory(input([bar(30, boxes({ 0: 1 }), boxes({ 0: 1 }), 7)], { times: [at], now: at + 9.5 * MIN }));
   assert.equal(three.partial[0], 1);
+  // Closed: 14 of 15 minutes is under 95 %, as Bar stats fades it.
+  const closed = buildHistory(input([bar(30, boxes({ 0: 1 }), boxes({ 0: 1 }), 14)], { times: [at], now: at + 20 * MIN }));
+  assert.equal(closed.partial[0], 1);
 });
 
 test('the history before the view: the Highlights length of candles, and at least six hours', () => {
