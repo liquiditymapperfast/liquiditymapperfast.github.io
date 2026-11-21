@@ -192,6 +192,9 @@ test('the liquidation card speaks of whole snapshot bins, by number: the column\
   assert.deepEqual([fine.kLo, fine.kHi], [50_000_100, 50_000_150]);
   const tiny = liqCardRow(4.32, 0.02, 0.1);
   assert.deepEqual([tiny.kLo, tiny.kHi], [43, 44]);
+  // A real boundary a third of a bin inside the row is not snapped down, however many bins (Sol, round 4: 16,666,733.33 bins).
+  const many = liqCardRow(50_000.175, 0.05, 0.003);
+  assert.deepEqual([many.kLo, many.kHi], [16_666_717, 16_666_734]);
 });
 
 test('the card reads whole bins by number: what stands, and the snapshot\'s count and largest, of the same bins', () => {

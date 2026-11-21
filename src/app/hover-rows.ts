@@ -152,7 +152,9 @@ export function liqCardRow(at: number, step: number, unit: number): { lo: number
   if (!(unit > 0)) { const lo = Math.floor(at / step) * step; return { lo, hi: lo + step, kLo: null, kHi: null }; }
   // In bin numbers, so the card reads whole bins by number (`standingBins`, `binsBetween`): a quotient a hair off a whole number (50000100.00000001,
   // 42.99999999999999) is that whole number, never the next bin up or the one before (Sol, review 2026-11-20).
-  const whole = (q: number): number => { const r = Math.round(q); return Math.abs(q - r) <= 1e-7 * Math.max(1, Math.abs(r)) ? r : Math.ceil(q); };
+  // A millionth of a bin: far above rounding error at any bin count a snapshot has (about 1e-8 at 5e7 bins), far below a real boundary
+  // inside a bin (a relative tolerance grew past a whole bin at 1.7e7 bins and dropped one: Sol, review 2026-11-20).
+  const whole = (q: number): number => { const r = Math.round(q); return Math.abs(q - r) <= 1e-6 ? r : Math.ceil(q); };
   const bin = (): { lo: number; hi: number; kLo: number; kHi: number } => { const k = Math.floor(at / unit); return { lo: k * unit, hi: (k + 1) * unit, kLo: k, kHi: k + 1 }; };
   if (step <= unit) return bin();
   const row = Math.floor(at / step), kLo = whole(row * step / unit), kHi = whole((row + 1) * step / unit);
