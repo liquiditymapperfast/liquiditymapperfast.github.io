@@ -3451,5 +3451,6 @@
  "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "Bu aboneliğe bir gün içinde {n} anahtar verildi. Bunlardan birini kullanın ya da {m} dk sonra yeniden deneyin.",
  "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "Bu aboneliğe bir gün içinde {n} anahtar verildi. Bunlardan birini kullanın ya da {h} sa sonra yeniden deneyin.",
  "Renews monthly until you end it · before tax · sold by Paddle.com, Merchant of Record": "İptal edene kadar her ay yenilenir · vergiler hariç · satıcı Paddle.com, Merchant of Record",
- "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "Hesap gerekmez: ödeme yapınca Plus bu tarayıcıda açılır ve diğer cihazlarınız için bir anahtar alırsınız."
+ "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "Hesap gerekmez: ödeme yapınca Plus bu tarayıcıda açılır ve diğer cihazlarınız için bir anahtar alırsınız.",
+ "No statistics selected: use the Bar stats' settings key to add some.": "Hiç istatistik seçilmedi: eklemek için Çubuk istatistiklerinin ayar düğmesini kullanın."
 }

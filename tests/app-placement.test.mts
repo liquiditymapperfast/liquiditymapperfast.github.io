@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EDGE, FLOOR, GAP, anchorBox, besideBox, chooseSide, dragTo, placeOn } from '../src/app/placement.ts';
 
 // Where a panel opens and where it may be dragged, as numbers. The first case is measured: Karl's screen (3840 x 1970 at 150%, so 2560 x 1313
-// CSS pixels), the Stats button of the bar stats at 915-934, and the panel's contents about 1,990 px tall (the body alone was 1,922).
+// CSS pixels), the bar stats' settings button (then reading Stats) at 915-934, and the panel's contents about 1,990 px tall (the body alone was 1,922).
 
 const VIEW = { width: 2560, height: 1313 };
 const STATS = { left: 2087, top: 915, right: 2124, bottom: 934 };

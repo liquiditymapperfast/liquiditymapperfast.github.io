@@ -3457,5 +3457,6 @@
  "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "Für dieses Abo wurden innerhalb eines Tages {n} Schlüssel ausgegeben. Verwende einen davon oder versuche es in {m} Min. noch einmal.",
  "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "Für dieses Abo wurden innerhalb eines Tages {n} Schlüssel ausgegeben. Verwende einen davon oder versuche es in {h} Std. noch einmal.",
  "Renews monthly until you end it · before tax · sold by Paddle.com, Merchant of Record": "Verlängert sich monatlich, bis du kündigst · vor Steuern · verkauft von Paddle.com, Merchant of Record",
- "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "Kein Konto: Mit der Zahlung wird Plus in diesem Browser aktiv, und du bekommst einen Schlüssel für deine anderen Geräte."
+ "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "Kein Konto: Mit der Zahlung wird Plus in diesem Browser aktiv, und du bekommst einen Schlüssel für deine anderen Geräte.",
+ "No statistics selected: use the Bar stats' settings key to add some.": "Keine Statistiken ausgewählt: Füge sie mit der Einstellungsschaltfläche der Balken-Stats hinzu."
 }

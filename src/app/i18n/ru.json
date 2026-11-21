@@ -3563,5 +3563,6 @@
  "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "По этой подписке за сутки уже выдано ключей: {n}. Воспользуйтесь одним из них или попробуйте ещё раз через {m} мин.",
  "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "По этой подписке за сутки уже выдано ключей: {n}. Воспользуйтесь одним из них или попробуйте ещё раз через {h} ч.",
  "Renews monthly until you end it · before tax · sold by Paddle.com, Merchant of Record": "Продлевается ежемесячно, пока вы не отмените · без налогов · продавец Paddle.com, Merchant of Record",
- "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "Без аккаунта: после оплаты Plus включается в этом браузере, а вы получаете ключ для других устройств."
+ "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "Без аккаунта: после оплаты Plus включается в этом браузере, а вы получаете ключ для других устройств.",
+ "No statistics selected: use the Bar stats' settings key to add some.": "Показатели не выбраны: добавьте их кнопкой настроек «Статистики баров»."
 }

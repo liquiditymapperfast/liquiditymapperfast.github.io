@@ -33,7 +33,7 @@ import { plus } from '../plus/pass.ts';
 import { togglePlus } from '../plus/panel.ts';
 import type { StatOptions } from '../stat-options.ts';
 import { el } from '../dom.ts';
-import { addTune } from '../pane-tune.ts';
+import { addTune, settingsIcon } from '../pane-tune.ts';
 import { PaneTable, ratioCell, ratioFigure, sideRatio, tableInk, tableRowCap, type TableCell, type TableRoom } from './pane-table.ts';
 import { isPhone } from '../device.ts';
 import { niceTicks } from '../cvd/hero.ts';
@@ -1704,8 +1704,8 @@ export class BarStatsPane extends TimePane {
     this.head.querySelector('strong')!.after(helpButton('stats'));
     // The settings key, drawn as the sliders every settings key in the page wears (the flow column's, a pane's, the top bar's split keys), at
     // the end of the header: a button reading "Stats" beside the name "Bar stats" read as part of the name (Karl, 2026-11-20).
-    this.#button.type = 'button'; this.#button.className = 'icon-btn stats-gear'; this.#button.setAttribute('aria-label', t('Settings'));
-    this.#button.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>';
+    this.#button.type = 'button'; this.#button.className = 'icon-btn stats-gear'; this.#button.setAttribute('aria-label', `${t('Settings')}: ${t('Bar stats')}`);
+    this.#button.innerHTML = settingsIcon(15);
     setTip(this.#button, t('Choose, order and configure the statistics shown for each candle'));
     this.#button.onclick = () => { this.#panel = togglePanel(this.#button, { title: t('Bar stats'), width: 440, align: 'right', onClose: () => { this.#panel = null; } }, (tools, body) => this.#build(tools, body)); };
     this.head.append(this.#button);
@@ -1858,6 +1858,13 @@ export class BarStatsPane extends TimePane {
     return value;
   }
 
+  /** A message in place of the table, on up to two lines of the plot's width (a phone's is narrower than most languages' sentences), about its middle. */
+  #say(text: string): void {
+    const { ctx } = this, measure = (line: string): number => ctx.measureText(line).width, lines = wrapText(measure, text, Math.max(40, this.plotW - 24), 2);
+    ctx.save(); ctx.fillStyle = this.palette.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    lines.forEach((line, i) => ctx.fillText(line, 12, this.h / 2 + (i - (lines.length - 1) / 2) * 14)); ctx.restore();
+  }
+
   #strip(): { lines: InfoLine[]; x: number; y: number }[] {
     const { ctx, palette: p, view: v } = this, pw = this.plotW, ph = this.h, state = this.store.state;
     const tfMs = TIMEFRAMES[state.timeframe] ?? 3_600_000, defs = enabledStats(state.barStats), options = state.barStatOptions;
@@ -1870,7 +1877,7 @@ export class BarStatsPane extends TimePane {
     const rowSize = data.step > 0 ? ` · ${t('rows of {step}', { step: `$${fmtPrice(data.step, data.step)}` })}` : '';
     setText(readout, (markets.length > 1 ? `${t('{n} markets', { n: markets.length })} · ${stats}` : stats) + rowSize);
     this.#viewSpan = null; this.#layout = [];
-    if (!defs.length) { ctx.fillStyle = p.muted; ctx.fillText(t('No statistics selected: use the settings key to add some.'), 12, ph / 2); this.#table = null; this.#held = null; return []; }
+    if (!defs.length) { this.#say(t('No statistics selected: use the settings key to add some.')); this.#table = null; this.#held = null; return []; }
     // Replay: only the candles that ended by its moment (a candle under way would carry its future executions).
     // The candles of the view and one each side (what the footprint asks for), not every bar it still holds: the running sums (cvd) start at the
     // view, whatever was looked at before; from each day's start, at the start of the day the left edge falls in (loaded whole for it).
@@ -1882,7 +1889,7 @@ export class BarStatsPane extends TimePane {
     for (const c of state.candles) if (near(c[0])) starts.add(c[0]);
     for (const b of data.bars.values()) if (near(b.t)) starts.add(b.t);
     const times = [...starts].sort((a, b) => a - b);
-    if (!times.length) { ctx.fillStyle = p.muted; ctx.fillText(t('Bar stats appear once executions are recorded for the visible candles.'), 12, ph / 2); this.#table = null; this.#held = null; return []; }
+    if (!times.length) { this.#say(t('Bar stats appear once executions are recorded for the visible candles.')); this.#table = null; this.#held = null; return []; }
     const parts = oiPartsUntil(state.oiParts, tfMs, replaying() ? Math.floor(now / tfMs) * tfMs : Infinity);
     // The exchange's own candles (Binance's): the candle delta and the fills read them.
     const taker = defs.some(def => def.id === 'takerDelta' || def.id === 'fills' || def.id === 'avgFill') ? this.heat.takerRows(state, tfMs, times[0]!) : null;
@@ -1930,7 +1937,7 @@ export class BarStatsPane extends TimePane {
     const layout = this.#layout = bands.map(band => { const h = band.kind === 'head' ? HEAD_H : rowH, at = { band, y: y0, h }; y0 += h; return at; });
     const gridBottom = y0, slot = pw * tfMs / (v.t1 - v.t0), cells = options.cells, filled = cells === 'filled' || cells === 'unusual';
     const visible = times.map((_, i) => i).filter(i => times[i]! + tfMs > v.t0 && times[i]! < v.t1);
-    if (!visible.length) { ctx.fillStyle = p.muted; ctx.fillText(t('No executions recorded for the candles in view.'), 12, ph / 2); return []; }
+    if (!visible.length) { this.#say(t('No executions recorded for the candles in view.')); return []; }
     // A candle the recording holds only in part: the rows read from executions are drawn faint there (rec % says how much).
     const partial = all.map((bar, i) => { const share = bar ? coverageOf(bar, times[i]!, tfMs, now) : null; return share !== null && share < 0.95; });
     // Under the pointer: the candle (any pane's pointer says which, the time axis being shared) and, from this pane's own pointer, the band; or,

@@ -212,7 +212,7 @@ test('review: figures near a thousand keep their units, zero takes no side, a ga
 });
 
 test('review: no statistic chosen, the candle market for marks read on candles, the liquidation note, a point of control without volume', () => {
-  assert.equal(new BarsRangeSummary().lines(sel(at(0), at(1)), null, true, 'K', NOW, '', true).find(l => l.key === 'bs-none')?.cells[0], 'No statistics selected: use the settings key to add some.');
+  assert.equal(new BarsRangeSummary().lines(sel(at(0), at(1)), null, true, 'K', NOW, '', true).find(l => l.key === 'bs-none')?.cells[0], "No statistics selected: use the Bar stats' settings key to add some.");
   const candles = new Map<number, CandleRow>([[at(0), [at(0), 100, 101, 98, 99, 1, 1]]]);
   const marks = new BarsRangeSummary().lines(sel(at(0), at(1)), held([bar(at(0), [[100, 90, 10]])], ['divergence'], { candles }), true, 'K', NOW);
   assert.match(marks.find(l => l.key === 'bs-status')!.cells[0]!, /candles of Binance BTCUSDT/);

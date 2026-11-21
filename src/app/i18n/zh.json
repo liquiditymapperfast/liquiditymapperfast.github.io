@@ -3285,5 +3285,6 @@
  "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "这个订阅在一天内已发放 {n} 个密钥。请使用其中一个，或者在 {m} 分钟后重试。",
  "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "这个订阅在一天内已发放 {n} 个密钥。请使用其中一个，或者在 {h} 小时后重试。",
  "Renews monthly until you end it · before tax · sold by Paddle.com, Merchant of Record": "按月续订，直到你取消 · 不含税 · 由 Paddle.com 销售（Merchant of Record）",
- "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "无需账户：付款后，Plus 会在此浏览器中开通，你还会获得一个可在其他设备上使用的密钥。"
+ "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "无需账户：付款后，Plus 会在此浏览器中开通，你还会获得一个可在其他设备上使用的密钥。",
+ "No statistics selected: use the Bar stats' settings key to add some.": "未选择任何统计：用柱统计的设置按钮添加一些。"
 }

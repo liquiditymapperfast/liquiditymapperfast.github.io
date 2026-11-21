@@ -22,7 +22,9 @@ import { t } from './i18n.ts';
  * Either way the controls are the pane's own elements, moved into the sheet or the panel while it is open and put back where they were when it
  * closes, so nothing is rebuilt and each keeps its handlers and its state.
  */
-const ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>';
+/** The sliders every settings key wears (a pane's key here, the flow column's, Bar stats'), `px` CSS pixels square. */
+export const settingsIcon = (px: number): string => `<svg viewBox="0 0 24 24" width="${px}" height="${px}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>`;
+const ICON = settingsIcon(18);
 
 /** The least room a pane's figures keep beside its controls on a desktop before the last controls fold behind the key (px). */
 export const READOUT_MIN_PX = 280;

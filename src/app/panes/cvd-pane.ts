@@ -15,6 +15,7 @@ import { flowWindow } from '../cvd/window.ts';
 import { MAX_PINNED, rankingKey } from '../cvd/settings.ts';
 import { venueLabel } from '../venues.ts';
 import { selectRow, sizeRow, switchRow, numberRow, togglePanel, note, heading, type Panel } from '../ui.ts';
+import { settingsIcon } from '../pane-tune.ts';
 import { COMMON_SIZES, SIZE_FLOOR_USD, SIZE_MAX_USD, sizeText } from '../sizes.ts';
 import { scaledUsd, unscaledUsd } from '../coin.ts';
 import type { AppState, Store } from '../store.ts';
@@ -368,7 +369,7 @@ export class CvdPane {
       this.#spanSelect.append(new Option(span === 'map' ? t('Map span') : SPAN_LABELS[span], span));
     }
     this.#spanSelect.onchange = () => this.#set({ span: this.#spanSelect.value as CvdSpan });
-    this.#gear.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>';
+    this.#gear.innerHTML = settingsIcon(15);
     this.#gear.onclick = () => {
       if (this.#view() === 'trades') { this.trades.openSettings(this.#gear); return; }
       this.#panel = togglePanel(this.#gear, { title: t('Flow column'), width: 380, align: 'left', onClose: () => { this.#panel = null; } }, (_tools, body) => this.#buildSettings(body));

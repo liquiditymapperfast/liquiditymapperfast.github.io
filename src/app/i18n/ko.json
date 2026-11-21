@@ -3285,5 +3285,6 @@
  "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "이 구독에는 하루 동안 키가 {n}개 발급되었습니다. 그중 하나를 사용하거나 {m}분 후에 다시 시도하세요.",
  "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "이 구독에는 하루 동안 키가 {n}개 발급되었습니다. 그중 하나를 사용하거나 {h}시간 후에 다시 시도하세요.",
  "Renews monthly until you end it · before tax · sold by Paddle.com, Merchant of Record": "해지할 때까지 매월 갱신 · 세전 · 판매: Paddle.com(Merchant of Record)",
- "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "계정이 필요 없습니다. 결제하면 이 브라우저에서 Plus가 켜지고, 다른 기기에서 쓸 키를 받습니다."
+ "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "계정이 필요 없습니다. 결제하면 이 브라우저에서 Plus가 켜지고, 다른 기기에서 쓸 키를 받습니다.",
+ "No statistics selected: use the Bar stats' settings key to add some.": "선택된 통계가 없습니다: 바 통계의 설정 버튼으로 추가하세요."
 }

@@ -3285,5 +3285,6 @@
  "This subscription was given {n} keys within a day. Use one of them, or try again in {m} min.": "このサブスクリプションには、1 日のうちに {n} 個のキーが発行されました。そのうちの 1 つを使うか、{m} 分後にもう一度試してください。",
  "This subscription was given {n} keys within a day. Use one of them, or try again in {h} h.": "このサブスクリプションには、1 日のうちに {n} 個のキーが発行されました。そのうちの 1 つを使うか、{h} 時間後にもう一度試してください。",
  "Renews monthly until you end it · before tax · sold by Paddle.com, Merchant of Record": "解約するまで毎月更新 · 税抜 · 販売: Paddle.com（Merchant of Record）",
- "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "アカウントは不要です。お支払いでこのブラウザーの Plus が有効になり、ほかのデバイス用のキーが届きます。"
+ "No account: paying turns Plus on in this browser and gives you a key for your other devices.": "アカウントは不要です。お支払いでこのブラウザーの Plus が有効になり、ほかのデバイス用のキーが届きます。",
+ "No statistics selected: use the Bar stats' settings key to add some.": "統計が選択されていません：バー統計の設定ボタンで追加してください。"
 }
