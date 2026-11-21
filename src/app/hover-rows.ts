@@ -142,6 +142,20 @@ export function depthBandLines(b: DepthBand): InfoLine[] {
  * there (and for Liq + stops its two parts), how many positions or orders the snapshot puts there and the largest, then the band from the
  * price to the pointer and its mirror as longs over shorts, with their totals where no pill shows them (a phone's strip).
  */
+/**
+ * The prices the liquidation card speaks of for a pointer at `at`: the column's row (`step` wide), on the snapshot's own bins (`unit` wide,
+ * `LiqLevels.step`), so what still stands, what the snapshot put there, its count and its largest all describe the same whole bins (`binsIn`
+ * counts the bins starting in [lo, hi)). Where the column's row is narrower than a bin (zoomed far in), the bin itself (Sol, review 2026-11-20:
+ * a prorated "$0 of $260K" beside the whole bin's "Positions 14").
+ */
+export function liqCardRow(at: number, step: number, unit: number): { lo: number; hi: number } {
+  const bin = (): { lo: number; hi: number } => { const lo = Math.floor(at / unit) * unit; return { lo, hi: lo + unit }; };
+  if (!(unit > 0)) { const lo = Math.floor(at / step) * step; return { lo, hi: lo + step }; }
+  if (step <= unit) return bin();
+  const rowLo = Math.floor(at / step) * step, lo = Math.ceil(rowLo / unit - 1e-9) * unit, hi = Math.ceil((rowLo + step) / unit - 1e-9) * unit;
+  return hi > lo ? { lo, hi } : bin();
+}
+
 export interface LiqCard {
   kind: LevelsKind; side: 'long' | 'short'; lo: number; hi: number; step: number;
   /** What still stands in the row, and what the snapshot put there (`total`): the count and the largest are the snapshot's. */
@@ -185,7 +199,8 @@ export function liqCardLines(f: LiqCard): InfoLine[] {
  * a book that is now. No verdict: a book now and an older snapshot of positions are two different things, and their ratio is not protection.
  */
 /** `minutes`: how old the positions and the orders are (`LiqSet.asOfs`), each null where it is not shown or not known. */
-export interface SeamCard { kind: LevelsKind; pct: string; above: { book: number; liq: number }; below: { book: number; liq: number }; reach: { bid: number; ask: number; of: number }; minutes: { positions: number | null; orders: number | null } }
+/** `clipped`: part of the band lies outside the rows that could be weighed (the price scrolled far away), so its amounts are partial. */
+export interface SeamCard { kind: LevelsKind; pct: string; above: { book: number; liq: number }; below: { book: number; liq: number }; reach: { bid: number; ask: number; of: number }; minutes: { positions: number | null; orders: number | null }; clipped: boolean }
 
 export function seamCardLines(f: SeamCard): InfoLine[] {
   const title = f.kind === 'stops' ? t('Book against stops') : f.kind === 'both' ? t('Book against liquidations and stops') : t('Book against liquidations');
@@ -199,12 +214,14 @@ export function seamCardLines(f: SeamCard): InfoLine[] {
     { label: sideTitle(f.kind, 'long'), text: dollars(f.below.liq), color: 'sell' },
     { text: t('Depth coverage: bids {bids}/{n} · asks {asks}/{n}', { bids: String(f.reach.bid), asks: String(f.reach.ask), n: String(f.reach.of) }), color: 'muted', rule: true },
   ];
+  if (f.clipped) lines.push({ text: t('part of the range is outside the data'), color: 'muted' });
   // How old the levels are, next to a book that is now: the positions and the orders each by their own snapshot (Liq + stops has both, and
   // the order files come less often than the positions).
   const ago = (m: number | null): string | null => m !== null && Number.isFinite(m) ? String(Math.max(0, Math.round(m))) : null;
   const positions = f.kind === 'stops' ? null : ago(f.minutes.positions), orders = f.kind === 'liq' ? null : ago(f.minutes.orders);
   const age = positions !== null && orders !== null ? t('Positions: {positions} min ago · orders: {orders} min ago · book: now', { positions, orders })
     : positions !== null ? t('Positions: {minutes} min ago · book: now', { minutes: positions }) : orders !== null ? t('Orders: {minutes} min ago · book: now', { minutes: orders }) : null;
-  if (age) lines.push({ text: age, color: 'muted' });
+  // Wrapped: both ages in a long language run past a phone's box (Sol, review 2026-11-20: French about 330 px).
+  if (age) lines.push({ text: age, color: 'muted', wrap: true });
   return lines;
 }

@@ -23,7 +23,7 @@ import { timeAxis } from '../time-axis.ts';
 export { timeTicks } from '../time-axis.ts';
 import type { Store, AppState, CandleRow } from '../store.ts';
 import { cumulative, groupLevels, groupSpan, type Grouped } from './levels-data.ts';
-import { Held, ROW_HOLD_MS, booksReaching, depthBand, depthBandLines, depthHereLine, depthRow, depthRowLines, liqCardLines, seamCardLines, type DepthRow } from '../hover-rows.ts';
+import { Held, ROW_HOLD_MS, booksReaching, depthBand, depthBandLines, depthHereLine, depthRow, depthRowLines, liqCardLines, liqCardRow, seamCardLines, type DepthRow } from '../hover-rows.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from '../scope.ts';
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText, wrapText } from '../text-fit.ts';
@@ -4436,8 +4436,10 @@ export class HeatPane {
     // far edge (`groupSpan`), so the book is counted from the price, not from the view's edge.
     // Only a span the liquidation profile can hold row for row (`LIQ_PROFILE_ROWS`; the book's grouping holds more): past that, levels at its
     // far end would read as none (Sol, review 2026-11-20), so the view's rows are weighed, as before.
-    const wanted = price - d < v.p0 || price + d > v.p1 ? groupSpan(v.p0, v.p1, price, step) : null;
+    const past = price - d < v.p0 || price + d > v.p1, wanted = past ? groupSpan(v.p0, v.p1, price, step) : null;
     const span = wanted && Math.floor(wanted.hi / step) - Math.floor(wanted.lo / step) + 1 <= LIQ_PROFILE_ROWS ? wanted : null, p0 = span?.lo ?? v.p0, p1 = span?.hi ?? v.p1;
+    // A band past the view that no grouping could hold: its amounts are the view's part only, and the box says so (Sol, review 2026-11-20).
+    const clipped = past && !span;
     const g = groupLevels(this.kernels, frame, this.#enabledIds(), step, p0, p1), prof = liqProfile(s, step, p0, p1, price);
     // The two columns' rows at the same prices (both begin at floor(p0 / step), so the offset is 0 unless one of them ends sooner).
     const long = new Float64Array(g.nBins), short = new Float64Array(g.nBins);
@@ -4457,7 +4459,7 @@ export class HeatPane {
     const bidRow = Math.floor((price - d) / step) * step, askRow = Math.floor((price + d) / step) * step, asOfs = src.asOfs(), now = pageNow();
     const lines = seamCardLines({ kind, pct: `${pctOf < 1 ? pctOf.toFixed(2) : pctOf.toFixed(1)}%`, above: { book: st.above.book, liq: st.above.liq }, below: { book: st.below.book, liq: st.below.liq },
       reach: { bid: booksReaching(frame, g.ids, price, bidRow, step, 'bid'), ask: booksReaching(frame, g.ids, price, askRow, step, 'ask'), of: g.ids.length },
-      minutes: { positions: asOfs.liq ? (now - asOfs.liq) / 60_000 : null, orders: asOfs.orders ? (now - asOfs.orders) / 60_000 : null } });
+      minutes: { positions: asOfs.liq ? (now - asOfs.liq) / 60_000 : null, orders: asOfs.orders ? (now - asOfs.orders) / 60_000 : null }, clipped });
     // On a phone the box also keeps below the legend, whose buttons lie over the canvas and would hide its first lines.
     paintMirrorBox(ctx, lines, x0, hv.y, { x0: 0, y0: COMPACT ? Math.min(this.#legendBox.bottom + 4, ph / 3) : 0, x1: COMPACT ? pw + W : pw, y1: ph }, p, c => c === 'above' ? p.ask : c === 'below' ? p.bid : c === 'buy' ? p.candleUp : c === 'sell' ? p.candleDown : c === 'muted' ? p.muted : p.text, hv.y < ph / 2 ? 'down' : 'up');
   }
@@ -4482,7 +4484,8 @@ export class HeatPane {
     dimOutside(ctx, x0, W, 0, ph, top, bottom, p.panel, 0.6);
     paintBand(ctx, p, x0, W, { y: top, color: p.candleUp, label: wide ? `${usd(stats.aboveUsd)} · ${pct}` : '' }, { y: bottom, color: p.candleDown, label: wide ? `${usd(stats.belowUsd)} · ${pct}` : '' }, { y0: 0, y1: ph });
     // The row under the pointer on the column's own rows (the step the column groups its levels in).
-    const step = niceStep(v.p1 - v.p0, ph / 3), lo = Math.floor(at / step) * step, hi = lo + step, side = at < price ? 'long' : 'short';
+    // On the snapshot's own bins (`liqCardRow`), so what stands, the snapshot's amount, its count and its largest describe the same prices.
+    const { lo, hi } = liqCardRow(at, niceStep(v.p1 - v.p0, ph / 3), set.levels?.step ?? 0), step = hi - lo, side = at < price ? 'long' : 'short';
     const kind = set.levels?.kind ?? 'liq', parts = kind === 'both' ? set.partStandings() : null;
     // What still stands in the row, and what the snapshot put there (its count and largest are the snapshot's, `binsIn`).
     const level = Math.max(0, standingBelow(s, side, hi) - standingBelow(s, side, lo)), whole = set.levels ? liqStanding(set.levels, null) : null;

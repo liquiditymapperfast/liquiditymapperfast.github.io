@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { Held, ROW_HOLD_MS, booksReaching, depthBand, depthBandLines, depthHereLine, depthRow, depthRowLines, liqCardLines, ratioWords, seamCardLines, wholeShares } from '../src/app/hover-rows.ts';
+import { Held, ROW_HOLD_MS, booksReaching, depthBand, depthBandLines, depthHereLine, depthRow, depthRowLines, liqCardLines, liqCardRow, ratioWords, seamCardLines, wholeShares } from '../src/app/hover-rows.ts';
 import type { Grouped } from '../src/app/panes/levels-data.ts';
 import type { LevelsFrame, LiveBook } from '../src/app/wire.ts';
 import { INFO, MARK, layoutInfo, type InfoLine } from '../src/app/infobox.ts';
@@ -131,7 +131,7 @@ test('the band counts from the price: from a grouping that holds the price and t
 });
 
 test('the seam weighs the book against the levels per side, says how far the feeds reach and how old the levels are, and gives no verdict', () => {
-  const f = { kind: 'liq' as const, pct: '0.95%', above: { book: 699.5e6, liq: 5.5e6 }, below: { book: 706.7e6, liq: 1.9e6 }, reach: { bid: 15, ask: 15, of: 24 }, minutes: { positions: 74.6, orders: 31.2 } };
+  const f = { kind: 'liq' as const, pct: '0.95%', above: { book: 699.5e6, liq: 5.5e6 }, below: { book: 706.7e6, liq: 1.9e6 }, reach: { bid: 15, ask: 15, of: 24 }, minutes: { positions: 74.6, orders: 31.2 }, clipped: false };
   const lines = text(seamCardLines(f));
   assert.deepEqual(lines, ['Book against liquidations, ±0.95%', 'Above the price', 'Asks: $699.5M', 'Short liquidations: $5.5M', 'Below the price', 'Bids: $706.7M', 'Long liquidations: $1.9M',
     'Depth coverage: bids 15/24 · asks 15/24', 'Positions: 75 min ago · book: now']);
@@ -140,6 +140,9 @@ test('the seam weighs the book against the levels per side, says how far the fee
   assert.equal(text(seamCardLines({ ...f, kind: 'both' })).at(-1), 'Positions: 75 min ago · orders: 31 min ago · book: now', 'Liq + stops: each snapshot its own age');
   assert.equal(text(seamCardLines({ ...f, kind: 'both', minutes: { positions: 74.6, orders: null } })).at(-1), 'Positions: 75 min ago · book: now');
   assert.equal(text(seamCardLines({ ...f, minutes: { positions: null, orders: null } })).at(-1), 'Depth coverage: bids 15/24 · asks 15/24');
+  // A band past the view that no grouping could hold says its amounts are partial; the long age line may wrap on a phone.
+  assert.ok(text(seamCardLines({ ...f, clipped: true })).includes('part of the range is outside the data'));
+  assert.equal(seamCardLines({ ...f, kind: 'both' }).at(-1)!.wrap, true);
 });
 
 test('a reading is kept for a second on the same row, and read again at once for another row or after the second', () => {
@@ -174,4 +177,11 @@ test('the map draws these boxes: the profile from its row and band, the band fro
   assert.match(body('#paintSeam'), /groupSpan\(v\.p0, v\.p1, price, step\)/);
   assert.match(body('#paintSeam'), /<= LIQ_PROFILE_ROWS \? wanted : null/, 'a span only where the liquidation profile holds every row of it');
   assert.match(body('#paintLiqSplit'), /liqSubBoxFrame\(at, subs\[at\]\.x0, pw, ph, this\.#liqHeadH, measureInfoBox\(ctx, box\.lines\)\.h\)/);
+});
+
+test('the liquidation card speaks of whole snapshot bins: the column\'s row where it is made of them, the bin itself where the row is narrower', () => {
+  assert.deepEqual(liqCardRow(58_472, 50, 10), { lo: 58_450, hi: 58_500 }, 'a $50 row of $10 bins');
+  assert.deepEqual(liqCardRow(58_452.3, 0.5, 10), { lo: 58_450, hi: 58_460 }, 'zoomed far in: the $10 bin, so its count and largest match its amount');
+  assert.deepEqual(liqCardRow(58_512, 25, 10), { lo: 58_500, hi: 58_530 }, 'a row that is no whole number of bins: the bins that start in it');
+  assert.deepEqual(liqCardRow(58_472, 50, 0), { lo: 58_450, hi: 58_500 }, 'no bin size known: the column\'s own row');
 });
