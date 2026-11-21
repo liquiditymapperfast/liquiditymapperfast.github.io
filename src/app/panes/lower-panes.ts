@@ -725,13 +725,13 @@ export class DepthPane extends TimePane {
       // of its span change.
       const sameLiq = (): boolean => !!was && !!rows && !!was.rows && was.source === 'liq' && was.key === depthHeldKey('liq', [], s.radii, liqHeld ? viewKey(liqHeld.view) : '') && was.rows.length === rows.length && rows.every((r, i) => r === was.rows![i])
         && was.radii.join(',') === s.radii.join(',') && Math.floor(was.t0 / MINUTE) === Math.floor(s.t0 / MINUTE) && Math.floor(was.t1 / MINUTE) === Math.floor(s.t1 / MINUTE)
-        && was.t1 >= pageNow() && (was.ordersAbsent ?? false) === (liqHeld?.absent ?? false);
+        && was.t1 >= pageNow() && (was.ordersAbsent ?? false) === (liqHeld?.absent ?? false) && (was.closedBefore ?? -Infinity) === (liqHeld ? liqHeld.closedTo : -Infinity);
       if (!was || (was.bid !== s.answer.bid && !sameLiq()) || was.coins !== coins || was.focus !== top || was.coin !== coin) {
         const ids = liqHeld ? [] : (this.#series?.ids ?? []);
         this.#publish({ key: depthHeldKey(liqHeld ? 'liq' : 'book', ids, s.radii, liqHeld ? viewKey(liqHeld.view) : ''), source: liqHeld ? 'liq' : 'book', ids, t0: s.t0, t1: s.t1, w: s.w, radii: s.radii,
           bid: s.answer.bid, ask: s.answer.ask, bidCoin: s.answer.bidCoin, askCoin: s.answer.askCoin, present: liqHeld ? null : s.answer.present ?? null,
           centred: liqHeld ? null : s.answer.centred ?? null, stepMs: liqHeld ? 0 : s.answer.stepMs ?? MINUTE, answeredAt: liqHeld ? Infinity : this.#series?.answeredAt ?? 0,
-          rows, buckets: liqHeld ? liqHeld.idx : null, omitted: liqHeld ? liqHeld.omitted : [], coins, coin, focus: top, ...(liqHeld?.closed ? { closedFrom: liqHeld.closed.from, closedTo: liqHeld.closed.to } : {}),
+          rows, buckets: liqHeld ? liqHeld.idx : null, omitted: liqHeld ? liqHeld.omitted : [], coins, coin, focus: top, ...(liqHeld?.closed ? { closedFrom: liqHeld.closed.from, closedTo: liqHeld.closed.to } : {}), ...(liqHeld && Number.isFinite(liqHeld.closedTo) ? { closedBefore: liqHeld.closedTo } : {}),
           ...(liqHeld ? { view: liqHeld.view, holdMs: liqHeld.holdMs, wide: liqHeld.wide, ordersAbsent: liqHeld.absent } : {}) });
       }
     }
@@ -782,7 +782,10 @@ export class DepthPane extends TimePane {
     // A book missing from the live feed (a venue reconnecting) is missing from the books now, so the reading says how many it counted: three
     // venues out for half a minute took a quarter off the ±5 % band (2026-11-21). Out of the books counted with every feed there: a venue that
     // reconnects leaves the books asked for at once (`bookCountOutOf`).
-    const outOf = liveNow ? bookCountOutOf(state) : 0, liveShort = liveNow && outOf > 0 && liveNow.present < outOf ? t('{n} of {total} markets', { n: liveNow.present, total: outOf }) : '';
+    // Only for an answer asked for the books counted now: after a change of scope, chips or coin the answer drawn is still the one before.
+    const askedNow = liveNow ? new Set(bookIds(state)) : null, answerIds = this.#series?.ids ?? null;
+    const current = !!askedNow && !!answerIds && answerIds.length === askedNow.size && answerIds.every(id => askedNow.has(id));
+    const outOf = current ? bookCountOutOf(state) : 0, liveShort = liveNow && outOf > 0 && liveNow.present < outOf ? t('{n} of {total} markets', { n: liveNow.present, total: outOf }) : '';
     // The header reads the watched band at the newest moment (Liquidation levels: longs and shorts, and when those positions stood).
     if (liq) {
       const { row, take } = liqRead(null);

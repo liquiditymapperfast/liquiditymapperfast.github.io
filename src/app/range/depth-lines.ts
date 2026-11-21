@@ -42,6 +42,11 @@ export interface DepthPaneHeld {
    * from where the recording begins, `closedFrom`, and before that there is nothing to close); absent: all open.
    */
   closedFrom?: number; closedTo?: number;
+  /**
+   * Liquidation levels: where what is closed to this visitor ends (`LiqHistory.closedBefore`), not cut to the view as `closedTo` is: a row
+   * fetched before it is closed, though it may stand into the view, a boundary at its left edge included; absent: nothing closed.
+   */
+  closedBefore?: number;
   /** Liquidation levels: what the pane shows (liquidations, stops or both, whose, and whether take profits are drawn beside them), how long a row stands without a later one, and whether the rows are the four-hour rollups. Absent: the free view of day rows. */
   view?: LiqView; holdMs?: number; wide?: boolean;
   /**
@@ -144,7 +149,7 @@ export function depthLiqStretch(held: DepthPaneHeld, sel: Pick<RangeSelection, '
   all.forEach((row, i) => {
     // A row fetched before what is closed is closed too, though it stands into the open stretch: the pane draws none of it (a lapsed pass, or a
     // tab open across midnight, may still hold it).
-    if (row.fetchedAt < (held.closedTo ?? -Infinity)) return;
+    if (row.fetchedAt < (held.closedBefore ?? held.closedTo ?? -Infinity)) return;
     const from = row.fetchedAt, to = Math.min(all[i + 1]?.fetchedAt ?? Infinity, from + hold, now);
     const overlap = open.reduce((sum, [x, y]) => sum + Math.max(0, Math.min(to, y) - Math.max(from, x)), 0);
     if (overlap > 0) { inForce += overlap; rows.push(row); }

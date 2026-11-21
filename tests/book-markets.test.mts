@@ -219,6 +219,9 @@ test('the books now are counted out of the books there with every feed: under Al
   assert.equal(bookCountOutOf({ ...away, disabledVenues: ['okx'] }), 4, 'its chip off: not counted');
   assert.equal(bookCountOutOf({ ...away, scope: 'spot' }), bookIds({ ...away, scope: 'spot' }).length, 'outside the Spot / Perp filter: not counted');
   assert.equal(bookCountOutOf(state()), FEED.length, 'every feed there');
+  // Binance's perpetual away: its market is held, never the spot market listed under its name, whose trades have no book.
+  const perpAway = state({ levels: { asOf: 1_000_000, books: FEED.filter(id => id !== 'binance:BTCUSDT').map(id => book(id)) }, bookGone: { binance: 1_000_000 - 60_000 } });
+  assert.equal(bookCountOutOf(perpAway), 5);
   // The other choices hold an away book in the books asked for already.
   const picked = state({ bookMarkets: 'custom', bookPicks: ['okx/perp', 'binance/perp'], levels, bookGone: { okx: 1_000_000 - 60_000 } });
   assert.equal(bookCountOutOf(picked), bookIds(picked).length);

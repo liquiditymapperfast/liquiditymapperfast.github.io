@@ -82,6 +82,9 @@ test('tracked liquidation levels: the snapshots actually in force, their expiry,
   const part = depthLiqStretch(shut, sel(0, 10), NOW);
   assert.deepEqual([part.rows.length, part.closed / M, part.inForce / M, part.none / M, part.outside / M], [1, 6, 2, 2, 0]);
   assert.equal(part.rows[0]!.fetchedAt, T + 8 * M, 'only the snapshot fetched after the closed stretch');
+  // A boundary at the view's left edge closes nothing in the view, yet a snapshot fetched before it and standing into the view is closed.
+  const edge = depthLiqStretch({ ...liq([row(5, 1, 1), row(8, 30, 10)]), t0: T + 6 * M, closedBefore: T + 6 * M }, sel(6, 10), NOW);
+  assert.deepEqual([edge.rows.length, edge.inForce / M, edge.none / M, edge.closed / M], [1, 2, 2, 0]);
   assert.equal(text(new DepthRangeSummary().lines(sel(0, 10), shut, true, LKEY, NOW), 'dp-cover'), 'Snapshots in force for 2 min of 10 min · part of Plus: 6 min · no snapshot in force: 2 min');
   // The pane hatches the closed stretch from where the recording begins (`closedFrom`): before it there is nothing to close, only no snapshot.
   const late = depthLiqStretch({ ...liq([row(8, 30, 10)]), closedFrom: T + 3 * M, closedTo: T + 6 * M }, sel(0, 10), NOW);
