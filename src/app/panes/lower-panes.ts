@@ -23,7 +23,7 @@ import { flowHistoryRows } from '../size-history/switch.ts';
 import { BROWSER_RETENTION_MS } from '../../shared/recorder.ts';
 import { CARD_GAP, HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
-import { barAt, columnAt, depthCardLines, depthColumns, depthKey, liqCardLines, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
+import { barAt, columnAt, depthCardLines, depthColumns, depthKey, liqCardLines, liqColumnRows, liqReadRow, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from './pane-cards.ts';
 import { LiqHistory, bandIndex, bandOnEdge, type LiqRow } from '../liq-history.ts';
 import { TAKE_DASH } from '../liq-levels.ts';
 import { curveOf, groupTitle, kindName, levelsDescription, liveDepthView, liveSplit, viewKey, type LiqView } from '../liq-view.ts';
@@ -389,6 +389,8 @@ type LiqSeries = {
   absent: boolean;
   /** The take profits, a layer of their own (a dashed line), in the same shape: per column and band, below the price (`bid`) and above. */
   takes: { bid: Float32Array; ask: Float32Array; bidCoin: Float32Array; askCoin: Float32Array; rowAt: Int32Array } | null;
+  /** The take profits' rows, which the table and the header read at a moment as they read `rows` (null: none drawn). */
+  takeRows: LiqRow[] | null;
 };
 /** A difference as the Depth pane writes it, with its sign (a minus sign, not a hyphen). */
 const signedText = (value: number): string => `${value >= 0 ? '+' : '−'}${usd(Math.abs(value))}`;
@@ -652,17 +654,13 @@ export class DepthPane extends TimePane {
     const key = `${this.#history.version}|${vk}|${shape.wide}|${t0}|${t1}|${w}|${radii.join(',')}|${Math.floor(until / 5_000)}|${closed ? closed.to : ''}`;
     if (this.#liq?.key === key) return this.#liq;
     const s = this.#history.series(t0, t1, view), idx = radii.map(bucket);
-    // Each pixel column holds the row in force at its time, from its fetch until the next, at most `holdMs`.
+    // Each pixel column holds the row in force at its end (the one holding now, at now), from its fetch until the next, at most `holdMs`.
     const build = (rows: LiqRow[]): { bid: Float32Array; ask: Float32Array; bidCoin: Float32Array; askCoin: Float32Array; rowAt: Int32Array } => {
-      const bid = new Float32Array(w * k), ask = new Float32Array(w * k), bidCoin = new Float32Array(w * k), askCoin = new Float32Array(w * k), rowAt = new Int32Array(w).fill(-1);
-      for (let x = 0, i = 0; x < w; x++) {
-        const time = t0 + (x + 0.5) / w * (t1 - t0);
-        if (time > until) break;
-        if (closed && time < closed.to) continue;
-        while (i + 1 < rows.length && rows[i + 1]!.fetchedAt <= time) i++;
-        const row = rows[i];
-        if (!row || row.fetchedAt > time || time - row.fetchedAt > s.holdMs) continue;
-        rowAt[x] = i;
+      const bid = new Float32Array(w * k), ask = new Float32Array(w * k), bidCoin = new Float32Array(w * k), askCoin = new Float32Array(w * k);
+      const rowAt = liqColumnRows(rows, t0, t1, w, until, s.holdMs, closed ? closed.to : -Infinity);
+      for (let x = 0; x < w; x++) {
+        const row = rows[rowAt[x]!];
+        if (!row) continue;
         for (let j = 0; j < k; j++) {
           const b = idx[j]!; if (b < 0) continue;
           bid[x * k + j] = row.long[b]!; ask[x * k + j] = row.short[b]!; bidCoin[x * k + j] = row.longCoin[b]!; askCoin[x * k + j] = row.shortCoin[b]!;
@@ -672,7 +670,7 @@ export class DepthPane extends TimePane {
     };
     const main = build(s.rows);
     this.#liq = { key, series: { t0, t1, w, radii, answer: { k, bid: main.bid, ask: main.ask, bidCoin: main.bidCoin, askCoin: main.askCoin } }, rowAt: main.rowAt, rows: s.rows, idx, omitted, closed,
-      view, holdMs: s.holdMs, wide: s.wide, absent: s.ordersAbsent, takes: s.takes ? build(s.takes) : null };
+      view, holdMs: s.holdMs, wide: s.wide, absent: s.ordersAbsent, takes: s.takes ? build(s.takes) : null, takeRows: s.takes };
     return this.#liq;
   }
 
@@ -746,7 +744,6 @@ export class DepthPane extends TimePane {
     if (!(max > 0)) max = 1;
     const colT = (x: number): number => s.t0 + x / s.w * (s.t1 - s.t0);
     const unit = coins ? ` ${coin}` : '';
-    const rowOf = (x: number): LiqRow | null => { const i = liqHeld && x >= 0 ? liqHeld.rowAt[x]! : -1; return liqHeld && i >= 0 ? liqHeld.rows[i] ?? null : null; };
     // Plus: the stretch of the view whose history is closed to this visitor; the lock stands at its near end.
     const closed = liqHeld?.closed ?? null, closedX = closed ? Math.min(pw, v.xOf(closed.to, pw)) : 0;
     if (liq && lastX < 0) {
@@ -758,29 +755,53 @@ export class DepthPane extends TimePane {
         : t('No liquidation levels recorded for this stretch of time.'));
       return;
     }
-    // The header reads the watched band at the newest column (Liquidation levels: longs and shorts, and when those positions stood).
+    // What the table, the header and the card read is a moment, the same at any zoom (Karl, 2026-11-21: zoomed out, they read the newest pixel
+    // column, which over three weeks is 40 minutes wide, and so the snapshot before the newest). Liquidation levels: the row in force at the
+    // pointer's time, else at the newest moment in view, read from the rows themselves. The order book: the column under the pointer; with no
+    // pointer, or past the newest column, the books as they stand now (the worker's live columns) while the view reaches the live edge, since
+    // a column is a mean over its whole width; else the newest column.
+    const until = replaying() ? pageNow() : Date.now(), newestT = Math.min(until, s.t1);
+    const liqRead = (time: number, upTo: number): { row: LiqRow; take: LiqRow | null } | null => {
+      if (!liqHeld) return null;
+      const closedTo = closed ? closed.to : -Infinity, i = liqReadRow(liqHeld.rows, time, upTo, liqHeld.holdMs, closedTo);
+      if (i < 0) return null;
+      const tk = liqHeld.takeRows ? liqReadRow(liqHeld.takeRows, time, upTo, liqHeld.holdMs, closedTo) : -1;
+      return { row: liqHeld.rows[i]!, take: tk >= 0 ? liqHeld.takeRows![tk]! : null };
+    };
+    // A row's figure for band `j` in the pane's units (0 for a band it has no bucket for): longs (or take profits) below the price, shorts above.
+    const liqFigure = (row: LiqRow, side: 'long' | 'short', j: number): number => {
+      const b = liqHeld!.idx[j]!; if (b < 0) return 0;
+      return (coins ? (side === 'long' ? row.longCoin : row.shortCoin) : (side === 'long' ? row.long : row.short))[b] ?? 0;
+    };
+    const liveNow = !liq && !replaying() && s.t1 >= until - 2 * MINUTE ? (s.answer.newest ?? null) : null;
+    const liveFigure = (side: 'bid' | 'ask', j: number): number => (coins ? (side === 'bid' ? liveNow!.bidCoin : liveNow!.askCoin) : (side === 'bid' ? liveNow!.bid : liveNow!.ask))[j] ?? 0;
+    // The header reads the watched band at the newest moment (Liquidation levels: longs and shorts, and when those positions stood).
     if (liq) {
-      const b = bid[at(lastX, top)]!, a = ask[at(lastX, top)]!, row = rowOf(lastX), view = liqHeld!.view, r = sideRatio(b, a);
+      const read = liqRead(newestT, newestT), row = read?.row ?? null, take = read?.take ?? null;
+      const b = row ? liqFigure(row, 'long', top) : NaN, a = row ? liqFigure(row, 'short', top) : NaN, view = liqHeld!.view, r = sideRatio(b, a);
       // Whose levels (the Source names which), and the take profits beside them: the sells that close longs above, the buys that close shorts below.
       const whose = view.group !== 'all' ? `${groupTitle(view.group)} · ` : '';
       // Take profits on alone are resting orders: the buys below the price are bids, the sells above asks.
       const alone = curveOf(view) === 'takes', names = alone ? [t('bids'), t('asks')] : [t('longs'), t('shorts')];
       const larger = r?.lead ? ` <b class="${r.lead > 0 ? 'bid' : 'ask'}">${r.lead > 0 ? names[0] : names[1]} ${ratioFigure(r.ratio)}</b>` : '';
-      const tp = takeBid && takeAsk && takes!.rowAt[lastX]! >= 0 ? ` · ${t('take profits')} <b class="ask">▲${amountText(takeAsk[at(lastX, top)]!, coins)}</b> <b class="bid">▼${amountText(takeBid[at(lastX, top)]!, coins)}</b>` : '';
-      setHtml(readout, `${whose}±${bandText(s.radii[top]!)}% L <b class="bid">${amountText(b, coins)}</b> S <b class="ask">${amountText(a, coins)}</b> Δ <b>${coins ? tableSigned(b - a) : signedText(b - a)}</b>${unit}${larger}${tp}${row ? ` · ${t('positions as of {time}', { time: clock(row.asOf) })}` : ''}`);
-    } else if (lastX >= 0) {
-      const b = bid[at(lastX, top)]!, a = ask[at(lastX, top)]!, total = b + a, lean = total > 0 ? (b - a) / total : 0, r = sideRatio(b, a);
+      const tp = take ? ` · ${t('take profits')} <b class="ask">▲${amountText(liqFigure(take, 'short', top), coins)}</b> <b class="bid">▼${amountText(liqFigure(take, 'long', top), coins)}</b>` : '';
+      setHtml(readout, row ? `${whose}±${bandText(s.radii[top]!)}% L <b class="bid">${amountText(b, coins)}</b> S <b class="ask">${amountText(a, coins)}</b> Δ <b>${coins ? tableSigned(b - a) : signedText(b - a)}</b>${unit}${larger}${tp} · ${t('positions as of {time}', { time: clock(row.asOf) })}` : '');
+    } else if (liveNow || lastX >= 0) {
+      const b = liveNow ? liveFigure('bid', top) : bid[at(lastX, top)]!, a = liveNow ? liveFigure('ask', top) : ask[at(lastX, top)]!;
+      const total = b + a, lean = total > 0 ? (b - a) / total : 0, r = sideRatio(b, a);
       const dominant = Math.abs(lean) < 0.005 ? '' : ` <b class="${lean > 0 ? 'bid' : 'ask'}">${lean > 0 ? t('bids') : t('asks')} +${(Math.abs(lean) * 100).toFixed(1)}%${r ? ` · ${ratioFigure(r.ratio)}` : ''}</b>`;
       setHtml(readout, `±${bandText(s.radii[top]!)}% B <b class="bid">${amountText(b, coins)}</b> A <b class="ask">${amountText(a, coins)}</b> Δ <b>${coins ? tableSigned(b - a) : signedText(b - a)}</b>${unit}${dominant}`);
     } else setHtml(readout, '');
-    // The column the table reads: the one under the pointer, past the newest the newest; with no pointer the newest.
-    let readX = lastX, readTime = lastX >= 0 ? colT(lastX) : NaN, pointed = false;
+    // The order book's column under the pointer, past the newest the newest; with no pointer the newest.
+    let readX = lastX, readTime = lastX >= 0 ? colT(lastX) : NaN, pointed = false, under = -1;
     const hv = state.hover;
     if (hv && this.pointer) {
       pointed = true;
-      const column = columnAt(s.t0, s.t1, s.w, hv.t), under = column < cutW ? column : -1;
+      const column = columnAt(s.t0, s.t1, s.w, hv.t);
+      under = column < cutW ? column : -1;
       const found = readAt(has(under) ? under : -1, hv.t, lastX, lastX >= 0 ? colT(lastX) : undefined);
-      if (found >= 0 && found !== under) this.cursorT = colT(found + 0.5);
+      // Past the newest the crosshair stands where the reading is: the newest column, or (Liquidation levels) the newest moment.
+      if (liq) { if (hv.t > until) this.cursorT = until; } else if (found >= 0 && found !== under) this.cursorT = colT(found + 0.5);
       readX = found >= 0 && has(found) ? found : -1;
       readTime = readX >= 0 ? colT(readX) : hv.t;
     }
@@ -871,16 +892,26 @@ export class DepthPane extends TimePane {
       ctx.globalAlpha = 0.85; ctx.fillStyle = p.bg; ctx.fillRect(8, 4, Math.max(0, ...lines.map(measure)) + 8, 2 + 14 * lines.length);
       ctx.globalAlpha = 1; ctx.fillStyle = p.muted; lines.forEach((line, i) => ctx.fillText(line, 12, 11 + 14 * i)); ctx.restore();
     }
-    const rows = Array.from({ length: k }, (_, j) => ({ r: s.radii[j]!, bid: readX >= 0 ? bid[at(readX, j)]! : NaN, ask: readX >= 0 ? ask[at(readX, j)]! : NaN }));
-    const readRow = liq ? rowOf(readX) : null;
-    const foot = liq ? (readRow ? t('positions as of {time}', { time: clock(readRow.asOf, true) }) : '') : Number.isFinite(readTime) ? (pointed ? clock(readTime, true) : `${t('newest')} ${clock(readTime)}`) : '';
+    // The table's reading (see above): each band's figures, and what its foot says of them.
+    let rows: { r: number; bid: number; ask: number }[], foot: string, readRow: LiqRow | null = null, readTake: LiqRow | null = null, live = false;
+    if (liq) {
+      const read = pointed ? liqRead(hv!.t, until) : liqRead(newestT, newestT);
+      readRow = read?.row ?? null; readTake = read?.take ?? null;
+      rows = s.radii.map((r, j) => ({ r, bid: readRow ? liqFigure(readRow, 'long', j) : NaN, ask: readRow ? liqFigure(readRow, 'short', j) : NaN }));
+      foot = readRow ? t('positions as of {time}', { time: clock(readRow.asOf, true) }) : '';
+    } else {
+      live = !!liveNow && (!pointed || (readX >= 0 && readX === lastX && !has(under)));
+      rows = s.radii.map((r, j) => ({ r, bid: live ? liveFigure('bid', j) : readX >= 0 ? bid[at(readX, j)]! : NaN, ask: live ? liveFigure('ask', j) : readX >= 0 ? ask[at(readX, j)]! : NaN }));
+      if (live) { readTime = newestT; if (pointed) this.cursorT = newestT; }
+      foot = Number.isFinite(readTime) ? (pointed && !live ? clock(readTime, true) : `${t('newest')} ${clock(readTime)}`) : '';
+    }
     const drawn = settings.table && this.#drawTable(rows, this.pointer !== null, focused ? top : -1, foot, unit, liq ? [t('Longs'), t('Shorts')] : [t('Bid'), t('Ask')]);
-    if (!drawn && pointed && readX >= 0 && liq) {
-      const tk = takeBid && takeAsk && takes!.rowAt[readX]! >= 0 ? { bid: takeBid[at(readX, top)]!, ask: takeAsk[at(readX, top)]! } : null;
+    if (!drawn && pointed && liq) {
+      const tk = readTake ? { bid: liqFigure(readTake, 'long', top), ask: liqFigure(readTake, 'short', top) } : null;
       if (readRow) this.#lines = liqCardLines({ asOf: readRow.asOf, bands: rows, watched: top, units: settings.units, coin, view: liqHeld!.view, takes: tk });
     }
-    else if (!drawn && pointed && readX >= 0) {
-      const here = bid[at(readX, top)]! + ask[at(readX, top)]!;
+    else if (!drawn && pointed && (live || readX >= 0)) {
+      const here = rows[top]!.bid + rows[top]!.ask;
       let rank = 1, of = 0;
       for (let x = 0; x < cutW; x++) { const total = bid[at(x, top)]! + ask[at(x, top)]!; if (total > 0) { of++; if (total > here) rank++; } }
       this.#lines = depthCardLines({ time: readTime, bands: rows, watched: top, units: settings.units, coin, rank, of });

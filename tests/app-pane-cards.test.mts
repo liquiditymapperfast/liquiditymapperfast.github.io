@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { barAt, columnAt, depthCardLines, liqCardLines, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from '../src/app/panes/pane-cards.ts';
+import { barAt, columnAt, depthCardLines, liqCardLines, liqColumnRows, liqReadRow, ltCardLines, oiCardLines, oiTail, readAt, slotAt } from '../src/app/panes/pane-cards.ts';
 import { layoutInfo } from '../src/app/infobox.ts';
 
 const MIN = 60_000;
@@ -120,4 +120,56 @@ test('the liquidation levels popup names the larger side and how many times the 
   assert.deepEqual([by(lines, 'Ratio')!.text, by(lines, 'Ratio')!.color], ['longs 2.50×', 'below']);
   assert.equal(by(liqCardLines({ asOf: 0, bands, watched: 0, units: 'usd', coin: 'BTC' }), 'Ratio')!.text, 'shorts ∞', 'no longs in the band: only shorts');
   assert.equal(by(liqCardLines({ asOf: 0, bands: [{ r: 0.01, bid: 0, ask: 0 }], watched: 0, units: 'usd', coin: 'BTC' }), 'Ratio'), undefined);
+});
+
+test('the Depth pane reads the liquidation levels at a moment, never at a column: the newest snapshot, and the one at a pointer, are the same at any zoom (Karl, 2026-11-21)', () => {
+  // Snapshots every 26 minutes for two days; now is 8 minutes after the newest was fetched.
+  const SNAP = 26 * MIN, HOLD = 90 * MIN, first = 1_000 * MIN;
+  const rows = Array.from({ length: 110 }, (_, i) => ({ fetchedAt: first + i * SNAP }));
+  const newest = rows.length - 1, now = rows[newest]!.fetchedAt + 8 * MIN, pointer = rows[60]!.fetchedAt + 5 * MIN;
+  // Columns of 2 minutes, of a snapshot's spacing and of 3 hours, the view ending anywhere in the next half hour (the map's margin).
+  for (const col of [2 * MIN, SNAP, 180 * MIN]) for (let margin = 0; margin < 30 * MIN; margin += 3 * MIN) {
+    const w = 600, t1 = now + margin, t0 = t1 - w * col, rowAt = liqColumnRows(rows, t0, t1, w, now, HOLD);
+    let last = -1;
+    for (let x = 0; x < w; x++) if (rowAt[x]! >= 0) last = x;
+    const what = `columns of ${col / MIN} min, view ending ${margin / MIN} min after now`;
+    assert.equal(rowAt[last], newest, `the newest column draws the newest snapshot (${what})`);
+    assert.ok(t0 + last / w * (t1 - t0) <= now && now <= t0 + (last + 1) / w * (t1 - t0), `it is the column holding now (${what})`);
+    for (let x = last + 1; x < w; x++) assert.equal(rowAt[x], -1, 'nothing is drawn past now');
+    assert.equal(liqReadRow(rows, Math.min(now, t1), Math.min(now, t1), HOLD), newest, `with no pointer the table reads the newest snapshot (${what})`);
+    assert.equal(liqReadRow(rows, pointer, now, HOLD), 60, `a pointer reads the snapshot in force at its time (${what})`);
+    assert.equal(liqReadRow(rows, now + 20 * MIN, now, HOLD), newest, `a pointer past now reads the newest (${what})`);
+  }
+  // Read at their middles, as before, 26-minute columns left the newest snapshot out of the drawing and the table read the one before it.
+  const w = 600, t1 = now + 15 * MIN, t0 = t1 - w * SNAP, mid = (x: number): number => t0 + (x + 0.5) / w * (t1 - t0);
+  let x = w - 1;
+  while (mid(x) > now) x--;
+  assert.ok(rows.filter(r => r.fetchedAt <= mid(x)).length - 1 < newest, 'the old reading of that view was an older snapshot');
+});
+
+test('a snapshot stands its hold and no longer in the drawing; a reading past the newest keeps it, a gap between two reads nothing', () => {
+  const HOLD = 90 * MIN, rows = [{ fetchedAt: 0 }, { fetchedAt: 30 * MIN }, { fetchedAt: 300 * MIN }, { fetchedAt: 330 * MIN }];
+  const now = 600 * MIN, rowAt = liqColumnRows(rows, 0, 600 * MIN, 600, now, HOLD);
+  assert.equal(rowAt[100], 1, 'held for its 90 minutes');
+  assert.equal(rowAt[200], -1, 'then a gap until the next snapshot');
+  assert.equal(rowAt[400], 3);
+  assert.equal(rowAt[500], -1, 'the snapshots stopped: past the hold nothing is drawn');
+  assert.equal(liqReadRow(rows, 200 * MIN, now, HOLD), -1, 'a pointer in the gap reads nothing');
+  assert.equal(liqReadRow(rows, 500 * MIN, now, HOLD), 3, 'at or past the newest snapshot, the reading keeps it (its positions time says how old it is)');
+  assert.equal(liqReadRow(rows, now, now, HOLD), 3, 'and so does the newest moment');
+  assert.equal(liqReadRow([], now, now, HOLD), -1);
+});
+
+test('a replay reads no snapshot after its moment, and nothing is read before a stretch closed to the visitor (Plus)', () => {
+  const HOLD = 90 * MIN, rows = Array.from({ length: 20 }, (_, i) => ({ fetchedAt: i * 30 * MIN }));
+  const moment = 300 * MIN + 10 * MIN, rowAt = liqColumnRows(rows, 0, 600 * MIN, 120, moment, HOLD);
+  let last = -1;
+  for (let x = 0; x < 120; x++) if (rowAt[x]! >= 0) last = x;
+  assert.equal(rowAt[last], 10, "the replay's newest column draws the snapshot in force at its moment");
+  assert.equal(liqReadRow(rows, 500 * MIN, moment, HOLD), 10, 'a pointer later than the moment reads the moment');
+  assert.equal(liqReadRow(rows, moment, moment, HOLD), 10);
+  const closed = liqColumnRows(rows, 0, 600 * MIN, 120, 600 * MIN, HOLD, 200 * MIN);
+  for (let x = 0; x < 120; x++) if ((x + 1) * 5 * MIN < 200 * MIN) assert.equal(closed[x], -1, 'a column read before the closed stretch ends draws nothing');
+  assert.equal(liqReadRow(rows, 100 * MIN, 600 * MIN, HOLD, 200 * MIN), -1, 'nor is anything read there');
+  assert.equal(liqReadRow(rows, 250 * MIN, 600 * MIN, HOLD, 200 * MIN), 8);
 });

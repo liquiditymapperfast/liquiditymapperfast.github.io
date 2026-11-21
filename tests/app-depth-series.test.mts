@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { depthBands, depthSeries, touchOf, type DepthStore } from '../src/app/depth-series.ts';
+import { depthBands, depthNow, depthSeries, touchOf, type DepthStore } from '../src/app/depth-series.ts';
 
 const MIN = 60_000, STEP = 1;
 /** One instrument's minutes: each a book of `bids` and `asks` as [price, usd], on a grid of `STEP`. */
@@ -92,4 +92,20 @@ test('each pixel column counts the books that had a column there: a book with no
   const bands = depthBands([a, b], MIN, 0, 2 * MIN, 2, [0.01]);
   assert.deepEqual([...bands.present], [2, 1]);
   assert.equal(depthBands([], MIN, 0, MIN, 3, [0.01]).present.length, 3);
+});
+
+test('the books now (the Depth table at the live edge, at any zoom): their live columns measured as one minute-wide column, from the median of their touches', () => {
+  const minute = 50 * MIN, radii = [0.002, 0.02];
+  // Three live books, one of them off on its own (a stale venue): the median touch keeps the bands where the others are.
+  const books = [store([bookAt(minute, 1_000)]), store([bookAt(minute, 1_002)]), store([bookAt(minute, 1_100)])];
+  const now = depthNow(books, minute, radii), column = depthBands(books, MIN, minute, minute + MIN, 1, radii);
+  assert.ok(now);
+  assert.deepEqual([...now.bid], [...column.bid]); assert.deepEqual([...now.ask], [...column.ask]);
+  assert.deepEqual([...now.bidCoin], [...column.bidCoin]); assert.deepEqual([...now.askCoin], [...column.askCoin]);
+  assert.equal(now.present, 3);
+  assert.ok(now.bid[1]! > 0 && now.ask[1]! > 0, 'the wide band holds both sides');
+  // A book of another minute is not counted; no book, or none with both sides, gives no reading.
+  assert.equal(depthNow([store([bookAt(minute - MIN, 1_000)])], minute, radii), null);
+  assert.equal(depthNow([], minute, radii), null);
+  assert.equal(depthNow([store([{ t: minute, bids: [[999, 500]], asks: [] }])], minute, radii), null);
 });

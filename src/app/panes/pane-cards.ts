@@ -49,6 +49,49 @@ export function readAt(found: number, time: number, newest: number, newestT: num
   return newest >= 0 && newestT !== undefined && time >= newestT ? newest : -1;
 }
 
+/** The last of `rows` (ordered by fetch time) fetched at or before `time`, or -1. */
+function fetchedBy(rows: readonly { fetchedAt: number }[], time: number): number {
+  let lo = 0, hi = rows.length - 1, at = -1;
+  while (lo <= hi) { const mid = (lo + hi) >> 1; if (rows[mid]!.fetchedAt <= time) { at = mid; lo = mid + 1; } else hi = mid - 1; }
+  return at;
+}
+
+/**
+ * Which liquidation levels row each of `w` equal columns over [t0, t1] draws (-1: none): the row in force at the column's end (the newest
+ * fetched by then, while it stands, `holdMs`), the column holding `until` (now, or the replay's moment) at `until` itself, none past it, and
+ * none read before `closedTo` (Plus, closed to this visitor). So the newest column holds the newest snapshot at any zoom. Read at its middle,
+ * a column of a zoomed-out view (about 40 minutes over three weeks) left the newest snapshot out until half a column had passed, and the
+ * table, which read that column, showed the snapshot before it (Karl, 2026-11-21).
+ */
+export function liqColumnRows(rows: readonly { fetchedAt: number }[], t0: number, t1: number, w: number, until: number, holdMs: number, closedTo = -Infinity): Int32Array {
+  const rowAt = new Int32Array(Math.max(0, w)).fill(-1), span = t1 - t0;
+  if (!(span > 0)) return rowAt;
+  for (let x = 0, i = 0; x < w; x++) {
+    if (t0 + x / w * span >= until) break;
+    const time = Math.min(t0 + (x + 1) / w * span, until);
+    if (time < closedTo) continue;
+    while (i + 1 < rows.length && rows[i + 1]!.fetchedAt <= time) i++;
+    const row = rows[i];
+    if (!row || row.fetchedAt > time || time - row.fetchedAt > holdMs) continue;
+    rowAt[x] = i;
+  }
+  return rowAt;
+}
+
+/**
+ * What the Depth table, its header and its card read of the liquidation levels at `time` (the pointer's, else the newest moment in view): the
+ * row in force then, read from the rows themselves, never from the columns, so the same at any zoom; no later than `until`; none before
+ * `closedTo`. Where the newest row has stopped standing (the snapshots stopped), a reading at or past it keeps it, as `readAt` keeps the
+ * newest column; a gap between two rows reads nothing.
+ */
+export function liqReadRow(rows: readonly { fetchedAt: number }[], time: number, until: number, holdMs: number, closedTo = -Infinity): number {
+  const at = Math.min(time, until);
+  if (at < closedTo) return -1;
+  const i = fetchedBy(rows, at);
+  if (i < 0) return -1;
+  return at - rows[i]!.fetchedAt <= holdMs || i === fetchedBy(rows, until) ? i : -1;
+}
+
 /** The bar of `bars` (each starting with its start time, sorted) the time falls in: the last one that has started. The newest holds on past its own slot (its level is the latest known until the next sample), so it answers for any later time. */
 export function barAt(bars: ArrayLike<ArrayLike<number>>, tf: number, time: number): number {
   let found = -1;

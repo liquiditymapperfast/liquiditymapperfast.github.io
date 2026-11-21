@@ -56,6 +56,23 @@ export function depthBands(stores: readonly DepthStore[], stepMs: number, t0: nu
   return { k, bid, ask, bidCoin, askCoin, mid: by.mid, present, centred };
 }
 
+/** A live column's length: the worker makes one per minute. */
+const MINUTE_MS = 60_000;
+/** The books as they stand now, per band (`depthNow`): bids and asks in USD and in coins, and how many books were counted. */
+export interface DepthNow { bid: Float32Array; ask: Float32Array; bidCoin: Float32Array; askCoin: Float32Array; present: number }
+
+/**
+ * The bands of the books as they stand now (the Depth table's newest, the same at any zoom): `stores` each holding its live column (one
+ * minute's, starting at `minute`), measured as one pixel column of `depthBands` over that minute: every band from the median of the books'
+ * touches. A zoomed-out pixel column is the mean of an hour or more of recorded columns, so the table, which read the newest of them, said
+ * something else at every zoom (Karl, 2026-11-21). Null where no book gave a price centre.
+ */
+export function depthNow(stores: readonly DepthStore[], minute: number, radii: readonly number[]): DepthNow | null {
+  if (!stores.length || !radii.length || !Number.isFinite(minute)) return null;
+  const at = depthBands(stores, MINUTE_MS, minute, minute + MINUTE_MS, 1, radii);
+  return at.centred[0] ? { bid: at.bid, ask: at.ask, bidCoin: at.bidCoin, askCoin: at.askCoin, present: at.present[0]! } : null;
+}
+
 /**
  * `depthSeries` before the instruments are added together: each store's bid and ask per pixel, whether it was counted there (`present`: a
  * column with bins and a price centre), and whether it had a column there at all (`column`: an empty book or one with no centre too).

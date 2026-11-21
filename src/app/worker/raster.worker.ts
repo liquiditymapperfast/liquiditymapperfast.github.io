@@ -4,7 +4,7 @@ import type { ColumnSet, LiveBook } from '../wire.ts';
 import { ltSeries, type LtParams, type LtParts, type LtStore } from '../lt.ts';
 import { LT_FIELDS } from '../../shared/lt-sample.ts';
 import { shareInCell, type CellShare } from '../cell-sources.ts';
-import { depthBands } from '../depth-series.ts';
+import { depthBands, depthNow, type DepthNow } from '../depth-series.ts';
 import { dropAbsent } from './membership.ts';
 import { RecordedColumns, type ColumnStore as Store } from './column-store.ts';
 
@@ -32,7 +32,7 @@ export interface RasterStats { p15: number; p50: number; p96: number; max: numbe
 export type WorkerOut =
   | { type: 'ready' }
   | { type: 'raster'; id: number; w: number; h: number; data: Float32Array; stats: RasterStats; busyMs: number }
-  | { type: 'depth'; id: number; w: number; k: number; bid: Float32Array; ask: Float32Array; bidCoin: Float32Array; askCoin: Float32Array; present: Uint16Array; centred: Uint8Array; stepMs: number }
+  | { type: 'depth'; id: number; w: number; k: number; bid: Float32Array; ask: Float32Array; bidCoin: Float32Array; askCoin: Float32Array; present: Uint16Array; centred: Uint8Array; stepMs: number; newest: DepthNow | null }
   | { type: 'lt'; id: number; times: Float64Array; bid: Float32Array; ask: Float32Array; estimated: boolean; stepMs: number; parts?: LtParts; approx?: Uint8Array }
   | { type: 'cell'; id: number; items: CellShare[] }
   | { type: 'error'; message: string };
@@ -137,8 +137,11 @@ function depth(message: Extract<WorkerIn, { type: 'depth' }>): void {
   const held = recorded.current;
   const stores = message.enabled.map(id => held.get(id)).filter((rec): rec is Store => rec !== undefined);
   const { k, bid, ask, bidCoin, askCoin, present, centred } = depthBands(stores, recorded.stepMs, message.t0, message.t1, message.w, message.radii);
+  // The books as they stand now (their live columns), which the table reads at the live edge whatever the zoom.
+  const lives = message.enabled.map(id => live.get(id)).filter((rec): rec is Store & { minute: number } => rec !== undefined);
+  const newest = lives.length ? depthNow(lives, Math.max(...lives.map(rec => rec.minute)), message.radii) : null;
   // `present` counts the books held (a market with none at all is not among the stores): the pane compares it with the markets it asked for.
-  scope.postMessage({ type: 'depth', id: message.id, w: message.w, k, bid, ask, bidCoin, askCoin, present, centred, stepMs: recorded.stepMs }, [bid.buffer, ask.buffer, bidCoin.buffer, askCoin.buffer, present.buffer, centred.buffer]);
+  scope.postMessage({ type: 'depth', id: message.id, w: message.w, k, bid, ask, bidCoin, askCoin, present, centred, stepMs: recorded.stepMs, newest }, [bid.buffer, ask.buffer, bidCoin.buffer, askCoin.buffer, present.buffer, centred.buffer]);
 }
 
 /** Which instruments make up one cell of the map, so the popup can say where the liquidity under the pointer comes from. */
