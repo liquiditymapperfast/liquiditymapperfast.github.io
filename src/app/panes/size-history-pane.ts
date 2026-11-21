@@ -180,9 +180,10 @@ export class SizeHistoryPane extends TimePane {
     ctx.restore();
     // The rows' names at the left, on the panel's colour so the bars under them stay readable (as tall as a row allows; rows too thin for a
     // name go without, the card under the pointer names them); liquidations from a day the source cut say ≈.
-    const fontPx = rowH < 9 ? 8 : rowH < 12 ? 9 : 10, plate = Math.min(14, Math.max(7, rowH - 1));
+    // A phone 360 px tall held sideways with LT on gives rows of under 6 px: still named, small (a phone's screen draws them at 3x).
+    const fontPx = rowH < 7 ? 6 : rowH < 8 ? 7 : rowH < 9 ? 8 : rowH < 12 ? 9 : 10, plate = Math.min(14, Math.max(5, rowH - 1));
     ctx.save(); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = `${fontPx}px ui-sans-serif, system-ui, sans-serif`;
-    if (rowH >= 7) for (const { row: r, y: ry, h: rh } of this.#layout) {
+    if (rowH >= 5) for (const { row: r, y: ry, h: rh } of this.#layout) {
       const row = rows[r]!, label = row.kind === 'liq' && liqCutShown ? `≈${row.label}` : row.label, w = ctx.measureText(label).width + 10;
       ctx.globalAlpha = 0.88; ctx.fillStyle = p.panel; ctx.fillRect(2, ry + rh / 2 - plate / 2, w, plate); ctx.globalAlpha = 1; ctx.fillStyle = p.muted; ctx.fillText(label, 6, ry + rh / 2 + 0.5);
     }
