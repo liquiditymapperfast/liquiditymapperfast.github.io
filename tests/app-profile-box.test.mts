@@ -145,9 +145,9 @@ test('on a phone\'s map a long verdict wraps to the room there: the box stays on
   } finally { setCompactGutters(false, 2000); }
 });
 
-test('a wrapped line runs to the room less the box\'s padding and margins, between 120 and 300 px', () => {
+test('a wrapped line runs to the room less the box\'s padding and margins, no wider than the usual 250 px and no narrower than 120', () => {
   assert.equal(wrapWithin(0, 230), 230 - 2 * INFO.pad - 4);
   assert.equal(wrapWithin(50, 280), 210);
-  assert.equal(wrapWithin(0, 1000), 300, 'a desktop\'s map: no wider than 300 px');
+  assert.equal(wrapWithin(0, 1000), INFO.wrapAt, 'a desktop\'s map: where its boxes always wrapped');
   assert.equal(wrapWithin(0, 100), 120, 'a sliver: still a readable width');
 });

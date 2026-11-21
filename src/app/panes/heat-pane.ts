@@ -4478,7 +4478,7 @@ export class HeatPane {
    * the shorts that go if it rises as far, framed with its totals on the pills, and a card for the row under the pointer, as the column draws
    * its rows (`liqCardLines`): what still stands there, how many positions or orders the snapshot puts there and the largest, then which side
    * of the band is heavier and how many times the other (`liqBandVerdict`), with its totals where no pill shows them (a strip, a split's
-   * sub-column, an edge off the screen). The band's edges take the column's colours, take profits on their own included (`alone`).
+   * sub-column, an edge off the screen).
    */
   #paintLiqColumnMirror(ctx: CanvasRenderingContext2D, state: AppState, s: LiqStanding, price: number, x0: number, ph: number, W: number, set: LiqSet = this.hub.liqLevels): void {
     const hv = this.#profileHover, p = this.#palette, v = this.view;
@@ -4490,10 +4490,9 @@ export class HeatPane {
     if (!stats) return;
     const top = v.yOf(price + d, ph), bottom = v.yOf(price - d, ph), pct = percentText(stats);
     // The strip has no room for the band's pills: its box says the same.
-    const wide = W >= PROFILE_W, alone = set.levels?.kind === 'takes';
+    const wide = W >= PROFILE_W;
     dimOutside(ctx, x0, W, 0, ph, top, bottom, p.panel, 0.6);
-    paintBand(ctx, p, x0, W, { y: top, color: alone ? p.candleDown : p.candleUp, label: wide ? `${usd(stats.aboveUsd)} · ${pct}` : '' },
-      { y: bottom, color: alone ? p.candleUp : p.candleDown, label: wide ? `${usd(stats.belowUsd)} · ${pct}` : '' }, { y0: 0, y1: ph });
+    paintBand(ctx, p, x0, W, { y: top, color: p.candleUp, label: wide ? `${usd(stats.aboveUsd)} · ${pct}` : '' }, { y: bottom, color: p.candleDown, label: wide ? `${usd(stats.belowUsd)} · ${pct}` : '' }, { y0: 0, y1: ph });
     // The row under the pointer: the column's row on the snapshot's own bins (`liqCardRow`), so what stands, the snapshot's amount, its count and
     // its largest describe the same prices.
     const row = liqCardRow(at, niceStep(v.p1 - v.p0, ph / 3), set.levels?.step ?? 0), { lo, hi } = row, step = hi - lo, side = at < price ? 'long' : 'short';

@@ -188,10 +188,6 @@ test('the map draws these boxes: the profile from its row and band, the band fro
   // The book's band reaches the verdict the right way round: the bids below the price, the asks above it (`depthBand`'s below and above).
   assert.match(profile, /const G = b\.grid, \{ above, below, loBin, hiBin \} = b;/);
   assert.match(profile, /depthBandLines\(\{ bid: below, ask: above, /);
-  // Take profits on their own: the band's edges in the column's colours, as its bars and its box (review 2026-11-21).
-  assert.match(body('#paintLiqColumnMirror'), /alone = set\.levels\?\.kind === 'takes'/);
-  assert.match(body('#paintLiqColumnMirror'), /\{ y: top, color: alone \? p\.candleDown : p\.candleUp,/);
-  assert.match(body('#paintLiqColumnMirror'), /\{ y: bottom, color: alone \? p\.candleUp : p\.candleDown,/);
 });
 
 test('the liquidation card speaks of whole snapshot bins, by number: the column\'s row where it is made of them, the bin itself where narrower', () => {
