@@ -3306,5 +3306,6 @@
  "Not unusual": "正常",
  "Close to unusual": "接近异常",
  "Unusual size rows": "异常的大小行",
- "Not judged yet: too few earlier candles to compare with": "暂不作判断：可供比较的此前 K 线太少"
+ "Not judged yet: too few earlier candles to compare with": "暂不作判断：可供比较的此前 K 线太少",
+ "Both columns on one dollar scale": "两栏使用同一个美元刻度"
 }

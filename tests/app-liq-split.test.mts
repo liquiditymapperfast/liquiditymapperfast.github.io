@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { LADDER_SUB_MIN, SPLIT_COLUMN_W, SPLIT_SUB_W, ladderSplitFits, liqColumnWidth, placeProbeBoxes, splitFits, splitHeads, splitLanes, splitScales, placeCaptions, subAt, subColumns, type BoxAt, type BoxSize } from '../src/app/liq-split.ts';
+import { LADDER_SUB_MIN, SPLIT_COLUMN_W, SPLIT_SUB_W, ladderSplitFits, liqColumnWidth, ownScales, placeProbeBoxes, splitFits, splitHeads, splitLanes, splitScales, placeCaptions, subAt, subColumns, type BoxAt, type BoxSize } from '../src/app/liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../src/app/layouts/dock-model.ts';
 import { LIQ_SPLITS, readLiqLevels } from '../src/app/liq-url.ts';
 import { FREE_VIEW, curveOf, depthView, effectiveSplit, effectiveView, narrowView, splitPair } from '../src/app/liq-view.ts';
@@ -50,19 +50,36 @@ test('liquidations beside stops share one scale (a bar compares across the divid
   assert.deepEqual(splitScales({ maxLevel: 0, maxCum: 0 }, { maxLevel: 0, maxCum: 0 }, false), [{ maxLevel: 1, maxCum: 1 }, { maxLevel: 1, maxCum: 1 }], 'never divided by zero');
 });
 
-test('the split column\'s heading: each caption over its column, the maxima under each where they have their own scale, once across where shared; nothing cut', () => {
-  const kinds = splitHeads(measure, { captions: ['Liquidations', 'Stops'], shared: true, subRoom: 89, wholeRoom: 189, maxima: ['LEVEL MAX $12.3M', 'CUM MAX $120.0M'] });
-  assert.deepEqual(kinds.subs.map(s => s.scale), [[], []], 'shared: no scale per column');
-  assert.deepEqual(kinds.across, ['LEVEL MAX $12.3M', 'CUM MAX $120.0M']);
-  assert.equal(kinds.rows, 1 + 2);
-  const groups = splitHeads(measure, { captions: ['Everyone', 'Profitable'], shared: false, subRoom: 89, wholeRoom: 189,
+test('the split column\'s heading: each caption over its column with its own maxima under it; where both share one scale, words across and no figure; nothing cut', () => {
+  // Liquidations beside stops (owner, 2026-11-21): the liquidations' largest row $12.3M with the take profits' $14.0M beside them, their curve
+  // $120.0M; the stops' $1.2M and $9.0M. The bars share the larger of each, but each heading says its own.
+  const own = ownScales({ maxLevel: 12.3e6, maxCum: 120e6 }, { maxLevel: 14e6, maxCum: 30e6 }, { maxLevel: 1.2e6, maxCum: 9e6 });
+  assert.deepEqual(own, [{ maxLevel: 14e6, maxCum: 120e6 }, { maxLevel: 1.2e6, maxCum: 9e6 }], 'the left counts the take profits\' bars, never their curve');
+  assert.deepEqual(splitScales(own[0]!, own[1]!, true), [own[0], own[0]], 'the bars still share the larger of each');
+  assert.deepEqual(ownScales(null, null, { maxLevel: 1, maxCum: 2 }), [null, { maxLevel: 1, maxCum: 2 }], 'nothing drawn, no maxima');
+  const money = (v: number): string => `$${(v / 1e6).toFixed(1)}M`;
+  const maxima = (sc: { maxLevel: number; maxCum: number } | null): [string, string] | null => sc && [`LEVEL MAX ${money(sc.maxLevel)}`, `CUM MAX ${money(sc.maxCum)}`];
+  const kinds = splitHeads(measure, { captions: ['Liquidations', 'Stops'], maxima: [maxima(own[0]), maxima(own[1])], across: 'Both columns on one dollar scale', subRoom: 89, wholeRoom: 189 });
+  // At 6 px a letter "LEVEL MAX $14.0M" (96 px) does not fit 89 px: it wraps under itself, the value whole on the next line.
+  assert.deepEqual(kinds.subs[0].scale, ['LEVEL MAX', '$14.0M', 'CUM MAX', '$120.0M'], 'the liquidations\' own');
+  assert.deepEqual(kinds.subs[1].scale, ['LEVEL MAX', '$1.2M', 'CUM MAX $9.0M'], 'the stops\' own, not the shared scale\'s');
+  assert.deepEqual(kinds.across, ['Both columns on one dollar', 'scale'], 'the words wrap across the column, never cut');
+  assert.ok(kinds.across.every(line => !/\d/.test(line)), 'no figure across: at the column\'s left edge it reads as the liquidations\'');
+  assert.equal(kinds.rows, 1 + 4 + 2);
+  const waiting = splitHeads(measure, { captions: ['Liquidations', 'Stops'], maxima: [maxima(own[0]), null], across: 'One scale', subRoom: 89, wholeRoom: 189 });
+  assert.deepEqual(waiting.subs[1].scale, [], 'a column with nothing to draw prints no figure: it says why instead');
+  assert.equal(waiting.rows, 1 + 4 + 1);
+  const groups = splitHeads(measure, { captions: ['Everyone', 'Profitable'], across: null, subRoom: 89, wholeRoom: 189,
     maxima: [['LEVEL MAX $12.3M', 'CUM MAX $120.0M'], ['LEVEL MAX $1.2M', 'CUM MAX $9.0M']] });
   assert.deepEqual(groups.across, []);
-  // At 6 px a letter "LEVEL MAX $12.3M" (96 px) does not fit 89 px: it wraps under itself, the value whole on the next line.
   assert.deepEqual(groups.subs[0].scale, ['LEVEL MAX', '$12.3M', 'CUM MAX', '$120.0M']);
   assert.deepEqual(groups.subs[1].scale, ['LEVEL MAX', '$1.2M', 'CUM MAX $9.0M']);
   assert.equal(groups.rows, 1 + 4);
-  for (const line of [...groups.subs.flatMap(s => [...s.caption, ...s.scale]), ...kinds.across]) assert.ok(!line.includes('…'), `never cut: ${line}`);
+  for (const line of [...kinds.subs, ...groups.subs].flatMap(s => [...s.caption, ...s.scale]).concat(kinds.across)) assert.ok(!line.includes('…'), `never cut: ${line}`);
+  // The map feeds each heading its column's own figures (not the shared scale's), and says the one scale in words only where it is shared.
+  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
+  assert.match(heat, /own = ownScales\(profs\[0\], tprof, profs\[1\]\)/);
+  assert.match(heat, /maxima: \[maxima\(own\[0\]\), maxima\(own\[1\]\)\], across: shared \? t\('Both columns on one dollar scale'\) : null/);
 });
 
 test('the stripe\'s lanes for liquidations beside stops: the take profits by the live edge, then liquidations, then stops beside the column; captions never overlap', () => {
@@ -198,7 +215,7 @@ test('the split\'s pieces are where the page draws them: the map\'s split painte
   assert.match(heat, /if \(pair && !strip && W === SPLIT_COLUMN_W\) \{ this\.#paintLiqSplit\(ctx, state, pw, ph, pair\); return; \}/);
   assert.match(heat, /const set: LiqSet = pair\?\.split === 'kinds' \? src\.setOf\(narrowView\(pair\)\) : src;/, 'too narrow: the sum, or everyone\'s');
   assert.match(fs.readFileSync('src/app/liq-stripe.ts', 'utf8'), /splitLanes\(x0, pw, !!takes\)/); assert.match(heat, /this\.#placeLiqCaptions\(ctx, painted\.captions, pw\)/);
-  assert.match(heat, /splitScales\(\{ maxLevel: Math\.max\(profs\[0\]\?\.maxLevel \?\? 0, tprof\?\.maxLevel \?\? 0\), maxCum: profs\[0\]\?\.maxCum \?\? 0 \},\n\s+\{ maxLevel: profs\[1\]\?\.maxLevel \?\? 0, maxCum: profs\[1\]\?\.maxCum \?\? 0 \}, pair\.split === 'kinds'\)/);
+  assert.match(heat, /const shared = pair\.split === 'kinds', own = ownScales\(profs\[0\], tprof, profs\[1\]\), none: SubScale = \{ maxLevel: 0, maxCum: 0 \};\n\s+const scales = splitScales\(own\[0\] \?\? none, own\[1\] \?\? none, shared\);/);
   assert.match(tab, /halves = !!pair && ladderSplitFits\(W - AXIS\)/); assert.match(tab, /#paintHalves\(/);
   // The Depth pane is not split (owner, 2026-11-20): every place that asks what it draws (its series, its button, its Range summary's key) reads
   // `liveDepthView`, never the left column's set; only Everyone | +PnL is told in its tip.

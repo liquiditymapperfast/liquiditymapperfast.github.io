@@ -28,7 +28,7 @@ import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText, wrapText } from '../text-fit.ts';
 import { LIQ_PROFILE_ROWS, binsBetween, captionPlace, dollarPriceOf, laneRows, liqCurves, liqProfile, liqStanding, onTheWay, partsBetween, seamStats, standingBelow, standingBins, TAKE_DASH, type CurvePoint, type LaneRows, type LiqLevels, type LiqRow, type LiqSet, type LiqStanding } from '../liq-levels.ts';
-import { SPLIT_COLUMN_W, captionKeepOut, cornerSpan, liqColumnWidth, placeCaptions, splitHeads, splitScales, stripePlan, subAt, subColumns, type Rect, type Sub, type SubScale } from '../liq-split.ts';
+import { SPLIT_COLUMN_W, captionKeepOut, cornerSpan, liqColumnWidth, ownScales, placeCaptions, splitHeads, splitScales, stripePlan, subAt, subColumns, type Rect, type Sub, type SubScale } from '../liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../layouts/dock-model.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRowsHeld, type TradedRows } from '../traded.ts';
@@ -4298,8 +4298,8 @@ export class HeatPane {
    * The liquidation column split in two (Plus, 2026-11-19; `liqSplitDrawn`): liquidations beside stops of the chosen traders, on one dollar
    * scale (a bar compares across the divider), or everyone's levels beside the profitable traders', each on its own (everyone's are many times
    * larger). Each sub-column draws as the column does (`#paintLiqSub`): what still stands of each row and the curve from the price out, under
-   * its caption and, on scales of their own, its LEVEL MAX and CUM MAX (`splitHeads`); on one shared scale the two maxima are said once,
-   * across. The take profits go with the left column, dashed bars from its right edge, as they go with the left set everywhere. A sub-column
+   * its caption and its own LEVEL MAX and CUM MAX (`ownScales`, `splitHeads`); on one shared scale a line across says so, in words only. The
+   * take profits go with the left column, dashed bars from its right edge, as they go with the left set everywhere. A sub-column
    * with nothing to draw says why under the heading. The button names the split; the lines under it say whose levels both columns are, or
    * what both add up, and what the curves leave out.
    */
@@ -4325,11 +4325,11 @@ export class HeatPane {
     const step = niceStep(v.p1 - v.p0, ph / 3), price = this.#liqPrice(state);
     const profs = [stands[0] ? liqProfile(stands[0], step, v.p0, v.p1, price) : null, stands[1] ? liqProfile(stands[1], step, v.p0, v.p1, price) : null] as const;
     const ts = takesShown ? src.takesStanding() : null, tprof = ts ? liqProfile(ts, step, v.p0, v.p1, price) : null;
-    const scales = splitScales({ maxLevel: Math.max(profs[0]?.maxLevel ?? 0, tprof?.maxLevel ?? 0), maxCum: profs[0]?.maxCum ?? 0 },
-      { maxLevel: profs[1]?.maxLevel ?? 0, maxCum: profs[1]?.maxCum ?? 0 }, pair.split === 'kinds');
-    const maxima = (sc: SubScale): [string, string] => [t('LEVEL MAX {value}', { value: usd(sc.maxLevel) }), t('CUM MAX {value}', { value: usd(sc.maxCum) })];
-    const heads = splitHeads(wide, { captions: subNames(pair), shared: pair.split === 'kinds', subRoom: subRoom(subs[0]), wholeRoom: liqRoom(W),
-      maxima: pair.split === 'kinds' ? maxima(scales[0]) : [maxima(scales[0]), maxima(scales[1])] });
+    const shared = pair.split === 'kinds', own = ownScales(profs[0], tprof, profs[1]), none: SubScale = { maxLevel: 0, maxCum: 0 };
+    const scales = splitScales(own[0] ?? none, own[1] ?? none, shared);
+    const maxima = (sc: SubScale | null): [string, string] | null => sc && [t('LEVEL MAX {value}', { value: usd(sc.maxLevel) }), t('CUM MAX {value}', { value: usd(sc.maxCum) })];
+    const heads = splitHeads(wide, { captions: subNames(pair), maxima: [maxima(own[0]), maxima(own[1])], across: shared ? t('Both columns on one dollar scale') : null,
+      subRoom: subRoom(subs[0]), wholeRoom: liqRoom(W) });
     const head = LIQ_KIND_TOP + LIQ_KIND_H + 3 + 12 * (notes.length + heads.rows) + 2;
     this.#placeLiqHistory(stands[0] && !(state.show.depth && state.depthSource === 'liq') ? x0 : null, head);
     // Each sub-column's bars and curve, or why it has none.
@@ -4342,8 +4342,8 @@ export class HeatPane {
       wrapText(wide, why, subRoom(sub), 8).forEach((line, n) => ctx.fillText(line, sub.x0 + LIQ_PAD, head + 4 + 12 * n));
     });
     this.#liqSubs = drawn;
-    // The divider, then the heading band over the rows: the button (a page element), the notes, each column's caption and its scale (or the
-    // one scale both share, across).
+    // The divider, then the heading band over the rows: the button (a page element), the notes, each column's caption and its own maxima,
+    // then, where both share one scale, the words that say so, across.
     ctx.globalAlpha = 1; ctx.strokeStyle = p.line; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(subs[1].x0 + 0.5, 0); ctx.lineTo(subs[1].x0 + 0.5, ph); ctx.stroke();
     ctx.globalAlpha = 0.9; ctx.fillStyle = p.panel; ctx.fillRect(x0 + 1, 0, W - 1, this.#liqHeadH); ctx.globalAlpha = 1;
     let y = LIQ_KIND_TOP + LIQ_KIND_H + 3;

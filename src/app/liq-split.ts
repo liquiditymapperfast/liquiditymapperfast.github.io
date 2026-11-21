@@ -234,18 +234,32 @@ export function liqColumnWidth(o: { shown: boolean; compact: boolean; strip: num
 }
 
 /**
- * The heading of a split column, as lines fitted to the room by `measure`: each sub-column's caption (what it shows) and, where each has a
- * scale of its own (everyone beside the profitable traders), its LEVEL MAX and CUM MAX under it, in its own `subRoom`; where the two share one
- * scale (liquidations beside stops), the two maxima once, across the column (`wholeRoom`). A line that does not fit wraps under itself (at
- * most two lines), never cut short: every column is captioned with exactly what it shows. `rows` is how many lines the heading takes.
+ * Each sub-column's own largest row and the most its curve reaches (`left`, `right`: its profile's; null for a sub-column with nothing to
+ * draw), what its heading prints: the left one's largest row counts the take profits' bars beside it (`takes`), as the unsplit column's does.
+ * On a shared scale (`splitScales`) the bars are measured against the larger of the two, but each heading still says its own, so a thin
+ * column reads as small beside the other, not as a column measured against itself (owner, 2026-11-21: under one LEVEL MAX and CUM MAX
+ * printed below "Liquidations", the stops' thin bars looked scaled to the liquidations' figures).
  */
-export function splitHeads(measure: (text: string) => number, o: { captions: [string, string]; maxima: [[string, string], [string, string]] | [string, string]; shared: boolean; subRoom: number; wholeRoom: number }):
-  { subs: [{ caption: string[]; scale: string[] }, { caption: string[]; scale: string[] }]; across: string[]; rows: number } {
+export function ownScales(left: SubScale | null, takes: SubScale | null, right: SubScale | null): [SubScale | null, SubScale | null] {
+  return [left ? { maxLevel: Math.max(left.maxLevel, takes?.maxLevel ?? 0), maxCum: left.maxCum } : null, right ? { maxLevel: right.maxLevel, maxCum: right.maxCum } : null];
+}
+
+/** One sub-column's heading as `splitHeads` lays it out: its caption, then its own maxima, each a line or two. */
+export interface SubHead { caption: string[]; scale: string[] }
+/**
+ * The heading of a split column, as lines fitted to the room by `measure`: each sub-column's caption (what it shows) and its own LEVEL MAX and
+ * CUM MAX under it (`maxima`, null for one with nothing to draw, which says why instead), in its own `subRoom`; then, across the column
+ * (`wholeRoom`), words only (`across`): where the two share one scale (liquidations beside stops), that they do. No figure goes across: a line
+ * at the column's left edge reads as the left caption's. A line that does not fit wraps under itself (at most two lines), never cut short:
+ * every column is captioned with exactly what it shows. `rows` is how many lines the heading takes.
+ */
+export function splitHeads(measure: (text: string) => number, o: { captions: readonly [string, string]; maxima: readonly [readonly [string, string] | null, readonly [string, string] | null]; across: string | null; subRoom: number; wholeRoom: number }):
+  { subs: [SubHead, SubHead]; across: string[]; rows: number } {
   const wrap = (text: string, room: number): string[] => wrapText(measure, text, room, 2);
-  const per = (i: 0 | 1): { caption: string[]; scale: string[] } => ({ caption: wrap(o.captions[i], o.subRoom), scale: o.shared ? [] : (o.maxima as [[string, string], [string, string]])[i].flatMap(line => wrap(line, o.subRoom)) });
-  const subs: [{ caption: string[]; scale: string[] }, { caption: string[]; scale: string[] }] = [per(0), per(1)];
-  const across = o.shared ? (o.maxima as [string, string]).flatMap(line => wrap(line, o.wholeRoom)) : [];
-  const tall = (sub: { caption: string[]; scale: string[] }): number => sub.caption.length + sub.scale.length;
+  const per = (i: 0 | 1): SubHead => ({ caption: wrap(o.captions[i], o.subRoom), scale: (o.maxima[i] ?? []).flatMap(line => wrap(line, o.subRoom)) });
+  const subs: [SubHead, SubHead] = [per(0), per(1)];
+  const across = o.across ? wrap(o.across, o.wholeRoom) : [];
+  const tall = (sub: SubHead): number => sub.caption.length + sub.scale.length;
   return { subs, across, rows: Math.max(tall(subs[0]), tall(subs[1])) + across.length };
 }
 

@@ -3306,5 +3306,6 @@
  "Not unusual": "異常なし",
  "Close to unusual": "異常に近い",
  "Unusual size rows": "異常なサイズ行",
- "Not judged yet: too few earlier candles to compare with": "まだ判定なし：比較できる以前のローソク足が少なすぎます"
+ "Not judged yet: too few earlier candles to compare with": "まだ判定なし：比較できる以前のローソク足が少なすぎます",
+ "Both columns on one dollar scale": "2 列とも 1 つのドル目盛り"
 }
