@@ -263,6 +263,14 @@ export function splitHeads(measure: (text: string) => number, o: { captions: rea
   return { subs, across, rows: Math.max(tall(subs[0]), tall(subs[1])) + across.length };
 }
 
+/**
+ * How many 12 px lines a sub-column's "why it has nothing" text may take: those whose 10 px text ends inside the plot (`ph` px tall) when the
+ * first starts 4 px under the heading (`head` px), at most 8, at least 1 (its end then said with an ellipsis, `wrapText`). Sol, review
+ * 2026-11-21: with each column's own maxima the heading is a row or two taller, and on a 240 px map in Russian the last line ran 7 px past
+ * the plot's foot.
+ */
+export const whyLines = (ph: number, head: number): number => Math.max(1, Math.min(8, Math.floor((ph - head - 4 - 10) / 12) + 1));
+
 /** A box's size, and where its top left corner goes. */
 export interface BoxSize { w: number; h: number }
 export interface BoxAt { x: number; y: number }

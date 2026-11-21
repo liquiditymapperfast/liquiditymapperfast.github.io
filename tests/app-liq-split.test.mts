@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { LADDER_SUB_MIN, SPLIT_COLUMN_W, SPLIT_SUB_W, ladderSplitFits, liqColumnWidth, ownScales, placeProbeBoxes, splitFits, splitHeads, splitLanes, splitScales, placeCaptions, subAt, subColumns, type BoxAt, type BoxSize } from '../src/app/liq-split.ts';
+import { LADDER_SUB_MIN, SPLIT_COLUMN_W, SPLIT_SUB_W, ladderSplitFits, liqColumnWidth, ownScales, placeProbeBoxes, splitFits, splitHeads, splitLanes, splitScales, placeCaptions, subAt, subColumns, whyLines, type BoxAt, type BoxSize } from '../src/app/liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../src/app/layouts/dock-model.ts';
 import { LIQ_SPLITS, readLiqLevels } from '../src/app/liq-url.ts';
 import { FREE_VIEW, curveOf, depthView, effectiveSplit, effectiveView, narrowView, splitPair } from '../src/app/liq-view.ts';
@@ -80,6 +80,17 @@ test('the split column\'s heading: each caption over its column with its own max
   const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
   assert.match(heat, /own = ownScales\(profs\[0\], tprof, profs\[1\]\)/);
   assert.match(heat, /maxima: \[maxima\(own\[0\]\), maxima\(own\[1\]\)\], across: shared \? t\('Both columns on one dollar scale'\) : null/);
+});
+
+test('a sub-column\'s why-text never runs past the plot\'s foot under a taller heading (Sol, review 2026-11-21)', () => {
+  // A 240 px map (the least a map pane is, a 218 px plot) under a tall heading: as many lines as end inside the plot, no more.
+  const ph = 218, head = 140;
+  const n = whyLines(ph, head);
+  assert.ok(head + 4 + 12 * (n - 1) + 10 <= ph, 'the last line ends inside the plot');
+  assert.ok(head + 4 + 12 * n + 10 > ph, 'and no line that would fit is left out');
+  assert.equal(whyLines(2000, 60), 8, 'a tall map: as many as before');
+  assert.equal(whyLines(80, 76), 1, 'no room at all: one line, its end an ellipsis');
+  assert.match(fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8'), /wrapText\(wide, why, subRoom\(sub\), whyLines\(ph, head\)\)/);
 });
 
 test('the stripe\'s lanes for liquidations beside stops: the take profits by the live edge, then liquidations, then stops beside the column; captions never overlap', () => {

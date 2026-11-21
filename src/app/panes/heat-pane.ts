@@ -28,7 +28,7 @@ import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText, wrapText } from '../text-fit.ts';
 import { LIQ_PROFILE_ROWS, binsBetween, captionPlace, dollarPriceOf, laneRows, liqCurves, liqProfile, liqStanding, onTheWay, partsBetween, seamStats, standingBelow, standingBins, TAKE_DASH, type CurvePoint, type LaneRows, type LiqLevels, type LiqRow, type LiqSet, type LiqStanding } from '../liq-levels.ts';
-import { SPLIT_COLUMN_W, captionKeepOut, cornerSpan, liqColumnWidth, ownScales, placeCaptions, splitHeads, splitScales, stripePlan, subAt, subColumns, type Rect, type Sub, type SubScale } from '../liq-split.ts';
+import { SPLIT_COLUMN_W, captionKeepOut, cornerSpan, liqColumnWidth, ownScales, placeCaptions, splitHeads, splitScales, stripePlan, subAt, subColumns, whyLines, type Rect, type Sub, type SubScale } from '../liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../layouts/dock-model.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
 import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, tradedRowAt, tradedRowsHeld, type TradedRows } from '../traded.ts';
@@ -4339,7 +4339,7 @@ export class HeatPane {
       if (prof && set) { this.#paintLiqSub(ctx, prof, i === 0 ? tprof : null, sub, scale, step, price, ph); drawn.push({ x0: sub.x0, W: sub.w, width: sub.w - 6, maxCum: scale.maxCum, set }); return; }
       const why = !live ? t('Liquidation levels show the live market only.') : (set ? liqWhy(set, set.asOfs().liq) : '') || t('Liquidation levels are loading.');
       ctx.globalAlpha = 1; ctx.fillStyle = p.muted;
-      wrapText(wide, why, subRoom(sub), 8).forEach((line, n) => ctx.fillText(line, sub.x0 + LIQ_PAD, head + 4 + 12 * n));
+      wrapText(wide, why, subRoom(sub), whyLines(ph, head)).forEach((line, n) => ctx.fillText(line, sub.x0 + LIQ_PAD, head + 4 + 12 * n));
     });
     this.#liqSubs = drawn;
     // The divider, then the heading band over the rows: the button (a page element), the notes, each column's caption and its own maxima,
