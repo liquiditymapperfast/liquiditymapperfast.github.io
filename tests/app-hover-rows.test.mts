@@ -173,7 +173,8 @@ test('the right half of a split liquidation column has its box against its own e
 test('the split column\'s edge against the map is drawn before the right half\'s box, which may stand across it (Karl, 2026-11-21: the line ran through the Stops box)', () => {
   const pw = 487, ph = 876;
   assert.ok(liqSubBoxFrame(1, pw + 100, pw, ph, 97, 72).bounds.x0 < pw, 'the right half\'s box may reach past the left half onto the map');
-  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8'), start = heat.indexOf('  #paintLiqSplit('), split = heat.slice(start, heat.indexOf('\n  }\n', start));
+  // Line endings as in git (a checkout that writes CRLF would hide the method's end from the search; Sol, review 2026-11-21).
+  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8').replace(/\r\n/g, '\n'), start = heat.indexOf('  #paintLiqSplit('), split = heat.slice(start, heat.indexOf('\n  }\n', start));
   const edge = split.lastIndexOf('ctx.moveTo(x0 + 0.5, 0); ctx.lineTo(x0 + 0.5, ph); ctx.stroke();'), box = split.indexOf('paintMirrorBox(');
   assert.ok(start > 0 && edge > 0 && box > edge, 'the edge first, then the box');
   assert.doesNotMatch(split.slice(box), /\.stroke\(|\.fill(Rect|Text)?\(/, 'nothing of the column drawn over the box');
