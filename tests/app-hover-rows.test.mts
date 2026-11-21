@@ -170,6 +170,15 @@ test('the right half of a split liquidation column has its box against its own e
   assert.equal(liqSubBoxFrame(1, x1, pw, 160, 97, 72).bounds.y0, 0, 'a map too short for that: from the top');
 });
 
+test('the split column\'s edge against the map is drawn before the right half\'s box, which may stand across it (Karl, 2026-11-21: the line ran through the Stops box)', () => {
+  const pw = 487, ph = 876;
+  assert.ok(liqSubBoxFrame(1, pw + 100, pw, ph, 97, 72).bounds.x0 < pw, 'the right half\'s box may reach past the left half onto the map');
+  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8'), start = heat.indexOf('  #paintLiqSplit('), split = heat.slice(start, heat.indexOf('\n  }\n', start));
+  const edge = split.lastIndexOf('ctx.moveTo(x0 + 0.5, 0); ctx.lineTo(x0 + 0.5, ph); ctx.stroke();'), box = split.indexOf('paintMirrorBox(');
+  assert.ok(start > 0 && edge > 0 && box > edge, 'the edge first, then the box');
+  assert.doesNotMatch(split.slice(box), /\.stroke\(|\.fill(Rect|Text)?\(/, 'nothing of the column drawn over the box');
+});
+
 test('the map draws these boxes: the profile from its row and band, the band from the price when scrolled away, the split\'s right half in its frame', () => {
   const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
   const body = (name: string): string => { const start = heat.indexOf(`  ${name}(`), end = heat.indexOf('\n  }\n', start); assert.ok(start > 0, name); return heat.slice(start, end); };
