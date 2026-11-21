@@ -21,7 +21,7 @@ export const VOLUME: MeasureDef<'volume'> = {
   header: rows => { const [head, sub] = tradedHeader(rows); return { head, sub, warn: rows?.partial === true }; },
   priceNotes: () => [],
   timeNote: () => t('Bought and sold at market in each stretch, on the columns\' markets: to the second for the last day the page holds, to the minute before it, where a bar is a minute at least. Ten minutes or more with no trade on any of them counts as not recorded.'),
-  judgedByMarks: false, rangeAddsUp: true,
+  judgedByMarks: false, rangeAddsUp: true, perpetualsOnly: false,
   byPrice: {
     instruments: ids => [...ids],
     keyOf: id => id,

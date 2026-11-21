@@ -130,6 +130,11 @@ export interface MeasureDef<Id extends string = string> {
   readonly judgedByMarks: boolean;
   /** Whether a drag on its column adds up its own rows in the Range panel (the panel adds up traded volume at those prices). */
   readonly rangeAddsUp: boolean;
+  /**
+   * Whether only perpetuals have it (open interest, liquidations): its column and its band count the markets `oiFlowIds` counts, whatever
+   * the Spot / Perp filter says, so a Spot filter left on does not empty them (Karl, 2026-11-05 for open interest, 2026-11-21 liquidations).
+   */
+  readonly perpetualsOnly: boolean;
   readonly byPrice: PriceProvider;
   readonly byTime: { worker(): TimeWorker };
 }

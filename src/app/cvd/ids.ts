@@ -93,13 +93,6 @@ export const oiFlowIds = (state: Pick<AppState, 'markets' | 'disabledVenues' | '
  */
 export const liquidationIds = (state: Pick<AppState, 'markets' | 'disabledVenues' | 'scope'> & MapState, flow: FlowBook, kindOf: (id: string) => Kind | null): string[] =>
   aggregateIds(flow, oiFlowIds(state, flow.ids).filter(id => kindOf(id) === 'perp'), kindOf).sort().slice(0, MAX_PROFILE_INSTRUMENTS);
-
-/**
- * The measures only perpetuals have (open interest, liquidations): their columns beside the map and bands along its top count the markets
- * `oiFlowIds` counts, whatever the Spot / Perp filter says, so a Spot filter left on does not empty them.
- */
-export const perpetualMeasure = (metric: string): boolean => metric === 'oi' || metric === 'liquidations';
-
 /**
  * Every instrument whose flow the page asks the server for: all the markets it knows, not only the ones the filter and the chips let
  * through. What is on screen is chosen from this later; asking for all of it is what lets the column say which exchanges it is leaving

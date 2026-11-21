@@ -27,7 +27,7 @@ export const ABSORPTION: MeasureDef<'absorption'> = {
   },
   priceNotes: () => [t('The absorption marks at the threshold the Absorption settings judge them at, each counted once: market sells resting buyers took (bid colour) and market buys resting sellers took (ask colour). Where a minute kept only its largest groups, the header says so.')],
   timeNote: () => t('The absorption marks at the threshold the Absorption settings judge them at, on the column\'s markets: market sells resting buyers took (bid colour) and market buys resting sellers took (ask colour). They are loaded for the time on the chart while this shows, marks on or off.'),
-  judgedByMarks: true, rangeAddsUp: false,
+  judgedByMarks: true, rangeAddsUp: false, perpetualsOnly: false,
   byPrice: {
     // The instruments with a threshold, at it exactly (one with none yet has nothing marked).
     instruments: (ids, thresholds) => ids.filter(id => typeof thresholds.get(id) === 'number').slice(0, MAX_ABSORPTION_INSTRUMENTS),

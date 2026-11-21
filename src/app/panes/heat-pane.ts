@@ -35,7 +35,7 @@ import { periodRowLines, tradedFigures, tradedLines, tradedNet, tradedNetLine, t
 import { MEASURES, measureDef, metricWords, type ProfileMetric } from '../measures/registry.ts';
 import { lineMetric, onPriceAxis, placedOn } from '../traded/profiles.ts';
 import { MAX_BANDS, arrangeProfiles, arrangeSides, columnHit, type Arranged, type ProfileRoom } from '../traded/arrange.ts';
-import { flowIds, flowLoadIds, instrumentShown, liquidationIds, mapVenues, oiFlowIds, perpetualMeasure, shownKey } from '../cvd/ids.ts';
+import { flowIds, flowLoadIds, instrumentShown, liquidationIds, mapVenues, oiFlowIds, shownKey } from '../cvd/ids.ts';
 import { aggregateIds } from '../cvd/model.ts';
 import { resolvePicks } from '../market-choice.ts';
 import { iconsOf, markLines, markSize, sameMarks, type AbsorptionMark, type MarkIcon } from '../absorption.ts';
@@ -3003,8 +3003,8 @@ export class HeatPane {
     const { from, to } = this.#columnWindow(), anchor = this.anchoredWindow(), anchored = anchor !== null;
     // What is on the chart keeps changing only while it follows the live edge; an anchored window only when it is taken again (its own key,
     // whether or not the chart follows the live edge). Open interest and liquidations count the perpetuals whatever the Spot / Perp filter says
-    // (`perpetualMeasure`, `oiFlowIds`), as the OI pane and the Flow history do.
-    const live = !anchored && state.followLive && !replaying(), ids = (perpetualMeasure(metric) ? oiFlowIds : flowIds)(state, this.hub.flow.ids), end = to;
+    // (the measure's `perpetualsOnly`, `oiFlowIds`), as the OI pane and the Flow history do.
+    const live = !anchored && state.followLive && !replaying(), ids = (measureDef(metric).perpetualsOnly ? oiFlowIds : flowIds)(state, this.hub.flow.ids), end = to;
     const step = requestStep(this.#tradedStep(), this.#levelStep(), this.#gridStep() / 40), asked = { tag: anchor ? anchorTag(anchor) : '', settled: false };
     this.hub.ensureProfile(metric, ids, from, end, step, live, asked, measureDef(metric).judgedByMarks ? this.#absorptionContext(state).thresholds : undefined);
     if (metric === 'volume' && this.#loadedServes(state)) this.#ensureLoadedColumn(state);

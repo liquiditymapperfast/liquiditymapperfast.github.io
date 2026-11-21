@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { BOOK_HOLD_MS, flowIds, instrumentShown, liquidationIds, mapVenues, nextBookGone, oiFlowIds, perpetualMeasure, pinChoices, shownKey } from '../src/app/cvd/ids.ts';
+import { BOOK_HOLD_MS, flowIds, instrumentShown, liquidationIds, mapVenues, nextBookGone, oiFlowIds, pinChoices, shownKey } from '../src/app/cvd/ids.ts';
+import { MEASURES } from '../src/app/measures/registry.ts';
 import type { LevelsFrame } from '../src/app/wire.ts';
 import { FlowBook } from '../src/app/flow-book.ts';
 import { aggregateIds } from '../src/app/cvd/model.ts';
@@ -64,9 +65,9 @@ test('the Flow history and the Bar stats ask the one liquidation loader with one
   assert.match(bars, /liqPerps = liqMarkets\.some\(id => kindOf\(state\.markets, id\) !== 'spot'\)/, 'Bar stats: no perpetual, no liquidations (empty cells, not 0)');
   const start = heat.indexOf('liquidationMarkets(state: AppState)'), body = heat.slice(start, heat.indexOf('\n  }\n', start));
   assert.ok(start > 0 && body.includes('liquidationIds(') && !/state\.scope/.test(body), 'the list does not depend on the filter');
-  assert.match(heat, /\(perpetualMeasure\(metric\) \? oiFlowIds : flowIds\)/, 'the columns beside the map');
-  assert.match(strip, /\(perpetualMeasure\(this\.metric\) \? oiFlowIds : flowIds\)/, 'the bands along the top');
-  assert.deepEqual(['oi', 'liquidations', 'volume', 'delta'].map(perpetualMeasure), [true, true, false, false]);
+  assert.match(heat, /\(measureDef\(metric\)\.perpetualsOnly \? oiFlowIds : flowIds\)/, 'the columns beside the map');
+  assert.match(strip, /\(measureDef\(this\.metric\)\.perpetualsOnly \? oiFlowIds : flowIds\)/, 'the bands along the top');
+  assert.deepEqual(MEASURES.filter(m => m.perpetualsOnly).map(m => m.id), ['oi', 'liquidations'], 'only perpetuals have open interest and liquidations');
 });
 
 test('a venue whose book leaves the map for a reconnect keeps counting for BOOK_HOLD_MS, then drops; back on the map it is no longer held', () => {

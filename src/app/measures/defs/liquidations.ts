@@ -26,7 +26,7 @@ export const LIQUIDATIONS: MeasureDef<'liquidations'> = {
   },
   priceNotes: () => [t('Liquidations as the venues report them: shorts liquidated, forced buys (bid colour), and longs liquidated, forced sells (ask colour). Only Binance, Bybit, OKX and Deribit report them, Binance at most one a market a second, so this is what was reported, not all there was.')],
   timeNote: () => t('Liquidations as the column adds them up, every size the record keeps: shorts liquidated (bid colour) and longs liquidated (ask colour). Where the time on the chart holds more than 5,000, only the largest are counted, and the header says so.'),
-  judgedByMarks: false, rangeAddsUp: false,
+  judgedByMarks: false, rangeAddsUp: false, perpetualsOnly: true,
   byPrice: {
     instruments: ids => [...ids],
     keyOf: id => id,

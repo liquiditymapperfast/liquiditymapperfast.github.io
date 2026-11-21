@@ -40,7 +40,7 @@ export const OI: MeasureDef<'oi'> = {
     ...(browser ? [t('This page keeps a day of the open-interest readings it takes while it is open: Binance, Bybit and OKX also read back their five-minute history, Hyperliquid, Bitget and Deribit have only what the page took.')] : []),
   ],
   timeNote: () => t('Where open interest grew (bid colour) and where it shrank (ask colour) in each stretch, each perpetual on its own, from its readings by the minute whatever the chart\'s timeframe: each change spread over the minutes it came about in by their volume and valued at the prices that traded, as the column does by price. A change across more than an hour, or with nothing traded under it, is not placed, and the header says how much. It never says who bought or sold.'),
-  judgedByMarks: false, rangeAddsUp: false,
+  judgedByMarks: false, rangeAddsUp: false, perpetualsOnly: true,
   byPrice: {
     instruments: ids => ids.filter(oiInstrument).slice(0, MAX_PROFILE_INSTRUMENTS),
     keyOf: id => id,
