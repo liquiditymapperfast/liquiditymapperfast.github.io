@@ -97,7 +97,7 @@ test('the Split choice: liquidations beside stops turns both kinds on, everyone 
   assert.equal(shownSplit({ ...s, split: 'kinds' }, true), 'kinds', 'liquidations beside stops with stops off: still chosen, kept (owner, 2026-11-20)');
   assert.equal(keptSplitNote({ ...s, split: 'kinds' }, true), 'Liquidations | Stops comes back when liquidations and stops are both on.', 'and the control says what brings it back');
   assert.equal(keptSplitNote({ ...s, stops: true, split: 'kinds' }, true), '', 'drawn: nothing to say');
-  assert.equal(keptSplitNote({ liq: false, stops: false, takes: true, group: 'all', split: 'groups' }, true), 'Everyone | Profitable comes back when liquidations or stops are on.');
+  assert.equal(keptSplitNote({ liq: false, stops: false, takes: true, group: 'all', split: 'groups' }, true), 'Everyone | +PnL comes back when liquidations or stops are on.');
   assert.equal(keptSplitNote({ ...s, split: 'kinds' }, false), '', 'nothing split for a visitor, nothing said');
   // Through the page's store every write is read: a kind switched off keeps the split, drawn as none until the kind is on again; the group is
   // untouched by a split.
@@ -134,11 +134,11 @@ test('the levels control shows Split as one of three, locked without Plus, left 
     assert.deepEqual(m.writes.at(-1), { split: 'groups' });
     assert.equal(traders.hidden, true, 'Traders has no say beside the profitable traders\' column');
     assert.deepEqual(opts.map(o => o.getAttribute('aria-checked')), ['false', 'false', 'true']);
-    assert.match(root.querySelector('.lv-sum')!.textContent, /Left: Everyone · Right: Profitable · Curve: Liquidations/);
+    assert.match(root.querySelector('.lv-sum')!.textContent, /Left: Everyone · Right: \+PnL · Curve: Liquidations/);
     opts[1]!.click();
     assert.deepEqual(m.writes.at(-1), { split: 'kinds', liq: true, stops: true });
     assert.equal(traders.hidden, false);
-    assert.match(root.querySelector('.lv-sum')!.textContent, /Left: Liquidations · Right: Stops · Profitable/);
+    assert.match(root.querySelector('.lv-sum')!.textContent, /Left: Liquidations · Right: Stops · \+PnL/);
     c.destroy();
     // Without Plus: both splits locked, pressing one opens the presentation and writes nothing.
     const v = model(readLiqLevels({ liq: true }), false), locked: unknown[] = [];
@@ -158,14 +158,14 @@ test('the levels control shows Split as one of three, locked without Plus, left 
 test('the words of a split: its name on the button, its name in the control, each column\'s caption, the take profits\' whose, the summary and the description', () => {
   const kinds = splitPair(readLiqLevels({ liq: true, stops: true, takes: true, group: 'profitable', split: 'kinds' }), true)!;
   const groups = splitPair(readLiqLevels({ liq: true, stops: true, split: 'groups' }), true)!;
-  assert.equal(splitName('kinds'), 'Liq | Stops'); assert.equal(splitName('groups'), 'Everyone | Profitable');
-  assert.deepEqual(['none', 'kinds', 'groups'].map(s => splitChoiceName(s as 'none')), ['None', 'Liquidations | Stops', 'Everyone | Profitable']);
-  assert.deepEqual(subNames(kinds), ['Liquidations', 'Stops']); assert.deepEqual(subNames(groups), ['Everyone', 'Profitable']);
-  assert.equal(takesOf('profitable'), 'Take profits · Profitable');
-  assert.equal(pairSummary(kinds), 'Left: Liquidations · Right: Stops · TP bars on the left · Profitable');
-  assert.equal(pairSummary(groups), 'Left: Everyone · Right: Profitable · Curve: Liq + stops');
-  assert.equal(pairDescription(groups), 'Left column: All traders. Right column: Profitable traders. Curve: Liquidation and stop levels.');
-  assert.match(pairDescription(kinds), /^Left column: Liquidation levels\. Right column: Stop levels\. Take-profit bars shown on the left\. Traders: Profitable\.$/);
+  assert.equal(splitName('kinds'), 'Liq | Stops'); assert.equal(splitName('groups'), 'Everyone | +PnL');
+  assert.deepEqual(['none', 'kinds', 'groups'].map(s => splitChoiceName(s as 'none')), ['None', 'Liquidations | Stops', 'Everyone | +PnL']);
+  assert.deepEqual(subNames(kinds), ['Liquidations', 'Stops']); assert.deepEqual(subNames(groups), ['Everyone', '+PnL']);
+  assert.equal(takesOf('profitable'), 'Take profits · +PnL');
+  assert.equal(pairSummary(kinds), 'Left: Liquidations · Right: Stops · TP bars on the left · +PnL');
+  assert.equal(pairSummary(groups), 'Left: Everyone · Right: +PnL · Curve: Liq + stops');
+  assert.equal(pairDescription(groups), 'Left column: All traders. Right column: +PnL traders. Curve: Liquidation and stop levels.');
+  assert.match(pairDescription(kinds), /^Left column: Liquidation levels\. Right column: Stop levels\. Take-profit bars shown on the left\. Traders: \+PnL\.$/);
   assert.equal(splitPair({ ...FREE_VIEW, split: 'groups' }, false), null, 'nothing split without Plus');
 });
 
@@ -201,24 +201,24 @@ test('the split\'s pieces are where the page draws them: the map\'s split painte
   assert.match(heat, /splitScales\(\{ maxLevel: Math\.max\(profs\[0\]\?\.maxLevel \?\? 0, tprof\?\.maxLevel \?\? 0\), maxCum: profs\[0\]\?\.maxCum \?\? 0 \},\n\s+\{ maxLevel: profs\[1\]\?\.maxLevel \?\? 0, maxCum: profs\[1\]\?\.maxCum \?\? 0 \}, pair\.split === 'kinds'\)/);
   assert.match(tab, /halves = !!pair && ladderSplitFits\(W - AXIS\)/); assert.match(tab, /#paintHalves\(/);
   // The Depth pane is not split (owner, 2026-11-20): every place that asks what it draws (its series, its button, its Range summary's key) reads
-  // `liveDepthView`, never the left column's set; only Everyone | Profitable is told in its tip.
+  // `liveDepthView`, never the left column's set; only Everyone | +PnL is told in its tip.
   assert.equal((depth.match(/liveDepthView\(/g) ?? []).length, 3); assert.doesNotMatch(depth, /liveView\(/);
-  assert.match(depth, /liveSplit\(this\.store\.state\.liqLevels\)\?\.split === 'groups' \? `\$\{t\("Under Everyone \| Profitable the Depth pane draws everyone's levels\."\)\} `/);
+  assert.match(depth, /liveSplit\(this\.store\.state\.liqLevels\)\?\.split === 'groups' \? `\$\{t\("Under Everyone \| \+PnL the Depth pane draws everyone's levels\."\)\} `/);
 });
 
-test('the Depth pane draws every choice as with Split None; under Everyone | Profitable as Everyone, the saved Traders never drawn (owner, 2026-11-20)', () => {
+test('the Depth pane draws every choice as with Split None; under Everyone | +PnL as Everyone, the saved Traders never drawn (owner, 2026-11-20)', () => {
   const KINDS = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 1, 1]] as const;
   for (const [l, st, tk] of KINDS) for (const group of ['all', 'profitable'] as const) for (const split of LIQ_SPLITS) {
     const s = readLiqLevels({ liq: !!l, stops: !!st, takes: !!tk, group, split }), name = `${l}${st}${tk} ${group} ${split}`;
     const inForce = effectiveSplit(s, true), none = { ...s, split: 'none' as const };
-    // The one-line rule: Depth(state) = Depth(the same state with Split None), Everyone | Profitable (in force) with Traders as Everyone.
+    // The one-line rule: Depth(state) = Depth(the same state with Split None), Everyone | +PnL (in force) with Traders as Everyone.
     assert.deepEqual(depthView(s, true), depthView(inForce === 'groups' ? { ...none, group: 'all' } : none, true), name);
     assert.deepEqual(depthView(s, true), { liq: !!l, stops: !!st, takes: !!tk, group: inForce === 'groups' ? 'all' : group }, name);
     assert.deepEqual(depthView(s, false), FREE_VIEW, `${name}: without Plus the free view`);
   }
   // Liquidations | Stops: Liq + stops of the chosen traders (until 2026-11-20 it drew the left column, liquidations alone).
   assert.equal(curveOf(depthView(readLiqLevels({ liq: true, stops: true, takes: true, group: 'profitable', split: 'kinds' }), true)), 'both');
-  // A split kept but not in force (take profits alone under Everyone | Profitable) draws as none: the saved Traders count there.
+  // A split kept but not in force (take profits alone under Everyone | +PnL) draws as none: the saved Traders count there.
   assert.deepEqual(depthView(readLiqLevels({ liq: false, stops: false, takes: true, group: 'profitable', split: 'groups' }), true), { liq: false, stops: false, takes: true, group: 'profitable' });
   // The column and the stripe still split: their one series is the left set.
   assert.deepEqual(effectiveView(readLiqLevels({ liq: true, stops: true, split: 'kinds' }), true), { liq: true, stops: false, takes: false, group: 'all' });
@@ -237,14 +237,14 @@ test('the levels control keeps a split chosen while a kind it needs is off, says
     assert.deepEqual(m.writes.at(-1), { stops: false }); assert.equal(m.get().split, 'kinds', 'kept');
     assert.deepEqual(opts.map(o => o.getAttribute('aria-checked')), ['false', 'true', 'false'], 'shown chosen, as where the map is too narrow');
     assert.equal(note.hidden, false); assert.equal(note.textContent, 'Liquidations | Stops comes back when liquidations and stops are both on.');
-    assert.match(root.querySelector('.lv-sum')!.textContent, /^Curve: Liquidations · Profitable$/, 'the live line says what is drawn: one column');
+    assert.match(root.querySelector('.lv-sum')!.textContent, /^Curve: Liquidations · \+PnL$/, 'the live line says what is drawn: one column');
     row('stops').click();
-    assert.equal(note.hidden, true); assert.match(root.querySelector('.lv-sum')!.textContent, /Left: Liquidations · Right: Stops · Profitable/, 'on again: split again');
-    // Everyone | Profitable, then take profits alone: kept, Traders back (the drawn choice uses them), the note says what brings it back.
+    assert.equal(note.hidden, true); assert.match(root.querySelector('.lv-sum')!.textContent, /Left: Liquidations · Right: Stops · \+PnL/, 'on again: split again');
+    // Everyone | +PnL, then take profits alone: kept, Traders back (the drawn choice uses them), the note says what brings it back.
     opts[2]!.click(); row('takes').click(); row('liq').click(); row('stops').click();
     assert.deepEqual([m.get().liq, m.get().stops, m.get().takes, m.get().split], [false, false, true, 'groups']);
     assert.equal(traders.hidden, false, 'nothing is split: Traders has its say');
-    assert.equal(note.textContent, 'Everyone | Profitable comes back when liquidations or stops are on.');
+    assert.equal(note.textContent, 'Everyone | +PnL comes back when liquidations or stops are on.');
     row('liq').click();
     assert.equal(traders.hidden, true); assert.equal(note.hidden, true, 'liquidations on: split again');
     c.destroy();

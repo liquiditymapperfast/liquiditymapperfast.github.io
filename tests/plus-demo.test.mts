@@ -127,7 +127,7 @@ test('the scenes and their captions are the approved prototype\'s', () => {
   assert.deepEqual(SCENES.map(s => s.label()), ['Liquidations', 'Stops', 'Take profits', 'Each alone', 'Traders', 'History']);
   assert.deepEqual(SCENES.flatMap(s => s.steps.flatMap(st => st.caption ? [st.caption()] : [])), [
     'Liquidation levels at each price.', 'Add stop losses to the curve.', 'Take profits get their own lane.', 'Choose each kind on its own.',
-    'Take profits alone get a dashed curve.', 'Profitable traders, at each price.', 'Scroll back through the whole history.']);
+    'Take profits alone get a dashed curve.', '+PnL traders, at each price.', 'Scroll back through the whole history.']);
   assert.equal(idleCaption(), 'Try the switches.');
   assert.deepEqual(SCENES.map(s => s.dur), [4000, 4000, 4000, 6000, 7000, 7000]);
 });
@@ -180,7 +180,7 @@ test('a late frame counts as 100 ms; a pause holds the tour; a scene chosen by h
   assert.equal(p.applied.length, 1, 'one step that does it all');
   assert.equal(p.applied[0]!.animate, false);
   assert.deepEqual(p.store.get(), { liq: true, stops: true, takes: true, traders: 'profitable' });
-  assert.equal(p.applied[0]!.step.caption!(), 'Profitable traders, at each price.');
+  assert.equal(p.applied[0]!.step.caption!(), '+PnL traders, at each price.');
   assert.equal(p.applied[0]!.step.scrub, 1);
   p.player.jump(5);
   assert.equal(p.applied[1]!.step.scrubTo, 0.2, 'the history scene glides back');

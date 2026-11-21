@@ -92,7 +92,7 @@ function groupsPicture(s: SVGSVGElement, d: DemoData): void {
   // Two precise views of the same moment on one dollar scale: everyone's liquidations and stops, and the profitable traders' own.
   const pw = 186, gap = 28, top = 34, bottom = 172, c = SNAPS - 1;
   const { yP, rows } = bucketsNow(d, top, bottom);
-  const groups = [{ title: t('Everyone'), g: 0 }, { title: t('Profitable'), g: 1 }].map(({ title, g }) => {
+  const groups = [{ title: t('Everyone'), g: 0 }, { title: t('+PnL'), g: 1 }].map(({ title, g }) => {
     const parts = rows.map(b => {
       let lu = 0, su = 0, ld = 0, sd = 0;
       for (let j = b.r; j <= b.r1; j++) { const i = c * ROWS + j, kl = g ? d.pfLiq[i]! : 1, ks = g ? d.pfStop[i]! : 1; lu += d.liqS[i]! * kl; su += d.stopS[i]! * ks; ld += d.liqL[i]! * kl; sd += d.stopL[i]! * ks; }
@@ -134,7 +134,7 @@ function groupsPicture(s: SVGSVGElement, d: DemoData): void {
 const PICTURES = {
   history: { h: 150, cls: 'pd-vis', name: () => t('Timeline: the whole history with Plus, the last 7 days free'), draw: historyPicture },
   layers: { h: 156, cls: 'pd-vis pd-ch', name: () => t('Liquidations, stops and take profits as three separate layers'), draw: layersPicture },
-  groups: { h: 178, cls: 'pd-vis pd-ch', name: () => t('Everyone and profitable traders: liquidation and stop levels at each price, on one dollar scale'), draw: groupsPicture },
+  groups: { h: 178, cls: 'pd-vis pd-ch', name: () => t('Everyone and +PnL traders: liquidation and stop levels at each price, on one dollar scale'), draw: groupsPicture },
 } as const;
 
 /**

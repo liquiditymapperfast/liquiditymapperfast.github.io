@@ -350,11 +350,11 @@ test('the levels control: three switches with one always on, Traders only with l
   assert.deepEqual(pressGroup(both, 'profitable', true), { change: { group: 'profitable' } });
   assert.ok(paidPart('stops') && paidPart('takes') && !paidPart('liq'));
   // The live line and the full description say what the curve sums, the take-profit bars beside it, whose.
-  assert.equal(levelsSummary({ liq: true, stops: true, takes: true, group: 'profitable' }), 'Curve: Liq + stops · TP bars · Profitable');
+  assert.equal(levelsSummary({ liq: true, stops: true, takes: true, group: 'profitable' }), 'Curve: Liq + stops · TP bars · +PnL');
   assert.equal(levelsSummary({ liq: false, stops: false, takes: true, group: 'all' }), 'Curve: Take profits');
   assert.equal(levelsSummary({ liq: false, stops: true, takes: true, group: 'all' }), 'Curve: Stops · TP bars');
   assert.equal(levelsSummary(FREE_VIEW), 'Curve: Liquidations');
-  assert.equal(levelsDescription({ liq: true, stops: true, takes: true, group: 'profitable' }), 'Curve: Liquidation and stop levels. Take-profit bars shown. Traders: Profitable.');
+  assert.equal(levelsDescription({ liq: true, stops: true, takes: true, group: 'profitable' }), 'Curve: Liquidation and stop levels. Take-profit bars shown. Traders: +PnL.');
   assert.equal(levelsDescription({ liq: false, stops: false, takes: true, group: 'all' }), 'Curve: Take-profit levels. Traders: Everyone.');
 });
 
@@ -618,11 +618,11 @@ test('Liq + stops apart: each part what still stands of it, the two always addin
 test('under the column\'s button: the group where the button had no room for it, first, then that the take profits are not in the curve', () => {
   assert.equal(takesLeftOut(), 'Take profits not included');
   const profitable = { liq: true, stops: false, takes: true, group: 'profitable' } as const;
-  assert.deepEqual(columnNotes(profitable, false, true), ['Profitable traders', 'Take profits not included'], 'both: the group line first');
+  assert.deepEqual(columnNotes(profitable, false, true), ['+PnL traders', 'Take profits not included'], 'both: the group line first');
   assert.deepEqual(columnNotes(profitable, true, true), ['Take profits not included'], 'the group already on the button: not said twice');
-  assert.deepEqual(columnNotes({ liq: true, stops: true, takes: false, group: 'profitable' }, false, false), ['Profitable traders']);
+  assert.deepEqual(columnNotes({ liq: true, stops: true, takes: false, group: 'profitable' }, false, false), ['+PnL traders']);
   assert.deepEqual(columnNotes({ liq: true, stops: false, takes: false, group: 'all' }, false, false), [], 'everyone: nothing to add');
-  assert.deepEqual(columnNotes({ liq: false, stops: true, takes: false, group: 'profitable' }, false, true), ['Profitable traders', 'Take profits not included'], "the profitable traders' stops are theirs too");
+  assert.deepEqual(columnNotes({ liq: false, stops: true, takes: false, group: 'profitable' }, false, true), ['+PnL traders', 'Take profits not included'], "the profitable traders' stops are theirs too");
 });
 
 test('a split writes its three amounts in the total\'s unit and precision, the parts adding up to the total as printed', () => {
@@ -798,7 +798,7 @@ test('every key a drawing of the levels is kept by names the order family: every
   }
   assert.equal(s.src.takes!.asOf, AS_OF, 'the two families carry the same snapshot times');
   for (const [name, k] of [['key', key], ['takesKey', takes]] as const) {
-    assert.notEqual(k[0], k[1], `${name}: Everyone to Profitable`); assert.notEqual(k[1], k[2], `${name}: Profitable to Everyone`);
+    assert.notEqual(k[0], k[1], `${name}: Everyone to +PnL`); assert.notEqual(k[1], k[2], `${name}: +PnL to Everyone`);
     assert.equal(k[0], k[2], `${name}: Everyone again is the same drawing`);
   }
 });
@@ -914,7 +914,7 @@ test('the Depth pane\'s Range summary follows the order family both ways: it sum
     await f.ask(v);
     const mine = held(v), lines = summary.lines(sel, mine, true, mine.key, f.now);
     assert.equal(longs(lines), `$${(2 * amount).toLocaleString('en-US')}`, `${group}: the snapshot's liquidations and stops`);
-    assert.equal(lines.some(l => l.cells[0]?.includes('Profitable traders')), group === 'profitable', `${group}: whose`);
+    assert.equal(lines.some(l => l.cells[0]?.includes('+PnL traders')), group === 'profitable', `${group}: whose`);
     // The snapshot drawn for the other family is not summed up under this one's: the summary waits for its own.
     if (before) assert.ok(summary.lines(sel, before, true, mine.key, f.now).some(l => l.key === 'dp-wait'), `${group}: the other family's snapshot waits`);
     before = mine;
@@ -1191,7 +1191,7 @@ test('the phone\'s Liq tab draws a new choice from its first frame, never the la
     assert.equal(page.text('liq-sub'), 'BTC · Hyperliquid'); assert.equal(page.text('liq-usd long'), '$100');
     // The choice changes: the page draws the tab again at once (main.ts), before the next tick.
     choose('profitable'); pane.invalidate(); page.frames();
-    assert.equal(page.text('liq-sub'), 'Profitable traders · BTC · Hyperliquid');
+    assert.equal(page.text('liq-sub'), '+PnL traders · BTC · Hyperliquid');
     assert.equal(page.text('liq-usd long'), '$10', 'their stops below the price from the first frame');
     assert.equal(page.text('liq-usd short'), '$10', 'and above it');
     choose('all'); pane.invalidate(); page.frames();
@@ -1430,7 +1430,7 @@ test('the phone\'s Liq tab draws the view in force when a frame\'s ask for a Plu
     pane.setShown(true);
     for (let i = 0; i < 3; i++) { page.tick(); await tick(); }
     page.frames();
-    assert.equal(page.text('liq-sub'), 'Profitable traders · BTC · Hyperliquid'); assert.equal(page.text('liq-usd long'), '$10');
+    assert.equal(page.text('liq-sub'), '+PnL traders · BTC · Hyperliquid'); assert.equal(page.text('liq-usd long'), '$10');
     letGo = true; s.at(s.now() + 2 * MIN + 1_000); pane.invalidate(); page.frames();
     assert.equal(page.text('liq-sub'), 'BTC · Hyperliquid', 'Plus gone: the free view');
     assert.equal(page.text('liq-usd long'), '$100', 'and everyone\'s levels under it in that same frame, never the profitable traders\'');
@@ -1479,9 +1479,9 @@ test('an RFC 850 date, whose two-digit year names no century, is no Retry-After:
 
 test('the phone\'s Liq tab under a split: halves at a phone\'s width, named by the split; narrower, what the split falls back to, said in the foot', async () => {
   for (const [width, split, title, sub, foot, long] of [
-    [390, 'kinds', 'Liq | Stops', 'Profitable traders · BTC · Hyperliquid', null, '$10'],
-    [300, 'kinds', 'Liq | Stops', 'Profitable traders · BTC · Hyperliquid', 'Too narrow to split: Liq + stops', '$20'],
-    [300, 'groups', 'Everyone | Profitable', 'Liquidation and stop levels · BTC · Hyperliquid', 'Too narrow to split: Everyone', '$200'],
+    [390, 'kinds', 'Liq | Stops', '+PnL traders · BTC · Hyperliquid', null, '$10'],
+    [300, 'kinds', 'Liq | Stops', '+PnL traders · BTC · Hyperliquid', 'Too narrow to split: Liq + stops', '$20'],
+    [300, 'groups', 'Everyone | +PnL', 'Liquidation and stop levels · BTC · Hyperliquid', 'Too narrow to split: Everyone', '$200'],
   ] as const) {
     const page = standInPage(width), now = Date.now();
     plus().accept({ key: 'standin-key-0123456789', pass: standInPass(now + 23 * 3_600_000), until: now + 20 * DAY_MS });
@@ -1521,26 +1521,26 @@ async function tabWith(files: Record<string, LiqAnswer>, lv: Partial<import('../
 }
 
 test('Sol 2 (P2): the phone\'s right half says the profitable traders\' stops are not on the server, though their liquidations stand and are drawn', async () => {
-  // Everyone | Profitable, liquidations and stops: the profitable traders' order files answer 404.
+  // Everyone | +PnL, liquidations and stops: the profitable traders' order files answer 404.
   const t = await tabWith({ [U.groups]: { status: 200, body: groups(NEAR.profitable.liq, null) }, [U.triggers]: { status: 200, body: triggers(NEAR.all.stops, NEAR.all.takes) } },
     { liq: true, stops: true, takes: false, group: 'all', split: 'groups' });
   try {
     const right = t.src.right!;
     assert.equal(right.state, 'ready', 'their liquidations stand'); assert.equal(right.ordersAbsent(), true);
-    assert.equal(t.page.text('liq-title'), 'Everyone | Profitable');
+    assert.equal(t.page.text('liq-title'), 'Everyone | +PnL');
     assert.ok((t.page.text('liq-foot') ?? '').includes(ordersAbsent()), `the foot says so: ${t.page.text('liq-foot')}`);
     assert.equal(t.page.text('liq-usd long'), '$200', 'the summary is everyone\'s, the left half');
   } finally { t.done(); }
 });
 
 test('Sol 3 (P2): the phone\'s halves stand on their own: everyone\'s stops loading never hide the profitable traders\' half that is ready', async () => {
-  // Everyone | Profitable, stops alone: everyone's order file answers 503, the profitable traders' own answers.
+  // Everyone | +PnL, stops alone: everyone's order file answers 503, the profitable traders' own answers.
   const t = await tabWith({ [U.triggers]: { status: 503, body: null }, [U.triggersGroups]: { status: 200, body: triggerGroups(NEAR.profitable.stops, NEAR.profitable.takes) } },
     { liq: false, stops: true, takes: false, group: 'all', split: 'groups' });
   try {
     assert.notEqual(t.src.state, 'ready', 'the left half has nothing yet'); assert.equal(t.src.right!.state, 'ready', 'the right half is ready');
     const foot = t.page.text('liq-foot') ?? '';
-    assert.match(foot, /Profitable traders' stop orders at \d\d:\d\d/, `the right half's note: ${foot}`);
+    assert.match(foot, /\+PnL traders' stop orders at \d\d:\d\d/, `the right half's note: ${foot}`);
     assert.ok(foot.length > 0, 'not the empty tab');
   } finally { t.done(); }
 });
@@ -1632,7 +1632,7 @@ test('a largest level\'s label that would lie under a half\'s caption is left ou
 });
 
 test('a largest level\'s label that would lie under the lines saying a half\'s orders are missing is left out too', async () => {
-  // Everyone | Profitable, liquidations and stops, ±10%: the profitable traders' order files answer 404, and their liquidations' largest row
+  // Everyone | +PnL, liquidations and stops, ±10%: the profitable traders' order files answer 404, and their liquidations' largest row
   // is at 109.0-109.1, under those lines.
   const drawn = drawnOf();
   const theirs = { ...groups([[1090, 0, 0, 0, 100, 0, 5, 0, 100]], null), step: 0.1 };

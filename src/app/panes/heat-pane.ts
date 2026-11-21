@@ -4127,7 +4127,7 @@ export class HeatPane {
     // not with another, so the group is always on the button or under it, never cut.
     const fit = `${viewKey(view)}|${pairKey(pair)}|${held}|${room}|${html.frame ?? ''}|${html.material ?? ''}`;
     if (fit !== this.#liqKindFit && pair) {
-      // A split: its name ("Liq | Stops", "Everyone | Profitable"); the tip says what each column holds and what they share.
+      // A split: its name ("Liq | Stops", "Everyone | +PnL"); the tip says what each column holds and what they share.
       this.#liqKindFit = fit;
       button.classList.remove('locked');
       button.style.maxWidth = `${room}px`;

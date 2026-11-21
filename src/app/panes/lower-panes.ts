@@ -562,7 +562,7 @@ export class DepthPane extends TimePane {
     if (this.#levelsButton.textContent !== caption) this.#levelsButton.textContent = caption;
     // Split is the column's and the stripe's (owner's rule, 2026-11-20): Liquidations | Stops draws here as Liq + stops, and Everyone |
     // Profitable as everyone's levels, which the tip says.
-    const split = liveSplit(this.store.state.liqLevels)?.split === 'groups' ? `${t("Under Everyone | Profitable the Depth pane draws everyone's levels.")} ` : '';
+    const split = liveSplit(this.store.state.liqLevels)?.split === 'groups' ? `${t("Under Everyone | +PnL the Depth pane draws everyone's levels.")} ` : '';
     setTip(this.#levelsButton, `${split}${levelsDescription(view)} ${t('Press to choose what the levels show.')}`);
     // The depth sound and the venues are the order book's: they have nothing to say about liquidation levels.
     if (this.#bellLabel) this.#bellLabel.hidden = liq;

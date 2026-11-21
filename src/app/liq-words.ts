@@ -66,7 +66,7 @@ export function splitText(parts: { liq: number; stops: number }, shown = parts.l
  * Said where the profitable traders' stops or take profits are part of the view but their file is not there (the server has none yet, or not
  * for this snapshot): nothing is drawn for them, never everyone's orders under their name.
  */
-export const ordersAbsent = (): string => t('Profitable traders\' stops and take profits are not available yet.');
+export const ordersAbsent = (): string => t('+PnL traders\' stops and take profits are not available yet.');
 
 /**
  * Why the levels' history draws nothing where a file it needs could not be read (a rollup refused whole, or not reached): the part named as the
@@ -122,12 +122,12 @@ export function liqNote(src: Pick<LiqLevelsSource, 'view' | 'takesState' | 'asOf
   const named = (part: string): string => who ? ofGroup(who, part) : part;
   const time = clock(at), group = view.group, curve = curveOf(view), beside = takesBeside(view);
   const mine = group === 'profitable';
-  const head = curve === 'takes' ? mine ? t('Profitable traders\' take-profit orders at {time} · Powered by HyperTracker', { time }) : t('Hyperliquid take-profit orders at {time} · Powered by HyperTracker', { time })
-    : curve === 'stops' ? mine ? t('Profitable traders\' stop orders at {time} · Powered by HyperTracker', { time }) : t('Hyperliquid stop orders at {time} · Powered by HyperTracker', { time })
+  const head = curve === 'takes' ? mine ? t('+PnL traders\' take-profit orders at {time} · Powered by HyperTracker', { time }) : t('Hyperliquid take-profit orders at {time} · Powered by HyperTracker', { time })
+    : curve === 'stops' ? mine ? t('+PnL traders\' stop orders at {time} · Powered by HyperTracker', { time }) : t('Hyperliquid stop orders at {time} · Powered by HyperTracker', { time })
     : curve === 'both'
-      ? mine ? t('Profitable traders\' liquidations and stops at {time} · Powered by HyperTracker', { time })
+      ? mine ? t('+PnL traders\' liquidations and stops at {time} · Powered by HyperTracker', { time })
         : t('Hyperliquid liquidations and stops at {time} · Powered by HyperTracker', { time })
-      : group === 'profitable' ? t('Profitable traders\' liquidation levels at {time} · Powered by HyperTracker', { time })
+      : group === 'profitable' ? t('+PnL traders\' liquidation levels at {time} · Powered by HyperTracker', { time })
         : t('Hyperliquid liquidation levels at {time} · Powered by HyperTracker', { time });
   const parts = [head], orders = src.asOfs().orders, absent = src.ordersAbsent();
   // The profitable traders' orders the view asks for are not there: said, and nothing drawn for them.
@@ -162,11 +162,11 @@ export function groupNoteParts(right: Pick<LiqSet, 'state' | 'view' | 'levels' |
 
 /** A split's name on the column's button and the Liq tab's title: its left column | its right one. */
 export function splitName(split: Exclude<LiqSplit, 'none'>): string {
-  return split === 'kinds' ? t('Liq | Stops') : t('Everyone | Profitable');
+  return split === 'kinds' ? t('Liq | Stops') : t('Everyone | +PnL');
 }
 /** A split's name in the levels control's Split choice. */
 export function splitChoiceName(split: LiqSplit): string {
-  return split === 'kinds' ? t('Liquidations | Stops') : split === 'groups' ? t('Everyone | Profitable') : t('None');
+  return split === 'kinds' ? t('Liquidations | Stops') : split === 'groups' ? t('Everyone | +PnL') : t('None');
 }
 /** What heads each sub-column of a split: the kind (liquidations, stops), or whose levels they are (everyone, the profitable traders). */
 export function subNames(p: LiqPair): [string, string] {

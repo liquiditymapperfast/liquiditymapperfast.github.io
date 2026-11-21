@@ -27,7 +27,7 @@ export const SCENES: readonly Scene[] = [
     { t: 3000, set: { liq: false, stops: false, takes: true }, caption: () => t('Take profits alone get a dashed curve.') }] },
   { label: () => t('Traders'), dur: 7000, steps: [
     { t: 0, set: { liq: true, stops: true, takes: true, traders: 'everyone' }, scrub: 1 },
-    { t: 1400, set: { traders: 'profitable' }, caption: () => t('Profitable traders, at each price.') }] },
+    { t: 1400, set: { traders: 'profitable' }, caption: () => t('+PnL traders, at each price.') }] },
   { label: () => t('History'), dur: 7000, steps: [
     { t: 0, set: { liq: true, stops: true, takes: true, traders: 'everyone' }, scrub: 1, caption: () => t('Scroll back through the whole history.') },
     { t: 900, scrubTo: 0.2, over: 4600 }] },

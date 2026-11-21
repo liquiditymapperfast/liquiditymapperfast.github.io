@@ -97,11 +97,11 @@ export function kindTitle(curve: LiqCurve): string {
 /** A group's short name, for a button and a menu. */
 export function groupName(group: LiqGroup): string {
   // Everyone, not All: the word for all traders agrees with the traders in every language (French Tous, not the feminine Toutes of All).
-  return group === 'profitable' ? t('Profitable') : t('Everyone');
+  return group === 'profitable' ? t('+PnL') : t('Everyone');
 }
 /** A group's name in a readout or a note. */
 export function groupTitle(group: LiqGroup): string {
-  return group === 'profitable' ? t('Profitable traders') : t('All traders');
+  return group === 'profitable' ? t('+PnL traders') : t('All traders');
 }
 
 /**

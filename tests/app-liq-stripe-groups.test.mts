@@ -1,4 +1,4 @@
-// The stripe under Split's Everyone | Profitable (owner, 2026-11-19: one lane there, the left set's, read as a bug): a lane for each column
+// The stripe under Split's Everyone | +PnL (owner, 2026-11-19: one lane there, the left set's, read as a bug): a lane for each column
 // where the column is drawn split, everyone's chosen kinds beside the profitable traders', each on its own scale, captioned and named in its
 // reading by its group; the profitable traders' lane from their own files alone (absent orders said, never everyone's in their place); every
 // lane's rows kept by a key that names its group and order family; and one lane, everyone's, wherever the column is not drawn split.
@@ -99,20 +99,20 @@ function frame(src: LiqLevelsSource, s: LiqLevelSettings, drawn: boolean, held: 
 const after = (lines: InfoLine[], label: string): string => { const l = lines.find(x => x.label === label); assert.ok(l, label); return l.text; };
 const titles = (lines: InfoLine[]): string[] => lines.filter(l => l.bold && l.rule).map(l => l.text);
 
-test('the stripe\'s plan: Everyone | Profitable draws two lanes where the column is drawn split, captioned by kind and group, each reading naming its group; else one lane, everyone\'s', () => {
+test('the stripe\'s plan: Everyone | +PnL draws two lanes where the column is drawn split, captioned by kind and group, each reading naming its group; else one lane, everyone\'s', () => {
   const groupsPair = (lv: Partial<LiqLevelSettings>) => splitPair(setting({ ...lv, split: 'groups' }), true)!;
-  assert.deepEqual(stripePlan(groupsPair({}), true), { two: true, captions: ['Liq + stops · Everyone', 'Liq + stops · Profitable'], takes: 'Take profits · Everyone',
-    whose: ['Everyone', 'Profitable'], takesWhose: 'Everyone', standalone: true }, 'the take profits stay with the left set, everyone\'s');
-  assert.deepEqual(stripePlan(groupsPair({ stops: false, takes: false }), true).captions, ['Liquidations · Everyone', 'Liquidations · Profitable'], 'one kind on: its name');
-  assert.deepEqual(stripePlan(groupsPair({ liq: false, takes: false }), true).captions, ['Stops · Everyone', 'Stops · Profitable']);
+  assert.deepEqual(stripePlan(groupsPair({}), true), { two: true, captions: ['Liq + stops · Everyone', 'Liq + stops · +PnL'], takes: 'Take profits · Everyone',
+    whose: ['Everyone', '+PnL'], takesWhose: 'Everyone', standalone: true }, 'the take profits stay with the left set, everyone\'s');
+  assert.deepEqual(stripePlan(groupsPair({ stops: false, takes: false }), true).captions, ['Liquidations · Everyone', 'Liquidations · +PnL'], 'one kind on: its name');
+  assert.deepEqual(stripePlan(groupsPair({ liq: false, takes: false }), true).captions, ['Stops · Everyone', 'Stops · +PnL']);
   // The saved Traders value is not drawn: profitable or not, the left lane is everyone's.
-  assert.deepEqual(stripePlan(groupsPair({ group: 'profitable' }), true).captions, ['Liq + stops · Everyone', 'Liq + stops · Profitable']);
+  assert.deepEqual(stripePlan(groupsPair({ group: 'profitable' }), true).captions, ['Liq + stops · Everyone', 'Liq + stops · +PnL']);
   // Too narrow to split (or a compact map): one lane, everyone's, as before.
   assert.deepEqual(stripePlan(groupsPair({}), false), { two: false, captions: ['Liq + stops · Everyone'], takes: 'Take profits · Everyone', whose: [null, null], takesWhose: null, standalone: false });
   // Liquidations | Stops is unchanged: two lanes wherever chosen, captioned by kind (and whose, where not everyone's), nothing named in the box.
   for (const drawn of [true, false]) {
     assert.deepEqual(stripePlan(splitPair(setting({ split: 'kinds' }), true), drawn), { two: true, captions: ['Liquidations', 'Stops'], takes: 'Take profits · Everyone', whose: [null, null], takesWhose: null, standalone: false });
-    assert.deepEqual(stripePlan(splitPair(setting({ split: 'kinds', group: 'profitable' }), true), drawn).captions, ['Liquidations · Profitable', 'Stops · Profitable']);
+    assert.deepEqual(stripePlan(splitPair(setting({ split: 'kinds', group: 'profitable' }), true), drawn).captions, ['Liquidations · +PnL', 'Stops · +PnL']);
   }
   assert.deepEqual(stripePlan(null, true), { two: false, captions: [], takes: null, whose: [null, null], takesWhose: null, standalone: false }, 'no split: one lane, no captions');
   // Two lanes beside the take profits' by the live edge, in the column's order, never outside the stripe.
@@ -139,21 +139,21 @@ test('the two group lanes\' keys name their group and order family, and each lan
   assert.ok(held.right!.heat(P) > 0 && held.levels!.heat(P) < held.right!.heat(P) / 2, 'on everyone\'s scale theirs would be faint');
 });
 
-test('a switch Everyone <-> Profitable both ways, through the split and out of it: each lane\'s rows and its reading follow the family, never the one before', async () => {
+test('a switch Everyone <-> +PnL both ways, through the split and out of it: each lane\'s rows and its reading follow the family, never the one before', async () => {
   const src = familyService(), held: Held = { levels: null, takes: null, right: null };
   // [setting, the left lane's group and amount at [90, 100), the right lane's (null: one lane), the right lane's price row, its reading's group]
   const steps: [Partial<LiqLevelSettings>, string, number, number | null, number, string | null][] = [
     [{ group: 'all', split: 'none' }, 'all', E, null, 95, null],
-    [{ group: 'all', split: 'groups' }, 'all', E, P, 95, 'Profitable'],
+    [{ group: 'all', split: 'groups' }, 'all', E, P, 95, '+PnL'],
     [{ group: 'profitable', split: 'none' }, 'profitable', P, null, 95, null],
-    [{ group: 'profitable', split: 'groups' }, 'all', E, P, 95, 'Profitable'],
+    [{ group: 'profitable', split: 'groups' }, 'all', E, P, 95, '+PnL'],
     [{ group: 'profitable', split: 'none' }, 'profitable', P, null, 95, null],
-    // Liquidations | Stops of everyone, then Everyone | Profitable, then Liquidations | Stops of the profitable traders: the right lane's
+    // Liquidations | Stops of everyone, then Everyone | +PnL, then Liquidations | Stops of the profitable traders: the right lane's
     // memo goes from everyone's stops to the profitable traders' levels and to their stops, and back.
     [{ group: 'all', split: 'kinds' }, 'all', E, E, 85, null],
-    [{ group: 'all', split: 'groups' }, 'all', E, P, 95, 'Profitable'],
+    [{ group: 'all', split: 'groups' }, 'all', E, P, 95, '+PnL'],
     [{ group: 'profitable', split: 'kinds' }, 'profitable', P, P, 85, null],
-    [{ group: 'profitable', split: 'groups' }, 'all', E, P, 95, 'Profitable'],
+    [{ group: 'profitable', split: 'groups' }, 'all', E, P, 95, '+PnL'],
     [{ group: 'all', split: 'kinds' }, 'all', E, E, 85, null],
     [{ group: 'all', split: 'none' }, 'all', E, null, 95, null],
   ];
@@ -169,7 +169,7 @@ test('a switch Everyone <-> Profitable both ways, through the split and out of i
     assert.equal(after(box, 'At this level'), dollars(amount), `${name}: the left lane's reading`);
     assert.equal(after(box, kind === 'liq' ? 'Positions' : 'Positions and orders'), String(amount === E ? 5 : 1), `${name}: its count`);
     const title = kind === 'liq' ? 'Long liquidations' : 'Long liquidations and stops';
-    assert.deepEqual(titles(box), [f.plan.whose[0] ? `${title} · ${f.plan.whose[0]}` : title], `${name}: its group named under Everyone | Profitable only`);
+    assert.deepEqual(titles(box), [f.plan.whose[0] ? `${title} · ${f.plan.whose[0]}` : title], `${name}: its group named under Everyone | +PnL only`);
     if (rightAmount === null) { assert.equal(f.right, null, `${name}: no right lane`); continue; }
     assert.ok(f.drew.right, `${name}: the right lane drew`);
     const r = rowAt(held.right!.rows, at), rb = setBoxLines(r, f.right!, 100, side => side === 'long', f.plan.whose[1]);
@@ -192,9 +192,9 @@ test('the profitable traders\' orders absent (404 or 503): their lane draws thei
     assert.ok(!held.right!.rows.some(r => (r.p0 <= 85 && 85 < r.p1 && r.long > 0) || (r.p0 <= 125 && 125 < r.p1 && r.short > 0)), 'no stops drawn');
     assert.equal(held.right!.rows.reduce((a, r) => a + r.long + r.short, 0), 2 * P);
     const box = setBoxLines(rowAt(held.right!.rows, 95), right, 100, side => side === 'long', f.plan.whose[1]);
-    assert.deepEqual(titles(box), ['Long liquidations · Profitable']); assert.equal(after(box, 'At this level'), dollars(P));
+    assert.deepEqual(titles(box), ['Long liquidations · +PnL']); assert.equal(after(box, 'At this level'), dollars(P));
     assert.equal(box.at(-1)!.text, ordersAbsent(), 'the reading says it');
-    assert.equal(f.plan.captions[1], 'Liq + stops · Profitable', 'captioned as the sub-column is');
+    assert.equal(f.plan.captions[1], 'Liq + stops · +PnL', 'captioned as the sub-column is');
     // Everyone's lane is untouched: their liquidations and stops, their take profits, nothing said missing.
     assert.equal(rowAt(held.levels!.rows, 85).long, E); assert.ok(!src.ordersAbsent()); assert.equal(rowAt(held.takes!.rows, 145).short, E);
     // Stops alone: their lane draws nothing, is still captioned (`standalone`) and the note says why; everyone's stops stand.
@@ -203,7 +203,7 @@ test('the profitable traders\' orders absent (404 or 503): their lane draws thei
     const g = frame(src, stops, true, held);
     assert.equal(g.right!.state, 'missing'); assert.equal(g.right!.missing(), 'profitable-orders'); assert.equal(g.right!.levels, null);
     assert.deepEqual(g.drew, { left: true, takes: false, right: false }); assert.ok(g.plan.standalone);
-    assert.deepEqual(g.plan.captions, ['Stops · Everyone', 'Stops · Profitable']);
+    assert.deepEqual(g.plan.captions, ['Stops · Everyone', 'Stops · +PnL']);
     assert.equal(rowAt(held.levels!.rows, 85).long, E);
   }
 });
@@ -314,7 +314,7 @@ test('a lane with nothing to paint has no caption and answers no pointer: the pr
   await show(busy, stops);
   const b = frame(busy, stops, true, { levels: null, takes: null, right: null });
   assert.ok(b.painted && !b.painted.lanes && b.painted.right, 'only the profitable traders\' stops painted');
-  assert.deepEqual(b.painted.captions!.map(c => c.words), ['Stops · Profitable']);
+  assert.deepEqual(b.painted.captions!.map(c => c.words), ['Stops · +PnL']);
 });
 
 // Sol's review of af817444..62a84ce3, round 1 (P2): the profitable traders' orders hours old drew with no word of their age (the note was
@@ -338,20 +338,20 @@ test('beside the two group lanes the note says the profitable traders\' own time
   const old = familyService({ [U.triggersGroups]: ordersOf(4 * HOUR) }), s = setting({ split: 'groups' });
   await show(old, s);
   assert.ok(frame(old, s, true, { levels: null, takes: null, right: null }).painted?.right, 'their lane still draws');
-  assert.equal(noteOf(old, s), `${liqNote(old, effectiveView(s, true), AS_OF)} · Profitable traders: stops as of ${clock(AS_OF - 4 * HOUR)}`);
+  assert.equal(noteOf(old, s), `${liqNote(old, effectiveView(s, true), AS_OF)} · +PnL traders: stops as of ${clock(AS_OF - 4 * HOUR)}`);
   // Stops alone, theirs an hour behind (not old by the three-hour rule, but not the time everyone's part says).
   const behind = familyService({ [U.triggersGroups]: ordersOf(HOUR) }), stops = setting({ liq: false, takes: false, split: 'groups' });
   await show(behind, stops);
-  assert.equal(noteOf(behind, stops), `Hyperliquid stop orders at ${clock(AS_OF)} · Powered by HyperTracker · Profitable traders: stops as of ${clock(AS_OF - HOUR)}`);
+  assert.equal(noteOf(behind, stops), `Hyperliquid stop orders at ${clock(AS_OF)} · Powered by HyperTracker · +PnL traders: stops as of ${clock(AS_OF - HOUR)}`);
   // Their positions an hour behind everyone's (the groups file lagging the levels file).
   const lag = familyService({ [U.groups]: { status: 200, body: aged(groups(FAM.profitable.liq), HOUR) } }), liq = setting({ stops: false, takes: false, split: 'groups' });
   await show(lag, liq);
-  assert.equal(noteOf(lag, liq), `Hyperliquid liquidation levels at ${clock(AS_OF)} · Powered by HyperTracker · Profitable traders: positions as of ${clock(AS_OF - HOUR)}`);
+  assert.equal(noteOf(lag, liq), `Hyperliquid liquidation levels at ${clock(AS_OF)} · Powered by HyperTracker · +PnL traders: positions as of ${clock(AS_OF - HOUR)}`);
   // Both families' orders four hours old: each group's "as of" named.
   const both = familyService({ [U.triggers]: { status: 200, body: aged(triggers(FAM.all.stops, FAM.all.takes), 4 * HOUR) }, [U.triggersGroups]: ordersOf(4 * HOUR) });
   await show(both, s);
   const t4 = clock(AS_OF - 4 * HOUR);
-  assert.equal(noteOf(both, s), `Hyperliquid liquidations and stops at ${clock(AS_OF)} · Powered by HyperTracker · All traders: stops and take profits as of ${t4} · Profitable traders: stops as of ${t4}`);
+  assert.equal(noteOf(both, s), `Hyperliquid liquidations and stops at ${clock(AS_OF)} · Powered by HyperTracker · All traders: stops and take profits as of ${t4} · +PnL traders: stops as of ${t4}`);
 });
 
 test('beside the two group lanes a lane with nothing names its group\'s reason; everyone\'s and the profitable traders\' status each said', async () => {
@@ -359,11 +359,11 @@ test('beside the two group lanes a lane with nothing names its group\'s reason; 
   // Everyone's orders not there yet: their reason named, the profitable traders' stops and their time.
   const busy = familyService({ [U.triggers]: { status: 503, body: null, retryAfter: 60 } });
   await show(busy, stops);
-  assert.equal(noteOf(busy, stops), `All traders: Stop levels are not ready yet. · Profitable traders: stops as of ${clock(AS_OF)}`);
+  assert.equal(noteOf(busy, stops), `All traders: Stop levels are not ready yet. · +PnL traders: stops as of ${clock(AS_OF)}`);
   // No groups for this snapshot: the profitable traders' reason, named.
   const none = familyService({ [U.groups]: { status: 503, body: null, retryAfter: 60 } }), liq = setting({ stops: false, takes: false, split: 'groups' });
   await show(none, liq);
-  assert.equal(noteOf(none, liq), `${liqNote(none, effectiveView(liq, true), AS_OF)} · Profitable traders: No trader groups for this snapshot yet.`);
+  assert.equal(noteOf(none, liq), `${liqNote(none, effectiveView(liq, true), AS_OF)} · +PnL traders: No trader groups for this snapshot yet.`);
   // Their orders absent: said once (it names them), their liquidations drawn alone.
   const absent = familyService({ [U.triggersGroups]: { status: 404, body: null } }), s = setting({ split: 'groups' });
   await show(absent, s);
@@ -398,7 +398,7 @@ test('the note\'s lines: whole parts as far as each line goes, the old two lines
     while (i < parts.length && measure(`${first} · ${parts[i]}`) <= room) { first = `${first} · ${parts[i]}`; i++; }
     return [first, parts.slice(i).join(' · ')].filter(Boolean);
   };
-  const note = 'Hyperliquid liquidations and stops at 11:25 · Powered by HyperTracker · All traders: stops and take profits as of 07:25 · Profitable traders: stops as of 07:25';
+  const note = 'Hyperliquid liquidations and stops at 11:25 · Powered by HyperTracker · All traders: stops and take profits as of 07:25 · +PnL traders: stops as of 07:25';
   for (const room of [2000, 700, 400, 300, 290]) {
     const lines = noteLines(measure, note, room), parts = note.split(' · ');
     assert.ok(lines.every(l => measure(l) <= room), `${room}: every line fits`);

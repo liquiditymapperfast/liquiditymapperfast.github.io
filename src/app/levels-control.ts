@@ -222,7 +222,7 @@ export function createLevelsControl(source: Store | LevelsModel, o: LevelsOption
   const splitKept = el('p', { class: 'lv-kept lv-split-kept', hidden: true });
   // What the curve adds up, and who the profitable traders are.
   const howText = el('div', { class: 'lv-how-text', id: howId, hidden: true }, el('p', { textContent: curveSentence() }),
-    el('p', { textContent: t('Profitable traders: the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit.') }));
+    el('p', { textContent: t('+PnL traders: the wallets in HyperTracker\'s four cohorts with a positive all-time perp profit.') }));
   const how = el('button', { type: 'button', class: 'lv-how', textContent: t('How levels work') });
   how.setAttribute('aria-expanded', 'false'); how.setAttribute('aria-controls', howId);
   how.addEventListener('click', () => { howText.hidden = !howText.hidden; how.setAttribute('aria-expanded', String(!howText.hidden)); });

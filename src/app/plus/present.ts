@@ -47,8 +47,8 @@ export function features(day: (time: number) => string): Features {
     root: [
       section('px-f-history', t('The whole history'), [since], hosts.history),
       section('px-f-layers', t('Stops and take profits'), [el('p', { textContent: t('Two more layers, each with its own switch. Take profits stay out of the curve.') })], hosts.layers),
-      section('px-f-groups', t('Trader groups'), [el('p', { textContent: t('Where profitable traders would be liquidated, next to everyone, at each price.') }),
-        el('p', { textContent: t('Profitable traders: the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit.') })], hosts.groups),
+      section('px-f-groups', t('Trader groups'), [el('p', { textContent: t('Choose whose positions the levels count: all traders, or only the +PnL traders.') }),
+        el('p', { textContent: t('+PnL traders: the wallets in HyperTracker\'s four cohorts with a positive all-time perp profit.') })], hosts.groups),
     ],
   };
 }

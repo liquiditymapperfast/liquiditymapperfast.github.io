@@ -10,7 +10,7 @@ import { sample } from './svg.ts';
 const NOTE_MS = 3200;
 
 const kindName = (kind: DemoKind): string => kind === 'liq' ? t('Liquidations') : kind === 'stops' ? t('Stops') : t('Take profits');
-const tradersName = (v: DemoTraders): string => v === 'everyone' ? t('Everyone') : t('Profitable only');
+const tradersName = (v: DemoTraders): string => v === 'everyone' ? t('Everyone') : t('+PnL only');
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, ...children: (Node | string)[]): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);

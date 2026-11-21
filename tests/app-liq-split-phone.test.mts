@@ -104,7 +104,7 @@ test('a desktop map\'s plates stay where they stood (1,720 px, Liquidations | St
     assert.deepEqual(captionRows(items, keep, 6, 15), rows, 'the old rows');
     assert.deepEqual(placeCaptions(items, keep, 6, 15, 772), rows, `unchanged with the note at ${history.x0} to ${history.x1}`);
   }
-  // Everyone | Profitable (two lanes, no take profits): unchanged too.
+  // Everyone | +PnL (two lanes, no take profits): unchanged too.
   const groups = [{ x: 419, w: 122 }, { x: 440, w: 125 }], keep = captionKeepOut({ ...base, history: { x0: 395, x1: 514, top: 40 }, note: { x0: 8, x1: 347, top: 66, bottom: 79 } });
   assert.deepEqual(placeCaptions(groups, keep, 6, 15, 772), captionRows(groups, keep, 6, 15));
   assert.deepEqual(placeCaptions(groups, keep, 6, 15, 772), [55, 72]);
@@ -176,10 +176,10 @@ const measure11 = (text: string, bold: boolean, kind: InfoKind): number => text.
 const sizeOf = (lines: ReturnType<typeof probeBoxLines>, W: number): BoxSize => { const l = layoutInfo(measure11, lines, probeWrap(W)); return { w: l.width, h: l.height }; };
 const titleOf = (lines: ReturnType<typeof probeBoxLines>, W: number): string => layoutInfo(measure11, lines, probeWrap(W)).rows.filter(r => r.bold && r.label === undefined).map(r => r.text).join(' ').replace(/ /g, ' ');
 
-test('under Everyone | Profitable each finger box names its own group; under Liquidations | Stops the kinds name them (no group added)', () => {
+test('under Everyone | +PnL each finger box names its own group; under Liquidations | Stops the kinds name them (no group added)', () => {
   const all = probeBoxLines(facts(110), { whose: groupName('all') }), theirs = probeBoxLines(facts(110), { whose: groupName('profitable') });
   assert.equal(titleOf(all, 330), 'Short liquidations and stops · Everyone');
-  assert.equal(titleOf(theirs, 330), 'Short liquidations and stops · Profitable');
+  assert.equal(titleOf(theirs, 330), 'Short liquidations and stops · +PnL');
   assert.notEqual(titleOf(all, 330), titleOf(theirs, 330));
   assert.equal(titleOf(probeBoxLines(facts(90)), 330), 'Long liquidations and stops', 'no group: the title as before');
   // On the 260 px ladder of a 320 px phone a long title wraps, the group kept with the word before it, and at the detail the two boxes
