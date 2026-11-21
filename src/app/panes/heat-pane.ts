@@ -27,7 +27,7 @@ import { Held, ROW_HOLD_MS, booksReaching, depthBand, depthBandLines, depthHereL
 import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from '../scope.ts';
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText, wrapText } from '../text-fit.ts';
-import { binsIn, captionPlace, dollarPriceOf, laneRows, liqCurves, liqProfile, liqStanding, onTheWay, partsBetween, seamStats, standingBelow, TAKE_DASH, type CurvePoint, type LaneRows, type LiqLevels, type LiqRow, type LiqSet, type LiqStanding } from '../liq-levels.ts';
+import { LIQ_PROFILE_ROWS, binsIn, captionPlace, dollarPriceOf, laneRows, liqCurves, liqProfile, liqStanding, onTheWay, partsBetween, seamStats, standingBelow, TAKE_DASH, type CurvePoint, type LaneRows, type LiqLevels, type LiqRow, type LiqSet, type LiqStanding } from '../liq-levels.ts';
 import { SPLIT_COLUMN_W, captionKeepOut, cornerSpan, liqColumnWidth, placeCaptions, splitHeads, splitScales, stripePlan, subAt, subColumns, type Rect, type Sub, type SubScale } from '../liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../layouts/dock-model.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
@@ -4434,7 +4434,10 @@ export class HeatPane {
     const at = v.pOf(hv.y, ph), d = Math.abs(at - price);
     // The prices grouped: the view, or where the band runs past it (the price scrolled away), a grouping that holds the price and the band's
     // far edge (`groupSpan`), so the book is counted from the price, not from the view's edge.
-    const span = price - d < v.p0 || price + d > v.p1 ? groupSpan(v.p0, v.p1, price, step) : null, p0 = span?.lo ?? v.p0, p1 = span?.hi ?? v.p1;
+    // Only a span the liquidation profile can hold row for row (`LIQ_PROFILE_ROWS`; the book's grouping holds more): past that, levels at its
+    // far end would read as none (Sol, review 2026-11-20), so the view's rows are weighed, as before.
+    const wanted = price - d < v.p0 || price + d > v.p1 ? groupSpan(v.p0, v.p1, price, step) : null;
+    const span = wanted && Math.floor(wanted.hi / step) - Math.floor(wanted.lo / step) + 1 <= LIQ_PROFILE_ROWS ? wanted : null, p0 = span?.lo ?? v.p0, p1 = span?.hi ?? v.p1;
     const g = groupLevels(this.kernels, frame, this.#enabledIds(), step, p0, p1), prof = liqProfile(s, step, p0, p1, price);
     // The two columns' rows at the same prices (both begin at floor(p0 / step), so the offset is 0 unless one of them ends sooner).
     const long = new Float64Array(g.nBins), short = new Float64Array(g.nBins);

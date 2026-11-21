@@ -95,6 +95,11 @@ test('the liquidation card: the row\'s levels, what still stands there, the snap
   const both = liqCardLines({ ...f, kind: 'both', split: { liq: 50e6, stops: 3_944_068 }, totals: true, bandSplit: { long: 'Total $277M = liquidations $250M + stops $27M', short: 'Total $173M = liquidations $160M + stops $13M' } });
   assert.ok(text(both).includes('Total $53.9M = liquidations $50M + stops $3.9M'), text(both).join(' | '));
   assert.deepEqual(text(both).slice(-2), ['Longs: Total $277M = liquidations $250M + stops $27M', 'Shorts: Total $173M = liquidations $160M + stops $13M']);
+  // Take profits on their own keep the shorts' below the price (the arrays' long side) and the longs' above: the band says whose they are.
+  const takes = liqCardLines({ ...f, kind: 'takes', below: 50, above: 10, totals: true });
+  assert.ok(text(takes).includes('Within ≈±12.1%: longs / shorts 0.20×'), text(takes).join(' | '));
+  assert.equal(takes.at(-1)!.text, 'Longs $10  ·  Shorts $50');
+  assert.deepEqual(takes.at(-1)!.runs!.map(r => r.color), ['above', 'above', 'muted', 'below', 'below'], 'each in the colour of where it stands');
   // A strip or sub-column: the band's totals; an empty row of an empty snapshot: no count or largest.
   assert.equal(liqCardLines({ ...f, totals: true }).at(-1)!.text, 'Longs $277M  ·  Shorts $173M');
   assert.deepEqual(text(liqCardLines({ ...f, side: 'short', level: 0, total: 0, positions: 0, top: 0 })), ['Short liquidations 51,850–51,900', 'At this level: $0', 'Within ≈±12.1%: longs / shorts 1.60×']);
@@ -167,5 +172,6 @@ test('the map draws these boxes: the profile from its row and band, the band fro
   assert.match(body('#paintLiqColumnMirror'), /liqCardLines\(/);
   assert.match(body('#paintSeam'), /seamCardLines\(/);
   assert.match(body('#paintSeam'), /groupSpan\(v\.p0, v\.p1, price, step\)/);
+  assert.match(body('#paintSeam'), /<= LIQ_PROFILE_ROWS \? wanted : null/, 'a span only where the liquidation profile holds every row of it');
   assert.match(body('#paintLiqSplit'), /liqSubBoxFrame\(at, subs\[at\]\.x0, pw, ph, this\.#liqHeadH, measureInfoBox\(ctx, box\.lines\)\.h\)/);
 });

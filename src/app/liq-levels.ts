@@ -453,8 +453,11 @@ export function partsOnTheWay(parts: LiqParts, price: number, at: number): { liq
  */
 export interface LiqProfile { row0: number; step: number; long: Float64Array; short: Float64Array; cumLong: Float64Array; cumShort: Float64Array; maxLevel: number; maxCum: number }
 
+/** The most rows one profile holds (more is cut off at the top): a caller that groups wider must stay within it (the seam, `HeatPane.#paintSeam`). */
+export const LIQ_PROFILE_ROWS = 5_000;
+
 export function liqProfile(s: LiqStanding, step: number, p0: number, p1: number, price: number): LiqProfile {
-  const row0 = Math.floor(p0 / step), n = Math.max(0, Math.min(5_000, Math.floor(p1 / step) - row0 + 1));
+  const row0 = Math.floor(p0 / step), n = Math.max(0, Math.min(LIQ_PROFILE_ROWS, Math.floor(p1 / step) - row0 + 1));
   const out: LiqProfile = { row0, step, long: new Float64Array(n), short: new Float64Array(n), cumLong: new Float64Array(n), cumShort: new Float64Array(n), maxLevel: 0, maxCum: 0 };
   const longAtPrice = standingBelow(s, 'long', price), shortAtPrice = standingBelow(s, 'short', price);
   let longBelow = standingBelow(s, 'long', row0 * step), shortBelow = standingBelow(s, 'short', row0 * step);

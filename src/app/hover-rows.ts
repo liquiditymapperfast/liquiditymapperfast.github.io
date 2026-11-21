@@ -163,13 +163,17 @@ export function liqCardLines(f: LiqCard): InfoLine[] {
   if (f.split && f.level > 0) lines.push({ text: splitText(f.split, f.level), color: 'muted', wrap: true });
   if (f.positions > 0) lines.push({ label: countLabel(f.kind), text: String(f.positions) });
   if (f.top > 0 && f.total > 0) lines.push({ label: topLabel(f.kind), text: dollars(f.top) });
-  lines.push({ text: t('Within ≈±{pct}: longs / shorts {ratio}', { pct: f.pct, ratio: ratioWords(f.below, f.above) }), rule: true });
+  // Whose orders the band's two sides are: take profits keep the shorts' below the price (the arrays' long side) and the longs' above (Sol,
+  // review 2026-11-20: the ratio of a take-profit band read them the wrong way round).
+  const takes = f.kind === 'takes', longs = takes ? f.above : f.below, shorts = takes ? f.below : f.above;
+  const longColor = takes ? 'above' : 'below', shortColor = takes ? 'below' : 'above';
+  lines.push({ text: t('Within ≈±{pct}: longs / shorts {ratio}', { pct: f.pct, ratio: ratioWords(longs, shorts) }), rule: true });
   if (f.bandSplit) {
     // Each side's total in its two parts: the total is in it, so it serves where no pill shows one too.
     lines.push({ label: t('Longs'), text: f.bandSplit.long, color: 'muted', wrap: true }, { label: t('Shorts'), text: f.bandSplit.short, color: 'muted', wrap: true });
   } else if (f.totals) {
-    const runs: InfoRun[] = [{ text: `${t('Longs')} `, color: 'below' }, { text: dollars(f.below), color: 'below', value: true }, { text: '  ·  ', color: 'muted' },
-      { text: `${t('Shorts')} `, color: 'above' }, { text: dollars(f.above), color: 'above', value: true }];
+    const runs: InfoRun[] = [{ text: `${t('Longs')} `, color: longColor }, { text: dollars(longs), color: longColor, value: true }, { text: '  ·  ', color: 'muted' },
+      { text: `${t('Shorts')} `, color: shortColor }, { text: dollars(shorts), color: shortColor, value: true }];
     lines.push({ text: runs.map(r => r.text).join(''), runs });
   }
   return lines;
