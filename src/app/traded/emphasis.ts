@@ -146,6 +146,21 @@ export function candleRamps(p: Palette): EmphasisRamps {
   return held;
 }
 
+/** The number of steps in each ramp (index a ramp by `Math.round(e * (RAMP_STEPS - 1))`). */
+export const RAMP_STEPS = STEPS;
+const colourRamps = new WeakMap<Palette, Map<string, readonly string[]>>();
+/**
+ * The ramp of any colour of a theme, built once per theme and colour and kept: the Flow history lifts its bars by how unusual they are
+ * (panes/size-history-pane.ts), its open interest in the theme's muted colour.
+ */
+export function colourRamp(p: Palette, hex: string): readonly string[] {
+  let byHex = colourRamps.get(p);
+  if (!byHex) { byHex = new Map(); colourRamps.set(p, byHex); }
+  let held = byHex.get(hex);
+  if (!held) { held = /^#[0-9a-f]{6}$/i.test(hex) ? rampOf(p, hex) : Array.from({ length: STEPS }, () => hex); byHex.set(hex, held); }
+  return held;
+}
+
 /** How each side of a split bar is drawn: its colour and its alpha. */
 export interface SideStyle { color: string; alpha: number }
 

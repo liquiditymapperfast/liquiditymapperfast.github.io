@@ -66,6 +66,7 @@ import { MAX_COUNT, chartKinds, linesCount, linesSource, profileAnchorOf, resolv
 import { ANCHOR_BAR_MS, PROFILE_ANCHOR_REACH_MS, PROFILE_FINE_REACH_MS, anchorAt, anchorSnapshot, anchorTag, answerFits, snapshotDue, type AnchorSnapshot, type ProfileAnchorStart } from '../traded/anchor.ts';
 import { liveUpdate, scriptStart, type ScriptBarsState } from '../script/bars.ts';
 import { dayStartOf } from './bar-stats.ts';
+import { preRollMs } from '../size-history/model.ts';
 import { answerMedian, emphasisFloor, medianRow, splitStyles } from '../traded/emphasis.ts';
 import { BROWSER_RETENTION_MS, RETENTION_MS } from '../../shared/recorder.ts';
 import { MAX_BACK_MS, barMsFor, keyLines, neededFrom, type KeyLine } from '../keylevels/levels.ts';
@@ -1307,13 +1308,13 @@ export class HeatPane {
   }
 
   /**
-   * Advance the footprint level of detail for this frame (also drives the heatmap dimming), and load the bars the footprint and the Bar stats
-   * table read: one load for both, made while either shows. The rows are the size the footprint would draw at this zoom whether it shows or
+   * Advance the footprint level of detail for this frame (also drives the heatmap dimming), and load the bars the footprint, the Bar stats
+   * table and the Flow history read: one load for all three, made while any of them shows. The rows are the size the footprint would draw at this zoom whether it shows or
    * not, so the table's rows (point of control, imbalances) are the footprint's own when both are on.
    */
   #stepFootprint(state: AppState): void {
     const v = this.view, pw = this.plotW, ph = this.plotH, now = performance.now(), drawn = state.show.footprint;
-    if (!(drawn || state.show.stats) || !(v.t1 > v.t0)) { this.#lodFrame = this.#lod.step(now, { enabled: false, hasData: false, widthCss: 0, rowHeightCss: 0, factor: 0 }); return; }
+    if (!(drawn || state.show.stats || state.show.sizes) || !(v.t1 > v.t0)) { this.#lodFrame = this.#lod.step(now, { enabled: false, hasData: false, widthCss: 0, rowHeightCss: 0, factor: 0 }); return; }
     const tfMs = TIMEFRAMES[state.timeframe] ?? 3_600_000, fine = this.#footprint.fine;
     const fineRowPx = fine > 0 ? Math.abs(v.yOf(0, ph) - v.yOf(fine, ph)) : 0;
     const rowStep = fine > 0 ? fine * 2 ** this.#lod.level(fineRowPx) : 0;
@@ -1321,8 +1322,12 @@ export class HeatPane {
     const cuts = linesToAsk([state.barStatOptions.retailUsd, state.barStatOptions.whaleUsd], scaledUsd);
     const markets = this.footprintMarkets(state);
     if (!markets.length) this.#footprint.clear();
-    // The table's running sums from each day's start need the bars from the start of the day the left edge falls in.
-    const window = state.show.stats && state.barStatOptions.cvdFrom === 'day' ? { t0: Math.min(v.t0, dayStartOf(v.t0, resolveZone('page', state.timeZone))), t1: v.t1, p0: v.p0, p1: v.p1 } : v;
+    // The table's running sums from each day's start need the bars from the start of the day the left edge falls in, and the Flow history's
+    // baselines the Highlights' length of candles before the view (at least six hours: size-history/model.ts).
+    let from = v.t0;
+    if (state.show.stats && state.barStatOptions.cvdFrom === 'day') from = Math.min(from, dayStartOf(v.t0, resolveZone('page', state.timeZone)));
+    if (state.show.sizes) from = Math.min(from, v.t0 - preRollMs(state.highlight.length, tfMs));
+    const window = from < v.t0 ? { t0: from, t1: v.t1, p0: v.p0, p1: v.p1 } : v;
     if (markets.length) this.#footprint.ensure(markets.join(','), state.timeframe, window, rowStep, (inst, tf, from, to, rows, lines, budget, venues) => this.hub.footprint(inst, tf, from, to, rows, lines, budget, venues), () => this.invalidate(), cuts, this.hub.sourceNow());
     const rowH = rowStep > 0 ? Math.abs(v.yOf(0, ph) - v.yOf(rowStep, ph)) : 0;
     const factor = visibilityFactor(state.candles, tfMs, v, pw, ph, rowH || 1, rowStep || 1);

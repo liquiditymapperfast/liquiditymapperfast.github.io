@@ -17,8 +17,8 @@ test('every pane under the map follows its switch, the Funding pane included', (
   assert.doesNotMatch(main, /depth\.root\.hidden = !s\.show\.depth/, 'no list written out by hand');
 });
 
-test('a theme previewed by hover repaints every pane, the Funding pane included', () => {
+test('a theme previewed by hover repaints every pane, the Funding and Flow history panes included', () => {
   const main = fs.readFileSync('src/app/main.ts', 'utf8');
-  assert.match(main, /const themed = \[heat, ladder, depth, oi, delta, ls, funding, lt, bars, script, cvd, candle, liq\];/);
+  assert.match(main, /const themed = \[heat, ladder, depth, oi, delta, ls, funding, lt, bars, sizes, script, cvd, candle, liq\];/);
   assert.equal(main.match(/for \(const p of themed\) p\.setPalette\(/g)?.length, 3, 'the preview, a picked theme and the first paint');
 });

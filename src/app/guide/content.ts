@@ -250,6 +250,24 @@ export const SECTIONS: readonly Section[] = [
     ],
   },
   {
+    id: 'flow-history', title: 'Flow history: order sizes candle by candle',
+    blocks: [
+      { t: 'p', text: 'The **Flow history** pane puts the order sizes of the flow column on the chart\'s time axis: a row for each kind of flow, a bar for each candle. Switch it on in the flow column\'s settings (its sliders key), in the **Bar stats** settings, or on a phone in **Settings** under Panels; its × closes it.' },
+      { t: 'list', items: [
+        '**Liquidations**: shorts liquidated drawn up, longs liquidated drawn down, as the venues that publish them report them.',
+        '**OI change**: how open interest changed over the candle, up where it rose, in one neutral colour (the OI pane\'s markets).',
+        '**Market orders by size**, six rows from under $25K to $5M and over (smaller sizes for smaller coins): each candle\'s buys less its sells, or with **Bars: Buys and sells** its buys up and its sells down.',
+      ] },
+      { t: 'p', text: 'Every row has its own scale, and a bar\'s height grows with the square root of its amount, so small candles stay visible beside a large one. A bar too tall for its row reaches the edge with a gap near its end.' },
+      { t: 'p', text: '**Brightness says how unusual.** Each bar is compared with the earlier candles of its row that had any such amount, with the Highlights\' sensitivity and baseline. An ordinary bar is faint; it brightens as its amount climbs past what its row usually does, and is fully bright where the Highlights would mark it. Candles with nothing in a row are left out of its baseline: most candles have no order of $5M or more, and one would otherwise look unusual every time.' },
+      { t: 'list', items: [
+        'Point at a bar (tap it on a touch screen) for its buys and sells, its share of the candle\'s volume, how many standard deviations it stands from its baseline, and how many of the candle\'s size rows were unusual.',
+        'A candle the recording holds only in part is drawn as an outline and not judged. On a day with more than 5,000 liquidations the record keeps the 5,000 largest, so the row is marked ≈ and its figures are at least what they say.',
+      ] },
+      { t: 'note', kind: 'tip', text: 'Several rows lit in one candle usually means the whole market traded heavily, not that one kind of trader acted: an order\'s size is not who placed it.' },
+    ],
+  },
+  {
     id: 'volume-profile', title: 'The volume profile',
     blocks: [
       { t: 'p', text: 'The **volume profile** (Chart deck, or [[P]]) adds up what traded at each price: a column beside the map adds it up by price, a band along the top by time, each over what is on the chart. The small key joined to its button opens its settings.' },
@@ -360,6 +378,7 @@ export const SECTIONS: readonly Section[] = [
         '**Long/Short** shows the share of each exchange\'s accounts that is net long.',
         '**Funding** shows a perpetual\'s funding and premium.',
         '**Bar stats** and **Scripts**, described above, also stand here.',
+        '**Flow history**, described above, stands here too; it has no Panels button: the flow column\'s and the Bar stats\' settings switch it on.',
       ] },
       { t: 'p', text: 'Where a pane has several things of one kind at one moment, such as every band or every exchange, it reads them in a **table** at the pointer\'s time, or the newest: beside the plot where there is room, otherwise over its left end while you point at the pane. The Table switch in its header hides it.' },
       { t: 'p', text: 'Where there are more of them than the pane has rows for, as with the exchanges of the Liquidity Tracker and of Delta, the largest get a row each and the rest are added up in the last row.' },

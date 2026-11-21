@@ -1,8 +1,8 @@
 import type { AppState } from '../store.ts';
 
 /**
- * Where the panes stand. The map and the panes that share its time axis (Bar stats, Depth, Open interest, Delta, Long/Short, the Liquidity
- * Tracker and the Scripts) make the middle column: their x axis is the map's, so they stay under it. The two panes that have an axis of their
+ * Where the panes stand. The map and the panes that share its time axis (Bar stats, Flow history, Depth, Open interest, Delta, Long/Short,
+ * the Liquidity Tracker and the Scripts) make the middle column: their x axis is the map's, so they stay under it. The two panes that have an axis of their
  * own, the flow column and the order book, stand beside it, each on either side, alone or one over the other.
  *
  * This file is the arithmetic of that and nothing else (no page, no storage): where a side pane is, what each side shows, how wide the columns
@@ -19,14 +19,14 @@ export const otherSide = (side: Side): Side => side === 'left' ? 'right' : 'left
 
 /** The panes under the map, in the order they stand by default: how tall each starts (px) and the least it is made. The page's panes and the ready-made layouts both read this. */
 export const STRIP_PANES = [
-  { id: 'bars', height: 84, min: 56 }, { id: 'depth', height: 132, min: 70 }, { id: 'oi', height: 150, min: 60 }, { id: 'delta', height: 150, min: 60 },
+  { id: 'bars', height: 84, min: 56 }, { id: 'sizes', height: 280, min: 120 }, { id: 'depth', height: 132, min: 70 }, { id: 'oi', height: 150, min: 60 }, { id: 'delta', height: 150, min: 60 },
   { id: 'ls', height: 120, min: 60 }, { id: 'funding', height: 140, min: 70 }, { id: 'lt', height: 128, min: 70 }, { id: 'script', height: 220, min: 60 },
 ] as const;
 export type StripId = (typeof STRIP_PANES)[number]['id'];
 export const stripSize = (id: StripId): { height: number; min: number } => STRIP_PANES.find(p => p.id === id)!;
 
 /** The pane switch (`state.show`) that opens each pane (the map has none: it is always there). */
-export const PANE_SHOW_KEY: Readonly<Record<string, keyof AppState['show']>> = { cvd: 'cvd', book: 'book', bars: 'stats', depth: 'depth', oi: 'oi', delta: 'delta', ls: 'ls', funding: 'funding', lt: 'lt', script: 'script' };
+export const PANE_SHOW_KEY: Readonly<Record<string, keyof AppState['show']>> = { cvd: 'cvd', book: 'book', bars: 'stats', depth: 'depth', oi: 'oi', delta: 'delta', ls: 'ls', funding: 'funding', lt: 'lt', script: 'script', sizes: 'sizes' };
 
 /**
  * Which side pane is in which column, top to bottom (a closed pane keeps its place, so that opening it puts it back), how wide each column is

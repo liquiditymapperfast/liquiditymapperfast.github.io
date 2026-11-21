@@ -14,10 +14,12 @@ import { ASKS, BIDS, DepthBars, fitsBars, neededBars, pixelFlags, sideFlags } fr
 import type { View } from '../view.ts';
 import { clock, price as fmtPrice, usd } from '../format.ts';
 import { gutter, leftGutter, timeTicks, AXIS_W, type HeatPane } from './heat-pane.ts';
-import { BAR_STATS, GROUP_SHORT, GROUP_TITLES, HEAD_H, PRESETS, coverageOf, csvCell, DAY_MS, dayStartOf, deviation, enabledStats, liquidationBuckets, pinnedLines, pinsAfterClick, rowScale, statCellLines, statDef, strength, tableBands, viewCellLines, type StatCell, type StatDef, type StatGroup, type StatInput, type LiquidationDay, type StatTone, type TableBand, type ViewCell } from './bar-stats.ts';
+import { BAR_STATS, GROUP_SHORT, GROUP_TITLES, HEAD_H, PRESETS, coverageOf, csvCell, dayStartOf, deviation, enabledStats, liquidationBuckets, pinnedLines, pinsAfterClick, rowScale, statCellLines, statDef, strength, tableBands, viewCellLines, type StatCell, type StatDef, type StatGroup, type StatInput, type StatTone, type TableBand, type ViewCell } from './bar-stats.ts';
 import { resolveZone } from '../traded/settings.ts';
 import { resetKeys } from '../delta/candles.ts';
-import { LIQUIDATIONS_PER_ANSWER, LIQUIDATION_RETENTION_MS } from '../../shared/liquidations.ts';
+import { LIQUIDATION_RETENTION_MS } from '../../shared/liquidations.ts';
+import type { LiquidationDays } from '../liq-days.ts';
+import { flowHistoryRows } from '../size-history/switch.ts';
 import { BROWSER_RETENTION_MS } from '../../shared/recorder.ts';
 import { CARD_GAP, HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
@@ -116,7 +118,7 @@ export abstract class TimePane {
    */
   #pan: { id: number; x0: number; x: number; moved: boolean } | null = null;
   #pinned: Pt | null = null;
-  #source: 'depth' | 'oi' | 'lt' | 'bars' | 'delta' | 'ls' | 'funding' | 'script';
+  #source: 'depth' | 'oi' | 'lt' | 'bars' | 'delta' | 'ls' | 'funding' | 'script' | 'sizes';
   /** Where the pointer (or the pinned finger) is, in the page, for a popup that is a page element rather than canvas drawing. */
   protected pointer: { x: number; y: number } | null = null;
   /** The Range tool (set by the page), and a stretch of time being selected here: where the drag began, and where a finger last was. */
@@ -131,7 +133,7 @@ export abstract class TimePane {
     new ResizeObserver(() => this.#resize()).observe(this.canvas);
     // A pane that is not shown keeps its canvas of no size: drawing it would draw nothing.
     sharpens({ resize: () => this.#resize(), paint: () => { if (!this.#covered && this.canvas.getBoundingClientRect().width > 0) this.#prepare(); } });
-    const source = this.#source = cls as 'depth' | 'oi' | 'lt' | 'bars' | 'delta' | 'ls' | 'funding' | 'script';
+    const source = this.#source = cls as 'depth' | 'oi' | 'lt' | 'bars' | 'delta' | 'ls' | 'funding' | 'script' | 'sizes';
     // A drag across a pane selects a stretch of time for the Range tool while it is armed, or with Ctrl (Cmd on a Mac) held. Otherwise a drag with
     // the main button moves the time axis the panes share with the map, as a finger's does: not from a table's rows it chooses (`ownsPress`), and
     // only once it has gone DRAG_MIN_PX, so a click (a table's row, a Bar stats candle) and a double click (maximize) stay what they were.
@@ -1675,16 +1677,7 @@ export class BarStatsPane extends TimePane {
   #pins: number[] = [];
   #pinsOn = '';
   #pinContext(state: AppState): string { return `${state.marketId}|${state.timeframe}|${this.heat.footprintMarkets(state).join(',')}`; }
-  /**
-   * Liquidations of the markets counted, every size the record keeps, by UTC day: each day asked on its own, so an answer holds a whole day
-   * (BTC: 900 to 3,500) rather than the largest 5,000 of a week; the day under way asked again every half minute; two at a time, the newest first.
-   */
-  #liqDays = new Map<number, LiquidationDay & { at: number }>();
-  #liqIds = '';
-  #liqLoading = new Set<number>();
-  #liqVersion = 0;
-  /** A day whose question failed is asked again after its own pause, the others meanwhile. */
-  #liqRetry = new Map<number, number>();
+  /** The liquidations by candle, worked out from the days the shared loader holds (`LiquidationDays`, liq-days.ts) while neither changes. */
   #liqBuckets: { key: string; value: StatInput['liquidations'] } | null = null;
   #button = document.createElement('button');
   #panel: Panel | null = null;
@@ -1698,8 +1691,10 @@ export class BarStatsPane extends TimePane {
     this.#usd = { oi: state.oi, parts, candles: state.candles, price: state.oiPrice, tfMs, map };
     return map;
   }
-  constructor(host: HTMLElement, store: Store, view: View, private heat: HeatPane, private hub: Hub) {
+  /** `liqDays`: the liquidations by UTC day, one loader shared with the Flow history pane (liq-days.ts). */
+  constructor(host: HTMLElement, store: Store, view: View, private heat: HeatPane, private hub: Hub, private readonly liqDays: LiquidationDays) {
     super(host, store, view, 'bars');
+    liqDays.listen(() => this.invalidate());
     this.head.innerHTML = `<strong>${t('Bar stats')}</strong><span class="readout"></span>`;
     this.head.querySelector('strong')!.after(helpButton('stats'));
     // The settings key, drawn as the sliders every settings key in the page wears (the flow column's, a pane's, the top bar's split keys), at
@@ -1726,6 +1721,8 @@ export class BarStatsPane extends TimePane {
     tools.append(el('span', { class: 'muted', textContent: t('{shown} of {total} shown', { shown: chosen.length, total: BAR_STATS.length }) }));
 
     body.append(heading(t('Sound')), panelSwitchRow(this.store, 'bars'));
+    // The market orders by size, liquidations and open interest candle by candle as bars, in a pane of their own (the flow column's switch too).
+    body.append(...flowHistoryRows(this.store));
     // Whose orders the table counts: the footprint's setting, so the two never need two loads and agree when both show.
     const fp = state.footprint, setMarkets = (markets: typeof fp.markets) => this.store.set({ footprint: { ...this.store.state.footprint, markets } });
     body.append(heading(t('Markets')),
@@ -1821,39 +1818,14 @@ export class BarStatsPane extends TimePane {
     this.invalidate();
   }
 
-  /**
-   * Ask for the UTC days of [from, to) not held, and again a day not answered to its end (the day under way, or one asked before its midnight)
-   * once what is held of it is half a minute old.
-   */
-  #ensureLiquidations(ids: string, from: number, to: number): void {
-    const source = this.hub.source; if (!source.liquidations) return;
-    // Other markets counted: what is held is not theirs, and an answer still out for the old ones is dropped when it comes.
-    if (ids !== this.#liqIds) { this.#liqIds = ids; this.#liqDays = new Map(); this.#liqRetry = new Map(); this.#liqVersion++; }
-    const now = Date.now();
-    for (let day = Math.floor((to - 1) / DAY_MS) * DAY_MS; day >= Math.floor(from / DAY_MS) * DAY_MS && this.#liqLoading.size < 2; day -= DAY_MS) {
-      const held = this.#liqDays.get(day);
-      if (this.#liqLoading.has(day) || now < (this.#liqRetry.get(day) ?? 0) || (held && (held.to >= day + DAY_MS || now - held.at < 30_000))) continue;
-      this.#liqLoading.add(day);
-      const asked = Date.now();
-      source.liquidations(day, day + DAY_MS).then(rows => {
-        if (ids !== this.#liqIds) return;
-        this.#liqRetry.delete(day);
-        this.#liqDays.set(day, { rows, cut: rows.length >= LIQUIDATIONS_PER_ANSWER, to: Math.min(day + DAY_MS, asked), at: Date.now() }); this.#liqVersion++;
-      }, () => { if (ids === this.#liqIds) this.#liqRetry.set(day, Date.now() + 15_000); })
-        // Drawn again whatever came back: the slot it held is free for the next day, an answer dropped for other markets included.
-        .finally(() => { this.#liqLoading.delete(day); this.invalidate(); });
-    }
-    // Only the days around the window are kept.
-    for (const day of [...this.#liqDays.keys()]) if (day + DAY_MS < from - DAY_MS || day > to + DAY_MS) this.#liqDays.delete(day);
-  }
-
   /** The liquidations by candle over the table's candles, from the days answered (kept while neither they nor the candles change). */
   #liquidationsFor(ids: readonly string[], times: readonly number[], tfMs: number, coverFrom: number): StatInput['liquidations'] {
-    if (ids.join(',') !== this.#liqIds) return undefined;
+    const held = this.liqDays;
+    if (ids.join(',') !== held.ids) return undefined;
     // By the minute too: the candle under way counts once the minute it starts in has been asked about.
-    const key = `${this.#liqVersion}|${this.#liqIds}|${times[0]}|${times.length}|${times[times.length - 1]}|${tfMs}|${coverFrom}|${Math.floor(Date.now() / 60_000)}`;
+    const key = `${held.version}|${held.ids}|${times[0]}|${times.length}|${times[times.length - 1]}|${tfMs}|${coverFrom}|${Math.floor(Date.now() / 60_000)}`;
     if (this.#liqBuckets?.key === key) return this.#liqBuckets.value;
-    const value = liquidationBuckets(this.#liqDays, ids, times, tfMs, coverFrom, Date.now());
+    const value = liquidationBuckets(held.days, ids, times, tfMs, coverFrom, Date.now());
     this.#liqBuckets = { key, value };
     return value;
   }
@@ -1900,7 +1872,7 @@ export class BarStatsPane extends TimePane {
     const liqTo = Math.min(times[times.length - 1]! + tfMs, Date.now()), liqCover = Math.max(Math.ceil((Date.now() - retention) / 60_000) * 60_000, this.hub.recordedSince > 0 ? this.hub.recordedSince : 0);
     let liquidations: StatInput['liquidations'];
     if (this.hub.source.liquidations && defs.some(def => def.id === 'liq' || def.id === 'liqNet') && markets.length) {
-      this.#ensureLiquidations(markets.join(','), Math.max(times[0]!, liqCover), liqTo);
+      this.liqDays.ensure('bars', markets.join(','), Math.max(times[0]!, liqCover), liqTo);
       liquidations = this.#liquidationsFor(markets, times, tfMs, liqCover);
     }
     const restart = daily ? resetKeys(times, 'day', zone) : undefined;

@@ -11,7 +11,7 @@ import { t } from './i18n.ts';
  * button opens (Trades, Absorption, Highlights, Sounds) has it in its panel's tool strip; a settings window opened from a pane's header
  * shares that pane's. Windows that only do a job (About, Install, the venue menu, the venue and coin pickers) explain themselves and have none.
  */
-export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'stats' | 'orderBook' | 'cvd' | 'trades' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'liqLevels' | 'keyLevels' | 'vwap' | 'tpo' | 'delta' | 'deltaPane' | 'ls' | 'lsPane' | 'funding' | 'fundingPane' | 'replay' | 'candlePane' | 'script' | 'scriptPane';
+export type HelpId = 'profile' | 'traded' | 'absorption' | 'depth' | 'oi' | 'candles' | 'footprint' | 'lt' | 'mirror' | 'volume' | 'bubbles' | 'heatmap' | 'depthPane' | 'oiPane' | 'ltPane' | 'stats' | 'orderBook' | 'cvd' | 'trades' | 'book' | 'highlights' | 'sounds' | 'range' | 'liquidations' | 'liqLevels' | 'keyLevels' | 'vwap' | 'tpo' | 'delta' | 'deltaPane' | 'ls' | 'lsPane' | 'funding' | 'fundingPane' | 'replay' | 'candlePane' | 'script' | 'scriptPane' | 'sizes';
 
 export interface HelpTopic {
   title: string;
@@ -268,6 +268,15 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
       t('The View column, right of the table under the price axis, gives each row over the candles in view: a sum, the newest value of a running sum, or a figure worked out from those candles added together. Point at it to see which.'),
       t('Rows read from the candles and open interest (range, close in range, vol / bp, oi chg, candle delta) fill the candles before the recording too. Rows read from executions are drawn faint where the recording holds only part of a candle (rec % says how much). Order flow picks the rows an order-flow reading starts from; Export CSV saves the candles in view.'),
       t("Click a candle to pin it: a card lists every statistic for that candle until it is clicked again or Esc is pressed. Shift+click pins more candles to compare them side by side (up to five). Cells can be shaded by how unusual each candle is against its own recent ones (Unusual, the Highlights' baseline) or drawn as lines, and rows can be grouped by kind under headers that fold away. CVD from each day's start makes the running sums start again at every day in the chart's time zone.")],
+  },
+  sizes: {
+    title: t('Flow history'), guide: 'flow-history',
+    tip: t("Liquidations, open interest's change and market orders in six size bands, one row each, candle by candle under the chart. Quiet bars are faint; the more unusual an amount is for its row, the brighter its bar."),
+    body: [t('The rows: liquidations (shorts liquidated up, longs liquidated down), the change of open interest (up where it rose), then market orders in six size bands from under $25K to $5M and over (smaller sizes for smaller coins). Bars shows each size row as its buys less its sells (Delta) or as its buys up and its sells down.'),
+      t("Every row has its own scale, and a bar's height grows with the square root of its amount, so small candles stay visible next to large ones. A bar too tall for its row is drawn to the edge with a gap near its end. Point at a bar for its amounts."),
+      t("How bright a bar is says how unusual its amount is for its own row: it is compared with the earlier candles of that row that had any such amount, with the Highlights' sensitivity and baseline (Settings). Faint is ordinary; full brightness is where the Highlights would mark it. Candles with nothing in a row (often the largest orders) are left out of its baseline, so one large order is not called unusual only because most candles have none."),
+      t("A candle the recording holds only in part is drawn as an outline and not judged. Liquidations come from the venues that publish them; on a day with more than 5,000 the record keeps its 5,000 largest, so the row says ≈ and a figure is at least that. Open interest is the OI pane's markets; it has no row values when only spot markets are counted, and is not judged on a one-minute chart."),
+      t("It counts the markets the footprint and the Bar stats count (set in either panel). Switch it on in the flow column's settings, in the Bar stats' settings or, on a phone, in Settings. It reads the history before the view that its comparisons need, so a bar's brightness can change a little once older candles have loaded.")],
   },
   cvd: {
     title: t('Flow'), guide: 'flow',

@@ -155,6 +155,8 @@ export class Toolbar {
   #timeframes = el('div', { class: 'seg' });
   #layer = el('select', { ariaLabel: t('Layer'), tip: t('Layer drawn on the map. Liquidity is the order-book heatmap; stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).') });
   #toggles = el('div', { class: 'seg toggles' });
+  /** The Flow history's switch in a phone's Settings (Panels): it is no button of the top bar (the flow column's and the Bar stats' settings have it). */
+  #sizesToggle = el('button', { textContent: t('Flow history'), tip: HELP.sizes.tip, onclick: () => this.store.set({ show: { ...this.store.state.show, sizes: !this.store.state.show.sizes } }) });
   #chips = el('div', { class: 'chips' });
   /** Venues this location cannot reach, beside the live ones, so their absence is explained where it is noticed. */
   #blocked = el('div', { class: 'chips blocked-chips' });
@@ -1006,7 +1008,7 @@ export class Toolbar {
       this.#heatctl.replaceChildren();
       body.append(
         section(t('Tools'), [el('div', { class: 'sheet-tiles' }, this.#plus, this.#tour, this.#range, this.#guide, this.#shot, this.#author, this.#install.root, ...(isPhone() ? [backup] : []))]),
-        section(t('Panels'), [this.#toggles, el('p', { class: 'sheet-note', textContent: t('Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.') })]),
+        section(t('Panels'), [this.#toggles, ...(isPhone() ? [el('div', { class: 'seg toggles' }, this.#sizesToggle)] : []), el('p', { class: 'sheet-note', textContent: t('Depth, OI, Delta, L/S and Stats each add a tab to the bar under the map.') })]),
         // A phone arranges its panes by tab; a touch tablet that keeps the desktop's arrangement has the layouts here, its map's corner being clear of buttons.
         ...(isPhone() ? [] : [section(t('Layouts'), [el('div', { class: 'sheet-tiles' }, button(t('Layouts'), () => { this.#sheet?.close(); this.#openLayouts(this.#more); }, t('Layouts: choose a ready-made arrangement of the panels, or save your own')), backup)])]),
         section(t('Chart'), [el('div', { class: 'sheet-tiles' }, ...(['footprint', 'trades', 'liquidations', ...(liqLevelsUrl() ? ['liqLevels'] as const : []), 'absorption', 'traded', 'tpo', 'keyLevels', 'vwap'] as const).map(f => this.#splits![f]), this.#scriptsSplit)]),
@@ -1061,6 +1063,7 @@ export class Toolbar {
     }
     setValue(this.#layer, state.layer);
     this.#toggleButtons.forEach((b, i) => b.classList.toggle('on', state.show[PANE_TOGGLES[i]![0]]));
+    this.#sizesToggle.classList.toggle('on', state.show.sizes);
     lamp(this.#heat.auto, state.heat.auto); lamp(this.#trades, state.show.bubbles); lamp(this.#liquidations, state.liquidations.on); lamp(this.#liqLevels, state.liqLevels.on); lamp(this.#absorption, state.absorption.on); lamp(this.#highlights, state.highlight.on); lamp(this.#traded, state.show.traded); lamp(this.#keyLevels, state.keyLevels.on); lamp(this.#vwap, state.vwap.on); lamp(this.#tpo, state.tpo.on); lamp(this.#scripts, state.show.script); lamp(this.#footprint, state.show.footprint); lamp(this.#range, state.rangeTool || state.range !== null); lamp(this.#rangeCorner, state.rangeTool || state.range !== null);
     if (this.#awake.checked !== state.keepAwake) this.#awake.checked = state.keepAwake;
     if (this.#tabPrice.checked !== state.tabPrice) this.#tabPrice.checked = state.tabPrice;

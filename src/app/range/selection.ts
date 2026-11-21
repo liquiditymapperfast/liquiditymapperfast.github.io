@@ -20,7 +20,7 @@ export interface RangeSelection {
 }
 
 /** The panes under the map, by the name each `TimePane` is made with. */
-export type RangePane = 'depth' | 'oi' | 'lt' | 'bars' | 'delta' | 'ls' | 'funding' | 'script';
+export type RangePane = 'depth' | 'oi' | 'lt' | 'bars' | 'delta' | 'ls' | 'funding' | 'script' | 'sizes';
 
 export const MINUTE = 60_000;
 

@@ -3505,5 +3505,48 @@
  "Within ≈±{pct}: longs / shorts {ratio}": "Dans ≈±{pct} : longs / shorts {ratio}",
  "Positions: {minutes} min ago · book: now": "Positions : il y a {minutes} min · carnet : maintenant",
  "Orders: {minutes} min ago · book: now": "Ordres : il y a {minutes} min · carnet : maintenant",
- "Positions: {positions} min ago · orders: {orders} min ago · book: now": "Positions : il y a {positions} min · ordres : il y a {orders} min · carnet : maintenant"
+ "Positions: {positions} min ago · orders: {orders} min ago · book: now": "Positions : il y a {positions} min · ordres : il y a {orders} min · carnet : maintenant",
+ "Flow history": "Historique du flux",
+ "Liquidations, open interest's change and market orders in six size bands, one row each, candle by candle under the chart. Quiet bars are faint; the more unusual an amount is for its row, the brighter its bar.": "Liquidations, variation de l’open interest et ordres au marché en six tranches de taille, une ligne chacune, bougie par bougie sous le graphique. Les barres ordinaires sont pâles ; plus un montant est inhabituel pour sa ligne, plus sa barre est lumineuse.",
+ "The rows: liquidations (shorts liquidated up, longs liquidated down), the change of open interest (up where it rose), then market orders in six size bands from under $25K to $5M and over (smaller sizes for smaller coins). Bars shows each size row as its buys less its sells (Delta) or as its buys up and its sells down.": "Les lignes : liquidations (shorts liquidés vers le haut, longs liquidés vers le bas), la variation de l’open interest (vers le haut quand il a monté), puis les ordres au marché en six tranches de taille, de moins de $25K à $5M et plus (tailles plus petites pour les cryptos plus petites). « Barres » montre chaque ligne de taille comme ses achats moins ses ventes (Delta) ou comme ses achats vers le haut et ses ventes vers le bas.",
+ "Every row has its own scale, and a bar's height grows with the square root of its amount, so small candles stay visible next to large ones. A bar too tall for its row is drawn to the edge with a gap near its end. Point at a bar for its amounts.": "Chaque ligne a sa propre échelle, et la hauteur d’une barre croît avec la racine carrée de son montant, si bien que les petites bougies restent visibles à côté des grandes. Une barre trop haute pour sa ligne est dessinée jusqu’au bord, avec un espace près de son extrémité. Pointez une barre pour voir ses montants.",
+ "How bright a bar is says how unusual its amount is for its own row: it is compared with the earlier candles of that row that had any such amount, with the Highlights' sensitivity and baseline (Settings). Faint is ordinary; full brightness is where the Highlights would mark it. Candles with nothing in a row (often the largest orders) are left out of its baseline, so one large order is not called unusual only because most candles have none.": "La luminosité d’une barre dit à quel point son montant est inhabituel pour sa propre ligne : il est comparé aux bougies précédentes de cette ligne qui avaient un tel montant, selon la sensibilité et la référence des Mises en évidence (Réglages). Pâle, c’est ordinaire ; pleine luminosité, c’est là où les Mises en évidence la signaleraient. Les bougies sans rien dans une ligne (souvent les plus gros ordres) sont écartées de sa référence, pour qu’un gros ordre ne soit pas jugé inhabituel seulement parce que la plupart des bougies n’en ont pas.",
+ "A candle the recording holds only in part is drawn as an outline and not judged. Liquidations come from the venues that publish them; on a day with more than 5,000 the record keeps its 5,000 largest, so the row says ≈ and a figure is at least that. Open interest is the OI pane's markets; it has no row values when only spot markets are counted, and is not judged on a one-minute chart.": "Une bougie que l’enregistrement ne détient qu’en partie est dessinée en contour et n’est pas jugée. Les liquidations viennent des plateformes qui les publient ; un jour qui en compte plus de 5 000, l’enregistrement garde les 5 000 plus grandes, donc la ligne affiche ≈ et un chiffre vaut au moins cela. L’open interest est celui des marchés du panneau OI ; il n’a pas de valeurs de ligne quand seuls des marchés spot sont comptés, et n’est pas jugé sur un graphique à une minute.",
+ "It counts the markets the footprint and the Bar stats count (set in either panel). Switch it on in the flow column's settings, in the Bar stats' settings or, on a phone, in Settings. It reads the history before the view that its comparisons need, so a bar's brightness can change a little once older candles have loaded.": "Il compte les marchés que comptent le footprint et les Stats des barres (réglés dans l’un ou l’autre panneau). Activez-le dans les réglages de la colonne de flux, dans les réglages des Stats des barres ou, sur un téléphone, dans les Réglages. Il lit les données d’avant la vue dont ses comparaisons ont besoin, si bien que la luminosité d’une barre peut changer un peu une fois les bougies plus anciennes chargées.",
+ "Liquidations, open interest's change and market orders by size, candle by candle; the most unusual amounts stand out.": "Liquidations, variation de l’open interest et ordres au marché par taille, bougie par bougie ; les montants les plus inhabituels ressortent.",
+ "Each size row as its buys less its sells (Delta), or its buys up and its sells down.": "Chaque ligne de taille comme ses achats moins ses ventes (Delta), ou ses achats vers le haut et ses ventes vers le bas.",
+ "square-root heights, each row its own scale": "hauteurs en racine carrée, une échelle par ligne",
+ "No markets are counted: switch some on.": "Aucun marché n’est compté : activez-en quelques-uns.",
+ "Flow history appears once market orders are recorded for these candles.": "L’historique du flux apparaît dès que des ordres au marché sont enregistrés pour ces bougies.",
+ "Not judged: part of the candle was not recorded": "Non jugée : une partie de la bougie n’a pas été enregistrée",
+ "Not judged yet: too few earlier candles with any": "Pas encore jugée : trop peu de bougies précédentes avec un tel montant",
+ "Above a flat baseline": "Au-dessus d’une référence plate",
+ "{z}σ from its baseline": "{z}σ de sa référence",
+ "Its baseline: the {n} earlier candles with orders of this size": {
+  "one": "Sa référence : {n} bougie précédente avec des ordres de cette taille",
+  "many": "Sa référence : les {n} bougies précédentes avec des ordres de cette taille",
+  "other": "Sa référence : les {n} bougies précédentes avec des ordres de cette taille"
+ },
+ "Its baseline: the {n} earlier candles with liquidations on that side": {
+  "one": "Sa référence : {n} bougie précédente avec des liquidations de ce côté",
+  "many": "Sa référence : les {n} bougies précédentes avec des liquidations de ce côté",
+  "other": "Sa référence : les {n} bougies précédentes avec des liquidations de ce côté"
+ },
+ "Its baseline: the {n} earlier candles": {
+  "one": "Sa référence : {n} bougie précédente",
+  "many": "Sa référence : les {n} bougies précédentes",
+  "other": "Sa référence : les {n} bougies précédentes"
+ },
+ "Market orders {band}": "Ordres au marché {band}",
+ "in progress: amounts so far": "en cours : montants à ce stade",
+ "Nothing recorded for this candle.": "Rien d’enregistré pour cette bougie.",
+ "Not known for this candle: the record does not reach it.": "Inconnu pour cette bougie : l’enregistrement ne la couvre pas.",
+ "Only spot markets are counted: they have no open interest.": "Seuls des marchés spot sont comptés : ils n’ont pas d’open interest.",
+ "Not known for this candle.": "Inconnu pour cette bougie.",
+ "Not judged on a one-minute chart: some venues report open interest every few minutes, which puts several minutes of change into one.": "Non jugé sur un graphique à une minute : certaines plateformes ne rapportent l’open interest que toutes les quelques minutes, ce qui met plusieurs minutes de variation dans une seule.",
+ "This candle": "Cette bougie",
+ "{k} of {n} size rows unusual": "{k} lignes de taille inhabituelles sur {n}",
+ "Show the Flow history": "Afficher l’historique du flux",
+ "A pane under the chart: liquidations, open interest's change and market orders in six size bands, candle by candle, the most unusual amounts the brightest.": "Un panneau sous le graphique : liquidations, variation de l’open interest et ordres au marché en six tranches de taille, bougie par bougie, les montants les plus inhabituels les plus lumineux.",
+ "Not unusual": "Pas inhabituel"
 }

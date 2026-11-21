@@ -3441,5 +3441,45 @@
  "Within ≈±{pct}: longs / shorts {ratio}": "≈±{pct} içinde: long'lar / short'lar {ratio}",
  "Positions: {minutes} min ago · book: now": "Pozisyonlar: {minutes} dk önce · defter: şimdi",
  "Orders: {minutes} min ago · book: now": "Emirler: {minutes} dk önce · defter: şimdi",
- "Positions: {positions} min ago · orders: {orders} min ago · book: now": "Pozisyonlar: {positions} dk önce · emirler: {orders} dk önce · defter: şimdi"
+ "Positions: {positions} min ago · orders: {orders} min ago · book: now": "Pozisyonlar: {positions} dk önce · emirler: {orders} dk önce · defter: şimdi",
+ "Flow history": "Akış geçmişi",
+ "Liquidations, open interest's change and market orders in six size bands, one row each, candle by candle under the chart. Quiet bars are faint; the more unusual an amount is for its row, the brighter its bar.": "Tasfiyeler, açık pozisyon değişimi ve altı büyüklük bandındaki piyasa emirleri; her biri için bir satır, grafiğin altında mum mum. Sakin çubuklar soluktur; bir tutar kendi satırı için ne kadar alışılmadıksa çubuğu o kadar parlaktır.",
+ "The rows: liquidations (shorts liquidated up, longs liquidated down), the change of open interest (up where it rose), then market orders in six size bands from under $25K to $5M and over (smaller sizes for smaller coins). Bars shows each size row as its buys less its sells (Delta) or as its buys up and its sells down.": "Satırlar: tasfiyeler (tasfiye edilen short'lar yukarı, tasfiye edilen long'lar aşağı), açık pozisyon değişimi (arttığı yerde yukarı), ardından $25K altından $5M ve üzerine kadar altı büyüklük bandındaki piyasa emirleri (küçük coinler için daha küçük büyüklükler). Çubuklar ayarı, her büyüklük satırını alımları eksi satımları (Delta) olarak ya da alımları yukarı, satımları aşağı olarak gösterir.",
+ "Every row has its own scale, and a bar's height grows with the square root of its amount, so small candles stay visible next to large ones. A bar too tall for its row is drawn to the edge with a gap near its end. Point at a bar for its amounts.": "Her satırın kendi ölçeği vardır ve bir çubuğun yüksekliği tutarının karekökü ile büyür; böylece küçük mumlar büyüklerin yanında görünür kalır. Satırına sığmayacak kadar uzun bir çubuk kenara kadar çizilir ve ucunun yakınında bir boşluk kalır. Tutarları için bir çubuğun üzerine gelin.",
+ "How bright a bar is says how unusual its amount is for its own row: it is compared with the earlier candles of that row that had any such amount, with the Highlights' sensitivity and baseline (Settings). Faint is ordinary; full brightness is where the Highlights would mark it. Candles with nothing in a row (often the largest orders) are left out of its baseline, so one large order is not called unusual only because most candles have none.": "Bir çubuğun parlaklığı, tutarının kendi satırı için ne kadar alışılmadık olduğunu söyler: tutar, o satırın böyle bir tutar içeren önceki mumlarıyla, Vurgular'ın duyarlılığı ve taban çizgisiyle (Ayarlar) karşılaştırılır. Soluk olan sıradandır; tam parlaklık, Vurgular'ın onu işaretleyeceği yerdir. Bir satırda hiçbir şey olmayan mumlar (çoğunlukla en büyük emirler) o satırın taban çizgisine alınmaz; böylece sırf çoğu mumda hiç olmadığı için tek bir büyük emir alışılmadık sayılmaz.",
+ "A candle the recording holds only in part is drawn as an outline and not judged. Liquidations come from the venues that publish them; on a day with more than 5,000 the record keeps its 5,000 largest, so the row says ≈ and a figure is at least that. Open interest is the OI pane's markets; it has no row values when only spot markets are counted, and is not judged on a one-minute chart.": "Kayıtta yalnızca kısmen bulunan bir mumun sadece çerçevesi çizilir ve değerlendirilmez. Tasfiyeler, onları yayımlayan borsalardan gelir; 5.000'den fazla tasfiye olan bir günde kayıt en büyük 5.000 tanesini saklar; bu yüzden satırda ≈ görünür ve bir rakam en az o kadardır. Açık pozisyon, açık pozisyon panelindeki piyasalardır; yalnızca spot piyasalar sayıldığında satırın değeri olmaz ve bir dakikalık grafikte değerlendirilmez.",
+ "It counts the markets the footprint and the Bar stats count (set in either panel). Switch it on in the flow column's settings, in the Bar stats' settings or, on a phone, in Settings. It reads the history before the view that its comparisons need, so a bar's brightness can change a little once older candles have loaded.": "Footprint'in ve Çubuk istatistiklerinin saydığı piyasaları sayar (iki panelden herhangi birinde ayarlanır). Akış sütununun ayarlarından, Çubuk istatistiklerinin ayarlarından ya da telefonda Ayarlar'dan açın. Karşılaştırmaları için gereken, görünümden önceki geçmişi okur; bu yüzden eski mumlar yüklendikten sonra bir çubuğun parlaklığı biraz değişebilir.",
+ "Liquidations, open interest's change and market orders by size, candle by candle; the most unusual amounts stand out.": "Tasfiyeler, açık pozisyon değişimi ve büyüklüğe göre piyasa emirleri, mum mum; en alışılmadık tutarlar öne çıkar.",
+ "Each size row as its buys less its sells (Delta), or its buys up and its sells down.": "Her büyüklük satırı: alımları eksi satımları (Delta) ya da alımları yukarı, satımları aşağı.",
+ "square-root heights, each row its own scale": "karekök yükseklikler, her satırın kendi ölçeği",
+ "No markets are counted: switch some on.": "Sayılan piyasa yok: bazılarını açın.",
+ "Flow history appears once market orders are recorded for these candles.": "Akış geçmişi, bu mumlar için piyasa emirleri kaydedildiğinde görünür.",
+ "Not judged: part of the candle was not recorded": "Değerlendirilmedi: mumun bir kısmı kaydedilmedi",
+ "Not judged yet: too few earlier candles with any": "Henüz değerlendirilmedi: tutarı olan önceki mumlar çok az",
+ "Above a flat baseline": "Düz bir taban çizgisinin üzerinde",
+ "{z}σ from its baseline": "taban çizgisinden {z}σ uzakta",
+ "Its baseline: the {n} earlier candles with orders of this size": {
+  "one": "Taban çizgisi: bu büyüklükte emir olan önceki {n} mum",
+  "other": "Taban çizgisi: bu büyüklükte emir olan önceki {n} mum"
+ },
+ "Its baseline: the {n} earlier candles with liquidations on that side": {
+  "one": "Taban çizgisi: aynı taraftaki tasfiyelerin olduğu önceki {n} mum",
+  "other": "Taban çizgisi: aynı taraftaki tasfiyelerin olduğu önceki {n} mum"
+ },
+ "Its baseline: the {n} earlier candles": {
+  "one": "Taban çizgisi: önceki {n} mum",
+  "other": "Taban çizgisi: önceki {n} mum"
+ },
+ "Market orders {band}": "Piyasa emirleri {band}",
+ "in progress: amounts so far": "sürüyor: şimdiye kadarki tutarlar",
+ "Nothing recorded for this candle.": "Bu mum için kaydedilmiş bir şey yok.",
+ "Not known for this candle: the record does not reach it.": "Bu mum için bilinmiyor: kayıt ona ulaşmıyor.",
+ "Only spot markets are counted: they have no open interest.": "Yalnızca spot piyasalar sayılıyor: bunların açık pozisyonu yoktur.",
+ "Not known for this candle.": "Bu mum için bilinmiyor.",
+ "Not judged on a one-minute chart: some venues report open interest every few minutes, which puts several minutes of change into one.": "Bir dakikalık grafikte değerlendirilmez: bazı borsalar açık pozisyonu birkaç dakikada bir bildirir; bu da birkaç dakikalık değişimi tek bir muma yığar.",
+ "This candle": "Bu mum",
+ "{k} of {n} size rows unusual": "{n} büyüklük satırından {k} tanesi alışılmadık",
+ "Show the Flow history": "Akış geçmişini göster",
+ "A pane under the chart: liquidations, open interest's change and market orders in six size bands, candle by candle, the most unusual amounts the brightest.": "Grafiğin altında bir panel: tasfiyeler, açık pozisyon değişimi ve altı büyüklük bandındaki piyasa emirleri, mum mum; en alışılmadık tutarlar en parlak.",
+ "Not unusual": "Alışılmadık değil"
 }

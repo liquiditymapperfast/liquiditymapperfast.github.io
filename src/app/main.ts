@@ -36,6 +36,8 @@ import { CvdPane } from './panes/cvd-pane.ts';
 import { TNS_LOOKBACK_MS } from './tns/model.ts';
 import type { FlowLike } from './trades/blocks.ts';
 import { BarStatsPane, barStatsHeldKey, DepthPane, LtPane, OiPane, oiHeldKey } from './panes/lower-panes.ts';
+import { LiquidationDays } from './liq-days.ts';
+import { SizeHistoryPane } from './panes/size-history-pane.ts';
 import { LiqPane } from './panes/liq-pane.ts';
 import { setTourDemo } from './tour/demo.ts';
 import { liqLevelsUrl } from './liq-url.ts';
@@ -161,7 +163,11 @@ async function main(): Promise<void> {
   toolbar.placeRecenter(heat.root);
   // The tour's moving picture of the right-button drag moves this chart (tour/demo.ts), and puts its view back when its step is left.
   setTourDemo({ plotRect: () => heat.plotRect(), zoom: (press, at) => heat.demoZoom(press, at), end: () => heat.endDemo() });
-  const bars = new BarStatsPane(chart, store, heat.view, heat, hub);
+  // Liquidations by UTC day of the markets the footprint counts: one loader for the Bar stats and the Flow history (liq-days.ts).
+  const liqDays = new LiquidationDays(hub);
+  const bars = new BarStatsPane(chart, store, heat.view, heat, hub, liqDays);
+  // Flow history: liquidations, open interest's change and market orders by size per candle, the unusual ones standing out (Karl, 2026-11-20).
+  const sizes = new SizeHistoryPane(chart, store, heat.view, heat, hub, liqDays);
   const depth = new DepthPane(chart, store, heat.view, hub);
   // NL/NS, worked out once and read by the OI pane (its bars by who opened), the Delta pane and the Funding pane.
   const nlns = new NlnsSource(hub);
@@ -202,7 +208,7 @@ async function main(): Promise<void> {
   // Plus coming or going changes what the levels show (the free view without it, `liq-view.ts`): the map, the Liq tab and the Depth pane draw again.
   plus().subscribe(() => { heat.invalidate(); liq.invalidate(); depth.refresh(); });
   // Every pane drawn in the page's palette: a theme picked, or previewed by hover, repaints them all (one list, so none is left in the old one).
-  const themed = [heat, ladder, depth, oi, delta, ls, funding, lt, bars, script, cvd, candle, liq];
+  const themed = [heat, ladder, depth, oi, delta, ls, funding, lt, bars, sizes, script, cvd, candle, liq];
   // A phone's Settings has the Tape tab's own rows: what it shows first (the list, or the chart), then the chart's rows, there only while the
   // chart shows (review r15: on the list they changed nothing on screen). The sheet places the rows once this returns.
   toolbar.tapeFields = () => {
@@ -219,6 +225,7 @@ async function main(): Promise<void> {
   const strip: LayoutPane[] = [
     { id: 'heat', root: heat.root, min: 240 },
     { id: 'bars', root: bars.root, height: 84, min: 56, head: bars.header },
+    { id: 'sizes', root: sizes.root, height: 280, min: 120, head: sizes.header },
     { id: 'depth', root: depth.root, height: 132, min: 70, head: depth.header },
     { id: 'oi', root: oi.root, height: 150, min: 60, head: oi.header },
     { id: 'delta', root: delta.root, height: 150, min: 60, head: delta.header },
@@ -262,11 +269,11 @@ async function main(): Promise<void> {
   // The panes under the map that a maximized pane covers draw nothing meanwhile and put their cards away (TimePane.cover). Delta stays
   // drawn under a maximized map: its drawing works out the CVD divergences the map draws (review r2), and a finger's pin on it is let go
   // so that its card goes (review r3; a mouse's pointer has left it for the map).
-  const covers = { bars, depth, oi, delta, ls, funding, lt, script } as const;
+  const covers = { bars, sizes, depth, oi, delta, ls, funding, lt, script } as const;
   const covered = (id: string | null, pid: string): boolean => id !== null && id !== pid && !(pid === 'delta' && id === 'heat');
   arrange.onMaximized = id => { for (const [pid, pane] of Object.entries(covers)) pane.cover(covered(id, pid)); if (id === 'heat') delta.dismiss(); syncMapMax(); heat.invalidate(); lower(); };
   toolbar.layouts = layouts;
-  const lower = () => { depth.invalidate(); oi.invalidate(); delta.invalidate(); ls.invalidate(); funding.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.followMap(); };
+  const lower = () => { depth.invalidate(); oi.invalidate(); delta.invalidate(); ls.invalidate(); funding.invalidate(); lt.invalidate(); bars.invalidate(); sizes.invalidate(); script.invalidate(); cvd.followMap(); };
   // Replay: the map's candle under way is rebuilt from the flow, so flow arriving while paused redraws it too (live, the map has its own pace).
   // The volume profile along the top of the map draws traded volume from the flow too: history that has landed redraws it (a live second
   // does not, `loads`; the map is drawn several times a second while frames come anyway), with the Delta pane hidden as well.
@@ -274,7 +281,7 @@ async function main(): Promise<void> {
   // The open-interest markets are worked out from the flow and the books on the map, which come after the candles: asked again as they do.
   hub.onFlowChanged = () => { cvd.invalidate(); delta.invalidate(); script.refresh(); const landed = stripLoads !== hub.flow.loads; stripLoads = hub.flow.loads; if (replaying() || (landed && topShown(store.state))) heat.invalidate(); hub.refreshOiMarkets(); };
   // A finger, a mouse drag or the wheel on a pane under the map moves the time axis it shares with the map.
-  for (const pane of [depth, oi, delta, ls, funding, lt, bars, script]) pane.useTimeGestures(heat.timeGestures(), (x, width, e) => heat.timeWheel(x, width, e));
+  for (const pane of [depth, oi, delta, ls, funding, lt, bars, sizes, script]) pane.useTimeGestures(heat.timeGestures(), (x, width, e) => heat.timeWheel(x, width, e));
   heat.onFrame = lower; heat.onView = lower;
   heat.onTopProfile = () => toolbar.openTradedPanel();
   heat.onArrangedChange = () => toolbar.refreshTradedPanel();
@@ -656,7 +663,7 @@ async function main(): Promise<void> {
     // open interest does not follow (`oiFlowIds`).
     if (changed.has('oiMarkets') || changed.has('disabledVenues') || changed.has('customMarkets') || (changed.has('markets') && store.state.oiMarkets === 'custom')) void hub.loadOi();
     else if (changed.has('levels') || changed.has('markets') || changed.has('bookGone')) hub.refreshOiMarkets();
-    if (changed.has('highlight')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); }
+    if (changed.has('highlight')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); sizes.invalidate(); }
     if (changed.has('depthBands') || changed.has('liqBands')) depth.settingsChanged();
     // What the levels show (liquidations, stops, both; whose; take profits) is the Depth pane's Liquidation levels too.
     if (changed.has('depthSource') || changed.has('liqLevels')) depth.refresh();
@@ -699,7 +706,7 @@ async function main(): Promise<void> {
     // Replay starting or ending changes what the book, the flow column and the panes show, whether or not new data arrives.
     if (changed.has('replay')) { ladder.invalidate(); cvd.invalidate(); heat.invalidate(); lower(); }
     if (changed.has('layers') || changed.has('layer') || changed.has('candles') || changed.has('mark') || changed.has('heat') || changed.has('show')) heat.invalidate();
-    if (changed.has('oi') || changed.has('show')) { oi.invalidate(); bars.invalidate(); }
+    if (changed.has('oi') || changed.has('show')) { oi.invalidate(); bars.invalidate(); sizes.invalidate(); }
     else if (changed.has('oiReading') || changed.has('oiFine')) oi.invalidate();
     if (changed.has('oiChange') || changed.has('oiTable')) oi.settingsChanged();
     if (changed.has('lsTable')) ls.tableChanged();
@@ -714,9 +721,10 @@ async function main(): Promise<void> {
     const shape = `${state.barStats.join(',')}|${state.barStatOptions.grouped}|${state.barStatOptions.folded.join(',')}`;
     if (shape !== tableShape) { tableShape = shape; arrange.setPaneHeight('bars', tableHeight(state.barStats, state.barStatOptions)); }
     if (changed.has('barStatOptions') || changed.has('footprint') || changed.has('barStats')) bars.refresh();
+    if (changed.has('sizeBars') || changed.has('footprint')) sizes.settingsChanged();
     if (changed.has('grouping') || changed.has('ladderMode') || changed.has('ladderShow') || changed.has('ladderCurves') || changed.has('cvd') || changed.has('pullStack') || changed.has('ladderVenue') || changed.has('ladderVenues') || changed.has('disabledVenues') || changed.has('scope')) { ladder.invalidate(); ladder.syncControls(); }
     if (changed.has('range')) { heat.invalidate(); oi.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.invalidate(); }
-    if (changed.has('hover')) { heat.invalidateHover(); oi.invalidate(); delta.invalidate(); ls.invalidate(); funding.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); script.invalidate(); cvd.syncHover(); }
+    if (changed.has('hover')) { heat.invalidateHover(); oi.invalidate(); delta.invalidate(); ls.invalidate(); funding.invalidate(); depth.invalidate(); lt.invalidate(); bars.invalidate(); sizes.invalidate(); script.invalidate(); cvd.syncHover(); }
     if (changed.has('fundingVenue') || changed.has('fundingTable')) funding.settingsChanged();
     if (['show', 'timeframe', 'oiFine', 'range', 'replay'].some(k => changed.has(k as never))) funding.invalidate();
     // The order book's row under the pointer: the map and the flow column's price strip draw its price.

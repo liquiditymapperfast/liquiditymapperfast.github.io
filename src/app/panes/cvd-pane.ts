@@ -16,6 +16,7 @@ import { MAX_PINNED, rankingKey } from '../cvd/settings.ts';
 import { venueLabel } from '../venues.ts';
 import { selectRow, sizeRow, switchRow, numberRow, togglePanel, note, heading, type Panel } from '../ui.ts';
 import { settingsIcon } from '../pane-tune.ts';
+import { flowHistoryRows } from '../size-history/switch.ts';
 import { COMMON_SIZES, SIZE_FLOOR_USD, SIZE_MAX_USD, sizeText } from '../sizes.ts';
 import { scaledUsd, unscaledUsd } from '../coin.ts';
 import type { AppState, Store } from '../store.ts';
@@ -421,6 +422,8 @@ export class CvdPane {
       switchRow(t('Start each line at zero'), t('Draw every line from zero at the left edge, so rows can be compared. Off draws the running total since the history began.'), c.rebase, v => this.#set({ rebase: v })),
       note(t('Blue is spot and amber is perpetual, whichever way the money moved. Numbers carry the sign.')),
       ...(isPhone() ? [] : this.#stripSettings(c)),
+      // The size rows' history candle by candle: a pane under the chart (panes/size-history-pane.ts), on a phone too.
+      ...flowHistoryRows(this.store),
       heading(t('Bursts')),
       switchRow(t('Mark bursts on the lines'), t("A small triangle on an exchange's line where it bought (up) or sold (down) far more at market in ten seconds than it usually does. Only bursts seen while this page is open are marked."), c.bursts, v => this.#set({ bursts: v })),
       ...burstSizeRows(this.store),
