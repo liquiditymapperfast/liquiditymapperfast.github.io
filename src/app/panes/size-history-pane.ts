@@ -140,8 +140,9 @@ export class SizeHistoryPane extends TimePane {
     }
     const { model } = held, visible = times.map((_, i) => i).filter(i => times[i]! + tfMs > v.t0 && times[i]! < v.t1);
     if (!visible.length) { this.#message(t('Flow history appears once market orders are recorded for these candles.')); return; }
-    // The rows share the height: two of context, a gap, the six size rows; in a short pane the gap and the margins give way first.
-    const rows = model.rows, top = ph < 110 ? 1 : 3, gap = ph < 140 ? 2 : GROUP_GAP, rowH = Math.max(6, (ph - 2 * top - gap) / rows.length);
+    // The rows share the height: two of context, a gap, the six size rows; in a short pane the gap and the margins give way first, then the
+    // rows thin, so all eight always show (a phone held sideways with LT on gives the pane about 100 px).
+    const rows = model.rows, top = ph < 110 ? 1 : 3, gap = ph < 140 ? 2 : GROUP_GAP, rowH = Math.max(2, (ph - 2 * top - gap) / rows.length);
     let y = top;
     this.#layout = rows.map((_, r) => { if (r === 2) y += gap; const at = { row: r, y, h: rowH }; y += rowH; return at; });
     const slot = pw * tfMs / (v.t1 - v.t0), bw = Math.max(1, Math.min(12, 0.7 * slot)), on = h.on;
@@ -177,11 +178,11 @@ export class SizeHistoryPane extends TimePane {
       }
     });
     ctx.restore();
-    // The rows' names at the left, on the panel's colour so the bars under them stay readable (as tall as a row allows); liquidations from a
-    // day the source cut say ≈.
-    const fontPx = rowH < 12 ? 9 : 10, plate = Math.min(14, Math.max(8, rowH - 1));
+    // The rows' names at the left, on the panel's colour so the bars under them stay readable (as tall as a row allows; rows too thin for a
+    // name go without, the card under the pointer names them); liquidations from a day the source cut say ≈.
+    const fontPx = rowH < 9 ? 8 : rowH < 12 ? 9 : 10, plate = Math.min(14, Math.max(7, rowH - 1));
     ctx.save(); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = `${fontPx}px ui-sans-serif, system-ui, sans-serif`;
-    for (const { row: r, y: ry, h: rh } of this.#layout) {
+    if (rowH >= 7) for (const { row: r, y: ry, h: rh } of this.#layout) {
       const row = rows[r]!, label = row.kind === 'liq' && liqCutShown ? `≈${row.label}` : row.label, w = ctx.measureText(label).width + 10;
       ctx.globalAlpha = 0.88; ctx.fillStyle = p.panel; ctx.fillRect(2, ry + rh / 2 - plate / 2, w, plate); ctx.globalAlpha = 1; ctx.fillStyle = p.muted; ctx.fillText(label, 6, ry + rh / 2 + 0.5);
     }

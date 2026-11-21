@@ -314,6 +314,8 @@ html[data-layout^="phone"] main[data-tab="map"] .pane.sizes:not([hidden]) { disp
 html[data-layout="phone-landscape"] main[data-tab="map"] .pane.sizes:not([hidden]) { flex-basis: 50% !important; }
 html[data-layout^="phone"] main[data-tab="map"]:is(:has(.pane.lt:not([hidden])), :has(.pane.funding:not([hidden]))) .pane.sizes:not([hidden]) { flex-basis: 30% !important; }
 html[data-layout^="phone"] main[data-tab="map"]:has(.pane.lt:not([hidden])):has(.pane.funding:not([hidden])):has(.pane.sizes:not([hidden])) :is(.pane.lt, .pane.funding):not([hidden]) { flex-basis: 20% !important; }
+/* Held sideways its line goes on the title's row, as the flow column's does: there is the width, and the rows need the height. */
+html[data-layout="phone-landscape"] .pane.sizes .pane-head .readout { order: 1; flex: 1 1 0; align-self: center; padding: 0 4px; }
 
 /* The handle between the map and the pane: a sheet-style pill that drags to resize. */
 .dock-grip { display: none; }
