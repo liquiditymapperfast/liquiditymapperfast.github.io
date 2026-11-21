@@ -43,8 +43,8 @@ export const PLAIN_ALPHA = 0.85;
 export const PARTIAL_SHARE = 0.95;
 /** The least history before the view the baselines are given, whatever the timeframe (a one-minute chart's sparse rows need hours). */
 export const PRE_ROLL_MIN_MS = 6 * 3_600_000;
-/** How much history before the view the baselines need: the Highlights' length of candles, and at least six hours. */
-export const preRollMs = (length: number, tfMs: number): number => Math.max(length * tfMs, PRE_ROLL_MIN_MS);
+/** How much history before the view the baselines need: the Highlights' length of candles (at least the share's `SHARE_MIN_SLOTS`), and at least six hours. */
+export const preRollMs = (length: number, tfMs: number): number => Math.max(Math.max(length, SHARE_MIN_SLOTS) * tfMs, PRE_ROLL_MIN_MS);
 
 export type RowKind = 'liq' | 'oi' | 'size';
 /** One series of a row: drawn up (+1), down (-1), or by its sign (0). Per slot: its amount (USD, signed where `side` is 0; NaN not known). */
@@ -88,7 +88,7 @@ export interface HistoryModel {
   /** Per slot: 1 where its liquidations come from a day the source cut at its 5,000 largest. */
   liqCut: Uint8Array;
   /**
-   * Per band: its share of the candle and whether that is unusual (`shareMarks`): of the six bands' |net| added up with Net bars (`net`),
+   * Per band: its share of the candle and whether that is unusual (`shareMarks`): of the six bands' |net| added up with Delta bars (`net`),
    * of their buys and sells with Buys and sells bars (`volume`). Null with Highlights off.
    */
   share: ShareMark[] | null;
@@ -117,50 +117,71 @@ export function judge(values: ArrayLike<number>, judged: (i: number) => boolean,
 export interface ShareMark { value: Float64Array; usual: Float64Array; flag: Uint8Array }
 
 /**
+ * The fewest slots a share's floor and baseline are taken over. About half of them reach the floor and the baseline needs `WARMUP` of
+ * those, so over a Highlights baseline of 12 or 18 candles no share could ever be judged (review 2026-11-21).
+ */
+export const SHARE_MIN_SLOTS = 36;
+
+/**
  * Which size bands took an unusually large part of their candle (Karl, 2026-11-21: a cue between the rows; SHARE-1 in the design record).
- * `parts` holds each band's part of the candle (with Net bars its |buys - sells|, the denominator the six of them added up; with Buys and
- * sells bars its buys plus sells). A candle is judged only when it is admitted (`whole`: fully recorded) and its six parts add up to at least
- * the median of the admitted candles among the `length` slots before it: judged on every candle, a band's share stood out mostly because the
- * others had gone quiet (seven of ten such marks; all of them for the orders under $100K, which look large only when the large ones step
- * away). Its share is unusual where it is above the mean plus `mult` standard deviations of the band's non-zero shares on the candles among
- * those same `length` slots that reach the same floor, from the twelfth (`anomalies`' rule). Floor and baseline read those slots alone, so a
- * candle has one verdict wherever the view starts, given the history before it the pane loads (`preRollMs`). Measured on seven days of the
- * recording (SHARE-1f), a mark the bar's own brightness does not already give falls on about 7 to 9 % of candles at 1 to 15 minutes.
+ * `parts` holds each band's part of the candle: with Delta bars its |buys - sells| (so the six are added up without their signs), with Buys
+ * and sells bars its buys plus sells. A candle is judged only when it is admitted (`whole`: fully recorded) and its six parts add up to at
+ * least the median of the admitted candles among the slots before it (the Highlights' length of them, at least `SHARE_MIN_SLOTS`): judged on
+ * every candle, a band's share stood out mostly because the others had gone quiet (seven of ten such marks; 93 to 100 % of them for the orders
+ * under $100K, which look large only when the large ones step away). Its share is unusual where it is above the mean plus `mult` standard
+ * deviations of the band's non-zero shares on the candles among those same slots that reach the same floor, from the twelfth (`anomalies`'
+ * rule). Floor and baseline read those slots alone, so a share has one verdict wherever the view starts, given the history before it the pane
+ * loads (`preRollMs`). Measured on seven days of the recording (SHARE-1f), a mark the bar's own brightness does not already give falls on
+ * about 7 to 9 % of candles at 1 to 15 minutes.
  */
 export function shareMarks(parts: readonly ArrayLike<number>[], whole: (i: number) => boolean, h: Pick<HighlightOptions, 'mult' | 'length'>): ShareMark[] {
-  const n = parts[0]?.length ?? 0, length = h.length, sum = new Float64Array(n).fill(NaN), floor = new Float64Array(n).fill(NaN), window: number[] = [];
+  const n = parts[0]?.length ?? 0, span = Math.max(h.length, SHARE_MIN_SLOTS), sum = new Float64Array(n).fill(NaN), floor = new Float64Array(n).fill(NaN);
   for (let i = 0; i < n; i++) {
     if (!whole(i)) continue;
     let s = 0;
     for (const v of parts) s += v[i]!;
     if (Number.isFinite(s) && s > 0) sum[i] = s;
   }
-  // Each candle's floor: the median sum of the admitted candles among the `length` slots before it. The candle and its baseline are held to
-  // that one floor, so its verdict reads those slots alone (a floor of each baseline candle's own would reach twice as far back).
+  // Each candle's floor: the median sum of the admitted candles among the `span` slots before it, from a sorted window kept as the candles go
+  // by (one slot comes in, one leaves). The candle and its baseline are held to that one floor, so its verdict reads those slots alone (a floor
+  // of each baseline candle's own would reach twice as far back).
+  const sorted: number[] = [];
+  const at = (x: number): number => { let lo = 0, hi = sorted.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (sorted[mid]! < x) lo = mid + 1; else hi = mid; } return lo; };
   for (let i = 0; i < n; i++) {
-    if (!(sum[i]! > 0)) continue;
-    window.length = 0;
-    for (let j = Math.max(0, i - length); j < i; j++) if (sum[j]! > 0) window.push(sum[j]!);
-    if (window.length < WARMUP) continue;
-    window.sort((a, b) => a - b);
-    const m = window.length;
-    floor[i] = m % 2 ? window[m >> 1]! : (window[m / 2 - 1]! + window[m / 2]!) / 2;
+    const enter = i > 0 ? sum[i - 1]! : NaN, leave = i - 1 - span >= 0 ? sum[i - 1 - span]! : NaN;
+    if (enter > 0) sorted.splice(at(enter), 0, enter);
+    if (leave > 0) sorted.splice(at(leave), 1);
+    const m = sorted.length;
+    if (!(sum[i]! > 0) || m < WARMUP) continue;
+    floor[i] = m % 2 ? sorted[m >> 1]! : (sorted[m / 2 - 1]! + sorted[m / 2]!) / 2;
   }
   return parts.map(v => {
     const value = new Float64Array(n).fill(NaN), usual = new Float64Array(n).fill(NaN), flag = new Uint8Array(n);
     for (let i = 0; i < n; i++) if (sum[i]! > 0) value[i] = v[i]! / sum[i]!;
     for (let i = 0; i < n; i++) {
-      const f = floor[i]!;
-      if (!(sum[i]! >= f) || !(value[i]! > 0)) continue;
-      let count = 0, total = 0, square = 0;
-      for (let j = Math.max(0, i - length); j < i; j++) { const x = value[j]!; if (sum[j]! >= f && x > 0) { count++; total += x; square += x * x; } }
+      const f = floor[i]!, x0 = value[i]!;
+      if (!(sum[i]! >= f) || !(x0 > 0)) continue;
+      // Mean and standard deviation from the shares less this candle's own (one pass that stays exact on a flat baseline: a share equal to
+      // every share before it is never above them).
+      let count = 0, shift = 0, square = 0;
+      for (let j = Math.max(0, i - span); j < i; j++) { const x = value[j]!; if (sum[j]! >= f && x > 0) { const d = x - x0; count++; shift += d; square += d * d; } }
       if (count < WARMUP) continue;
-      const mean = total / count, sd = Math.sqrt(Math.max(0, square / count - mean * mean));
+      const mean = x0 + shift / count, sd = Math.sqrt(Math.max(0, square / count - (shift / count) ** 2));
       usual[i] = mean;
-      if (value[i]! > mean + h.mult * sd) flag[i] = 1;
+      if (x0 > mean + h.mult * sd) flag[i] = 1;
     }
     return { value, usual, flag };
   });
+}
+
+/**
+ * Whether a size row's bar at slot `i` gets the share dot: its share was unusual (`shareMarks`), the candle is whole, and no side of the bar is
+ * lit past half (from three quarters of the multiple, where the card says Close to unusual: its brightness speaks for it). The pane draws it
+ * where the row and the candle are wide enough; the card explains it where it is drawn.
+ */
+export function shareDot(model: Pick<HistoryModel, 'share' | 'partial'>, row: HistoryRow, i: number, mult: number): boolean {
+  const mark = row.band === undefined ? null : model.share?.[row.band] ?? null;
+  return !!mark && mark.flag[i] === 1 && model.partial[i] !== 1 && row.parts.every(p => emphasis(p.sigma[i]!, p.flag[i] === 1, mult) <= 0.5);
 }
 
 /**
@@ -289,6 +310,8 @@ export interface CardContext {
   oiNote: 'spot' | 'minute' | null;
   /** The Highlights' multiple (where the rule flags; a bar is lit from half of it). */
   mult: number;
+  /** Whether the pane draws share dots on this row (it is tall enough, its candles wide enough): the card explains a dot only where one is. Absent: it does. */
+  dots?: boolean;
   /** Open interest's change at this candle in the coin itself, and the coin's name, beside the dollars; absent where not known. */
   oiCoins?: { value: number; coin: string } | null;
 }
@@ -316,19 +339,19 @@ export function cardLines(model: HistoryModel, r: number, i: number, ctx: CardCo
     out.push({ label: t('Net'), text: signedUsd(net), color: net > 0 ? 'buy' : net < 0 ? 'sell' : 'text' });
     if (b + s > 0) out.push({ label: t('Buy share'), text: `${Math.round(b / (b + s) * 100)}%` });
     // Its share of the candle, and where it was unusual, what it usually is (the dot, where the bar is not already lit): of the volume with Buys
-    // and sells bars, of the six sizes' nets added up with Net bars, said on a line of its own.
+    // and sells bars, of the six sizes' nets counted without their signs with Delta bars, said on a line of its own.
     const all = model.total[i]!, mark = ctx.judging && !partial ? model.share?.[row.band!] ?? null : null, marked = mark?.flag[i] === 1;
     // The share and what it usually is, to as many decimals as tell them apart (a tight baseline: 17.2 % against 16.7 %, not 17 % against 17 %).
     const shareLine = (label: string, value: number): InfoLine => {
       const usual = marked ? mark!.usual[i]! : NaN, digits = Number.isFinite(usual) ? [0, 1, 2].find(d => (value * 100).toFixed(d) !== (usual * 100).toFixed(d)) ?? 2 : 0;
       const text = `${(value * 100).toFixed(digits)}%`;
-      return marked ? { label, text: `${text} · ${t('unusual: usually {share} %', { share: (usual * 100).toFixed(digits) })}`, bold: true } : { label, text };
+      return marked ? { label, text: `${text} · ${t('unusual: usually {share}%', { share: (usual * 100).toFixed(digits) })}`, bold: true, wrap: true } : { label, text };
     };
     if (all > 0) out.push(model.shareKind === 'volume' ? shareLine(t('Share of volume'), (b + s) / all) : { label: t('Share of volume'), text: `${Math.round((b + s) / all * 100)}%` });
     if (model.shareKind === 'net' && mark && Number.isFinite(mark.value[i]!)) out.push(shareLine(t('Share of the net'), mark.value[i]!));
     if (row.parts.length === 1) judged(row.parts[0]!, null, partial);
     else { judged(row.parts[0]!, t('Buys'), partial); judged(row.parts[1]!, t('Sells'), partial); }
-    if (marked && !row.parts.some(p => p.flag[i] === 1)) dotNote = ({ text: model.shareKind === 'net' ? t('The dot: this size\'s net was an unusually large part of the six sizes\' nets added up, on a candle at least as busy as usual.') : t('The dot: this size\'s buys and sells were an unusually large part of the candle\'s market orders, on a candle at least as busy as usual.'), color: 'muted', wrap: true });
+    if (ctx.judging && ctx.dots !== false && shareDot(model, row, i, ctx.mult)) dotNote = ({ text: model.shareKind === 'net' ? t('The dot: this size\'s net was an unusually large part of the six sizes\' nets counted without their signs, on a candle at least as busy as usual.') : t('The dot: this size\'s buys and sells were an unusually large part of the candle\'s market orders, on a candle at least as busy as usual.'), color: 'muted', wrap: true });
   } else if (row.kind === 'liq') {
     const [shorts, longs] = row.parts as [Part, Part], s = shorts.values[i]!, l = longs.values[i]!, cut = model.liqCut[i] === 1;
     if (!Number.isFinite(s) || !Number.isFinite(l)) { out.push({ text: t('Not known for this candle: the record does not reach it.'), color: 'muted', rule: true }); return out; }

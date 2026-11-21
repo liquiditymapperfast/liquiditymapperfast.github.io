@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BANDS, PLAIN_ALPHA, QUIET_ALPHA, alphaOf, bandLabel, buildHistory, cardLines, emphasis, heightOf, judge, preRollMs, rowCap, unusualRows, type HistoryInput } from '../src/app/size-history/model.ts';
+import { BANDS, PLAIN_ALPHA, QUIET_ALPHA, SHARE_MIN_SLOTS, alphaOf, bandLabel, buildHistory, cardLines, emphasis, heightOf, judge, preRollMs, rowCap, shareDot, shareMarks, unusualRows, type HistoryInput } from '../src/app/size-history/model.ts';
 import type { Bar } from '../src/app/panes/footprint.ts';
 import { DEFAULT_HIGHLIGHT } from '../src/app/anomaly.ts';
 
@@ -189,16 +189,17 @@ function shareBar(i: number, bump: { at: number; band: number; add: number } | n
 }
 
 test('a size that took an unusually large part of a busy candle is marked; a quiet candle is not judged, whoever dominates it (SHARE-1)', () => {
-  // Candle 81 is busy: $100K-500K nets 180 where the others net about 150. Its amount is ordinary for its row (it swings 50 to 150),
-  // its share (19 % against a sixth, give or take a fraction of a percent) is not.
-  const bars = Array.from({ length: 90 }, (_, i) => shareBar(i, i === 81 ? { at: 81, band: 2, add: 30 } : i === 82 ? { at: 82, band: 0, add: 50 } : null));
+  // Candle 81 is busy: $100K-500K nets 154.5 where the others net about 150. Its amount is ordinary for its row (it swings 50 to 150),
+  // its share (17.1 % against a sixth, give or take a fraction of a percent) is not.
+  const bars = Array.from({ length: 90 }, (_, i) => shareBar(i, i === 81 ? { at: 81, band: 2, add: 3 } : i === 82 ? { at: 82, band: 0, add: 50 } : null));
   const m = buildHistory(input(bars));
   assert.equal(m.shareKind, 'net');
   const mark = m.share![2]!;
   assert.equal(mark.flag[81], 1, 'its share stands out');
-  assert.ok(Math.abs(mark.value[81]! - 180 / (180 + 5 * 150)) < 2e-3, String(mark.value[81]));
+  assert.ok(Math.abs(mark.value[81]! - 154.5 / 903) < 1e-9, String(mark.value[81]));
   assert.ok(Math.abs(mark.usual[81]! - 1 / 6) < 2e-3, 'against what it usually is on busy candles');
-  assert.equal(m.rows[4]!.parts[0]!.flag[81], 0, 'and its amount is not unusual: this is what the dot is for');
+  assert.equal(m.rows[4]!.parts[0]!.flag[81], 0, 'and its amount is not unusual');
+  assert.equal(shareDot(m, m.rows[4]!, 81, 2), true, 'nor lit: this is what the dot is for');
   assert.equal(m.share!.filter(s => s.flag[81] === 1).length, 1, 'only that size');
   // Candle 82 is quiet (its six nets add up to well under the median of the candles before it): under $25K nets twice the others there,
   // a large part of a small candle, which says the others stepped away rather than that small orders rushed in. Not judged.
@@ -240,10 +241,10 @@ test('with Buys and sells bars a size is judged on its buys plus sells against t
 
 test('the card gives the share, and where it is unusual what it usually is; the dot is explained where the bar is not lit', () => {
   const ctx = { time: 't', live: false, judging: true, oiSource: null, oiNote: null, mult: 2 } as const;
-  const net = buildHistory(input(Array.from({ length: 90 }, (_, i) => shareBar(i, { at: 81, band: 2, add: 30 }))));
+  const net = buildHistory(input(Array.from({ length: 90 }, (_, i) => shareBar(i, { at: 81, band: 2, add: 3 }))));
   const lines = cardLines(net, 4, 81, ctx);
   const share = lines.find(l => l.label === 'Share of the net');
-  assert.equal(share?.text, '20% · unusual: usually 17 %', 'its net, 181.5 of 930 (the others give or take 1 %)'); assert.equal(share?.bold, true);
+  assert.equal(share?.text, '17.1% · unusual: usually 16.7%', 'its net, 154.5 of 903 (the others give or take 1 %), to the decimal that tells it from a sixth'); assert.equal(share?.bold, true);
   assert.ok(lines.some(l => l.color === 'muted' && l.text.startsWith('The dot: this size\'s net was an unusually large part')), lines.map(l => l.text).join('\n'));
   const dot = lines.findIndex(l => l.text.startsWith('The dot:')), baseline = lines.findIndex(l => l.text.startsWith('Its baseline'));
   assert.ok(baseline > 0 && dot > baseline, 'under the judgement and what it was judged against, not between them');
@@ -253,11 +254,113 @@ test('the card gives the share, and where it is unusual what it usually is; the 
   const split = buildHistory(input(Array.from({ length: 90 }, (_, i) => shareBar(i, { at: 81, band: 2, add: 40 })), { mode: 'split' }));
   const vol = cardLines(split, 4, 81, ctx).find(l => l.label === 'Share of volume');
   assert.equal(split.share![2]!.flag[81], 1);
-  assert.match(vol?.text ?? '', /^17\.\d% · unusual: usually 16\.\d %$/, vol?.text);
+  assert.match(vol?.text ?? '', /^17\.\d% · unusual: usually 16\.\d%$/, vol?.text);
   // A bar lit for its own amount says so itself: its share is still given, the dot is neither drawn nor explained.
   const lit = buildHistory(input(Array.from({ length: 90 }, (_, i) => shareBar(i, { at: 81, band: 2, add: 2_000 }))));
   assert.equal(lit.rows[4]!.parts[0]!.flag[81], 1);
   const litLines = cardLines(lit, 4, 81, ctx);
   assert.ok(litLines.some(l => l.label === 'Share of the net' && l.text.includes('unusual')));
   assert.equal(litLines.some(l => l.text.startsWith('The dot:')), false);
+});
+
+test('the share baseline holds only the candles that reach the floor: quiet candles of another make-up never sit in it (review 2026-11-21)', () => {
+  // Quiet candles are mostly small orders (under $25K half of them); busy ones a sixth each. On busy candle 81 the small orders take a
+  // fifth: unusual against the busy candles (a sixth, give or take a fraction), ordinary against all of them (a third on average).
+  const bars = Array.from({ length: 90 }, (_, i) => {
+    const busy = i % 2 === 1, buy = boxes({}), sell = boxes({});
+    BANDS.forEach(([lo], b) => {
+      const jitter = 1 + 0.01 * (((i * 7 + b) % 3) - 1);
+      const net = busy ? (i === 81 && b === 0 ? 225 : 150 * jitter) : b === 0 ? 250 * jitter : 50 * jitter;
+      buy[lo] = 100 + net; sell[lo] = 100;
+    });
+    return bar(i, buy, sell);
+  });
+  const m = buildHistory(input(bars));
+  assert.ok(Math.abs(m.share![0]!.value[81]! - 225 / (225 + 5 * 150)) < 3e-3);
+  assert.equal(m.share![0]!.flag[81], 1, 'judged against the busy candles alone');
+  assert.ok(Math.abs(m.share![0]!.usual[81]! - 1 / 6) < 3e-3, 'whose small orders take a sixth');
+});
+
+test('a flat baseline: a share equal to every share before it is not unusual, one above it is', () => {
+  // Every busy candle exactly a sixth each (no jitter), quiet candles too; candle 81 the same, candle 83 a little more for band 2.
+  const flat = (i: number, extra = 0): Bar => {
+    const scale = i % 2 ? 3 : 1, buy = boxes({}), sell = boxes({});
+    BANDS.forEach(([lo], b) => { buy[lo] = 100 * scale + 50 * scale + (b === 2 ? extra : 0); sell[lo] = 100 * scale; });
+    return bar(i, buy, sell);
+  };
+  const m = buildHistory(input(Array.from({ length: 90 }, (_, i) => flat(i, i === 83 ? 3 : 0))));
+  assert.equal(m.share![2]!.flag[81], 0, 'the same as every one before it');
+  assert.equal(m.share![2]!.usual[81], 1 / 6);
+  assert.equal(m.share![2]!.flag[83], 1, 'above a flat baseline');
+});
+
+test('a candle with no bar inside the window is left out of the floor and the baseline; a short Highlights baseline still judges over 36 candles', () => {
+  const bars: (Bar | null)[] = Array.from({ length: 90 }, (_, i) => shareBar(i, { at: 81, band: 2, add: 30 }));
+  bars[60] = null; bars[61] = null;
+  const m = buildHistory(input(bars));
+  assert.ok(Number.isNaN(m.share![2]!.value[60]!));
+  assert.equal(m.share![2]!.flag[81], 1, 'judged as before, over the candles that are there');
+  // A Highlights baseline of 12 candles: about half of them reach the floor, fewer than the twelve a baseline needs, so the share is taken
+  // over 36 candles (SHARE_MIN_SLOTS) and still judged.
+  const short = buildHistory(input(bars, { highlight: { ...H, length: 12 } }));
+  assert.equal(short.share![2]!.flag[81], 1);
+  assert.equal(SHARE_MIN_SLOTS, 36);
+  assert.equal(preRollMs(12, 3_600_000), 36 * 3_600_000, 'and the history before the view reaches that far');
+});
+
+test('the dot: an unusual share on a whole candle whose bar is not lit past half; the card explains it only where the pane draws it', () => {
+  const ctx = { time: 't', live: false, judging: true, oiSource: null, oiNote: null, mult: 2 } as const;
+  const m = buildHistory(input(Array.from({ length: 90 }, (_, i) => shareBar(i, { at: 81, band: 2, add: 3 }))));
+  const row = m.rows[4]!;
+  assert.equal(shareDot(m, row, 81, 2), true);
+  assert.equal(shareDot(m, row, 80, 2), false, 'an ordinary share');
+  assert.equal(shareDot(m, m.rows[2]!, 81, 2), false, 'another size');
+  assert.equal(shareDot({ ...m, partial: m.partial.map((p, i) => i === 81 ? 1 : p) }, row, 81, 2), false, 'a candle recorded in part');
+  // Its amount at 1.9 standard deviations: the bar is almost fully lit (the card says Close to unusual), so the dot would only repeat it.
+  const nearly = { ...row, parts: row.parts.map(p => ({ ...p, sigma: p.sigma.map((s, i) => i === 81 ? 1.9 : s), flag: p.flag })) };
+  assert.equal(shareDot(m, nearly, 81, 2), false);
+  assert.ok(cardLines(m, 4, 81, ctx).some(l => l.text.startsWith('The dot: this size\'s net was an unusually large part of the six sizes\' nets counted without their signs')));
+  assert.equal(cardLines(m, 4, 81, { ...ctx, dots: false }).some(l => l.text.startsWith('The dot:')), false, 'a row too thin, or candles too narrow, for a dot');
+  assert.equal(cardLines(m, 4, 81, { ...ctx, dots: false }).find(l => l.label === 'Share of the net')?.wrap, true, 'the share still said, on a line that wraps');
+});
+
+test('shareMarks equals the rule written out plainly (a sort for each candle, two passes for the spread) on random candles at every baseline length', () => {
+  let seed = 12345;
+  const rand = (): number => { seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648; return seed / 2_147_483_648; };
+  for (const length of [12, 24, 72, 150]) {
+    const n = 400, parts = BANDS.map(() => new Float64Array(n)), admitted = Array.from({ length: n }, () => rand() > 0.04);
+    for (let i = 0; i < n; i++) {
+      const busy = rand() < 0.5 ? 1 : 3;
+      parts.forEach((p, b) => { p[i] = rand() < 0.1 * b ? 0 : busy * (50 + 100 * rand()) * (b === 0 && rand() < 0.3 ? 4 : 1); });
+      if (rand() < 0.02) parts[2]![i] = NaN;
+    }
+    const got = shareMarks(parts, i => admitted[i]!, { mult: 2, length });
+    // The rule as the doc says it, with no shortcut.
+    const span = Math.max(length, SHARE_MIN_SLOTS), sum = Array.from({ length: n }, (_, i) => {
+      if (!admitted[i]) return NaN;
+      const s = parts.reduce((a, p) => a + p[i]!, 0);
+      return Number.isFinite(s) && s > 0 ? s : NaN;
+    });
+    parts.forEach((p, b) => {
+      for (let i = 0; i < n; i++) {
+        const before = sum.slice(Math.max(0, i - span), i).filter(x => x > 0).sort((a, c) => a - c), m = before.length;
+        const x0 = sum[i]! > 0 ? p[i]! / sum[i]! : NaN;
+        let flag = 0, usual = NaN;
+        if (sum[i]! > 0 && m >= 12 && x0 > 0) {
+          const floor = m % 2 ? before[m >> 1]! : (before[m / 2 - 1]! + before[m / 2]!) / 2;
+          if (sum[i]! >= floor) {
+            const base: number[] = [];
+            for (let j = Math.max(0, i - span); j < i; j++) { const x = p[j]! / sum[j]!; if (sum[j]! >= floor && x > 0) base.push(x); }
+            if (base.length >= 12) {
+              const mean = base.reduce((a, x) => a + x, 0) / base.length, sd = Math.sqrt(base.reduce((a, x) => a + (x - mean) ** 2, 0) / base.length);
+              usual = mean; flag = x0 > mean + 2 * sd ? 1 : 0;
+            }
+          }
+        }
+        assert.equal(got[b]!.flag[i], flag, `length ${length}, band ${b}, candle ${i}`);
+        if (Number.isNaN(usual)) assert.ok(Number.isNaN(got[b]!.usual[i]!), `length ${length}, band ${b}, candle ${i}: not judged`);
+        else assert.ok(Math.abs(got[b]!.usual[i]! - usual) < 1e-12, `length ${length}, band ${b}, candle ${i}: ${got[b]!.usual[i]} against ${usual}`);
+      }
+    });
+  }
 });
