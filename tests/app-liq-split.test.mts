@@ -90,7 +90,11 @@ test('a sub-column\'s why-text never runs past the plot\'s foot under a taller h
   assert.ok(head + 4 + 12 * n + 10 > ph, 'and no line that would fit is left out');
   assert.equal(whyLines(2000, 60), 8, 'a tall map: as many as before');
   assert.equal(whyLines(80, 76), 1, 'no room at all: one line, its end an ellipsis');
-  assert.match(fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8'), /wrapText\(wide, why, subRoom\(sub\), whyLines\(ph, head\)\)/);
+  // Drawn under the heading band (the History link's row included), not under its text rows, where the band veiled its first lines; and the
+  // words across both columns painted after the Mirror, whose dimming would split the sentence at the divider.
+  const heat = fs.readFileSync('src/app/panes/heat-pane.ts', 'utf8');
+  assert.match(heat, /const from = this\.#liqHeadH;\n.*\n\s+wrapText\(wide, why, subRoom\(sub\), whyLines\(ph, from\)\)\.forEach\(\(line, n\) => ctx\.fillText\(line, sub\.x0 \+ LIQ_PAD, from \+ 4 \+ 12 \* n\)\)/);
+  assert.ok(heat.indexOf('heads.across.forEach') > heat.indexOf('if (ms && mset) this.#paintLiqColumnMirror(ctx, state, ms, price, subs[at].x0'), 'the words across after the Mirror');
 });
 
 test('the stripe\'s lanes for liquidations beside stops: the take profits by the live edge, then liquidations, then stops beside the column; captions never overlap', () => {

@@ -4338,8 +4338,11 @@ export class HeatPane {
       const prof = profs[i as 0 | 1], set = sets[i as 0 | 1], scale = scales[i as 0 | 1];
       if (prof && set) { this.#paintLiqSub(ctx, prof, i === 0 ? tprof : null, sub, scale, step, price, ph); drawn.push({ x0: sub.x0, W: sub.w, width: sub.w - 6, maxCum: scale.maxCum, set }); return; }
       const why = !live ? t('Liquidation levels show the live market only.') : (set ? liqWhy(set, set.asOfs().liq) : '') || t('Liquidation levels are loading.');
+      // Under the heading band (`#liqHeadH`, the History link's row included), which is painted over the rows at 0.9: the first lines were
+      // drawn under it and veiled until 2026-11-21.
+      const from = this.#liqHeadH;
       ctx.globalAlpha = 1; ctx.fillStyle = p.muted;
-      wrapText(wide, why, subRoom(sub), whyLines(ph, head)).forEach((line, n) => ctx.fillText(line, sub.x0 + LIQ_PAD, head + 4 + 12 * n));
+      wrapText(wide, why, subRoom(sub), whyLines(ph, from)).forEach((line, n) => ctx.fillText(line, sub.x0 + LIQ_PAD, from + 4 + 12 * n));
     });
     this.#liqSubs = drawn;
     // The divider, then the heading band over the rows: the button (a page element), the notes, each column's caption and its own maxima,
@@ -4357,13 +4360,15 @@ export class HeatPane {
       ctx.font = `${size}px ui-sans-serif, system-ui, sans-serif`; ctx.fillStyle = p.muted;
       h.scale.forEach((line, n) => ctx.fillText(line, sub.x0 + LIQ_PAD, top + 12 * (h.caption.length + n)));
     });
-    const below = top + 12 * (heads.rows - heads.across.length);
-    ctx.fillStyle = p.muted;
-    heads.across.forEach((line, n) => ctx.fillText(line, x0 + LIQ_PAD, below + 12 * n));
     // Mirror on the sub-column under the pointer, its band and box on that column's set.
     this.#profileBox = null;
     const hv = this.#profileHover, at: 0 | 1 = hv?.x !== undefined ? subAt(hv.x, x0, W) : 0, ms = stands[at], mset = sets[at];
     if (ms && mset) this.#paintLiqColumnMirror(ctx, state, ms, price, subs[at].x0, ph, subs[at].w, mset);
+    // The words across both columns, after the Mirror: its dimming outside the band covers the hovered column's heading, and over half of
+    // this line it split the sentence in brightness at the divider.
+    const below = top + 12 * (heads.rows - heads.across.length);
+    ctx.globalAlpha = 1; ctx.font = `${size}px ui-sans-serif, system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = p.muted;
+    heads.across.forEach((line, n) => ctx.fillText(line, x0 + LIQ_PAD, below + 12 * n));
     ctx.restore(); ctx.textBaseline = 'middle';
     const box = this.#profileBox as { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null; // set by #paintLiqColumnMirror above
     if (box) {
