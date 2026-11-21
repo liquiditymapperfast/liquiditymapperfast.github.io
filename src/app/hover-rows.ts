@@ -30,11 +30,14 @@ export class Held<T> {
   }
 }
 
-/** A ratio as the boxes print it, two decimals below ten and one above ("1.04×"); a dash where the side divided by holds nothing. */
+/**
+ * A ratio as the boxes print it, two decimals below ten and one up to a thousand ("1.04×", "13.0×"), and no more digits past that ("≥1000×":
+ * a side all but empty against a full one printed sixteen of them and widened the box); a dash where the side divided by holds nothing.
+ */
 export function ratioWords(top: number, bottom: number): string {
   if (!(bottom > 0)) return '–';
   const r = top / bottom;
-  return `${r >= 10 ? r.toFixed(1) : r.toFixed(2)}×`;
+  return r >= 1000 ? '≥1000×' : `${r >= 10 ? r.toFixed(1) : r.toFixed(2)}×`;
 }
 
 /** Whole percentages of `values` out of `total` that add up to 100 (the largest remainders take the points rounding leaves over). */
@@ -131,27 +134,30 @@ export interface DepthBand { bid: number; ask: number; pct: string; reach: { bid
  * under the Mirror's balance (`BALANCED_RATIO`, as the order book's box says Balanced); only one side where the other holds nothing. Karl,
  * 2026-11-21: a ratio in one fixed order ("bids / asks 0.71×", "longs / shorts 0.20×") made him work out which side leads, where the box
  * before it said so ("This side has 1.4× more"). Named by price side, never this side or that, so moving the pointer across the price
- * does not turn it over.
+ * does not turn it over. Every case wraps: in German or Russian the sentence is wider than a phone's map leaves the box (`wrapWithin`).
+ * A side not known, below zero or endless counts as nothing.
  */
 export function depthBandVerdict(bid: number, ask: number, pct: string): InfoLine {
-  const b = bid > 0 ? bid : 0, a = ask > 0 ? ask : 0;
-  if (!b && !a) return { text: t('Within ≈±{pct}: no bids or asks', { pct }), color: 'muted' };
-  if (!a) return { text: t('Within ≈±{pct}: only bids', { pct }), color: 'below', bold: true };
-  if (!b) return { text: t('Within ≈±{pct}: only asks', { pct }), color: 'above', bold: true };
-  if (Math.max(b, a) / Math.min(b, a) < BALANCED_RATIO) return { text: t('Within ≈±{pct}: bids and asks about even', { pct }), bold: true };
-  return b > a ? { text: t('Within ≈±{pct}: bids {ratio} the asks', { pct, ratio: ratioWords(b, a) }), color: 'below', bold: true }
-    : { text: t('Within ≈±{pct}: asks {ratio} the bids', { pct, ratio: ratioWords(a, b) }), color: 'above', bold: true };
+  const b = known(bid), a = known(ask);
+  if (!b && !a) return { text: t('Within ≈±{pct}: no bids or asks', { pct }), color: 'muted', wrap: true };
+  if (!a) return { text: t('Within ≈±{pct}: only bids', { pct }), color: 'below', bold: true, wrap: true };
+  if (!b) return { text: t('Within ≈±{pct}: only asks', { pct }), color: 'above', bold: true, wrap: true };
+  if (Math.max(b, a) / Math.min(b, a) < BALANCED_RATIO) return { text: t('Within ≈±{pct}: bids and asks about even', { pct }), bold: true, wrap: true };
+  return b > a ? { text: t('Within ≈±{pct}: bids {ratio} the asks', { pct, ratio: ratioWords(b, a) }), color: 'below', bold: true, wrap: true }
+    : { text: t('Within ≈±{pct}: asks {ratio} the bids', { pct, ratio: ratioWords(a, b) }), color: 'above', bold: true, wrap: true };
 }
+/** A side's amount as the verdicts weigh it: a finite amount above zero, else nothing. */
+const known = (x: number): number => Number.isFinite(x) && x > 0 ? x : 0;
 
 /** The liquidation card's band in one line, as `depthBandVerdict` says the book's: longs and shorts by whose positions (or orders) they are, each in the colour the column draws it in. */
 export function liqBandVerdict(longs: number, shorts: number, pct: string, longColor: InfoColor, shortColor: InfoColor): InfoLine {
-  const l = longs > 0 ? longs : 0, s = shorts > 0 ? shorts : 0;
-  if (!l && !s) return { text: t('Within ≈±{pct}: no longs or shorts', { pct }), color: 'muted', rule: true };
-  if (!s) return { text: t('Within ≈±{pct}: only longs', { pct }), color: longColor, bold: true, rule: true };
-  if (!l) return { text: t('Within ≈±{pct}: only shorts', { pct }), color: shortColor, bold: true, rule: true };
-  if (Math.max(l, s) / Math.min(l, s) < BALANCED_RATIO) return { text: t('Within ≈±{pct}: longs and shorts about even', { pct }), bold: true, rule: true };
-  return l > s ? { text: t('Within ≈±{pct}: longs {ratio} the shorts', { pct, ratio: ratioWords(l, s) }), color: longColor, bold: true, rule: true }
-    : { text: t('Within ≈±{pct}: shorts {ratio} the longs', { pct, ratio: ratioWords(s, l) }), color: shortColor, bold: true, rule: true };
+  const l = known(longs), s = known(shorts);
+  if (!l && !s) return { text: t('Within ≈±{pct}: no longs or shorts', { pct }), color: 'muted', rule: true, wrap: true };
+  if (!s) return { text: t('Within ≈±{pct}: only longs', { pct }), color: longColor, bold: true, rule: true, wrap: true };
+  if (!l) return { text: t('Within ≈±{pct}: only shorts', { pct }), color: shortColor, bold: true, rule: true, wrap: true };
+  if (Math.max(l, s) / Math.min(l, s) < BALANCED_RATIO) return { text: t('Within ≈±{pct}: longs and shorts about even', { pct }), bold: true, rule: true, wrap: true };
+  return l > s ? { text: t('Within ≈±{pct}: longs {ratio} the shorts', { pct, ratio: ratioWords(l, s) }), color: longColor, bold: true, rule: true, wrap: true }
+    : { text: t('Within ≈±{pct}: shorts {ratio} the longs', { pct, ratio: ratioWords(s, l) }), color: shortColor, bold: true, rule: true, wrap: true };
 }
 
 export function depthBandLines(b: DepthBand): InfoLine[] {

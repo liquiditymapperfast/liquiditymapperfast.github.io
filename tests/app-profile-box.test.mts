@@ -3,9 +3,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { mirrorLines, mirrorStats, paintMirrorBox } from '../src/app/mirror.ts';
+import { mirrorFrame, mirrorLines, mirrorStats, paintMirrorBox, type MirrorLine } from '../src/app/mirror.ts';
 import { PALETTES } from '../src/app/theme.ts';
-import { INFO, measureInfoBox } from '../src/app/infobox.ts';
+import { INFO, measureInfoBox, wrapWithin } from '../src/app/infobox.ts';
+import { depthBandVerdict } from '../src/app/hover-rows.ts';
 import { readLiqLevels } from '../src/app/liq-url.ts';
 import { initialState, type AppState } from '../src/app/store.ts';
 import { PROFILE_STRIP_W, PROFILE_W, liqSplitDrawn, profileBoxFrame, profileColumnW, setCompactGutters } from '../src/app/panes/heat-pane.ts';
@@ -33,7 +34,7 @@ const stateWith = (liq: Partial<{ column: boolean; split: 'kinds' }>): AppState 
 const PW = 487, PH = 876, HEAD = 85;
 /** The box for a pointer on the profile column at `y`, as the map draws it (`#paintProfile`), on a map `ph` tall under a heading `head` tall. */
 function boxAt(state: AppState, y: number, placement: 'down' | 'up', pw = PW, ph = PH, head = HEAD, shown = lines): { rect: { x: number; y: number; w: number; h: number }; frame: ReturnType<typeof profileBoxFrame> } {
-  const frame = profileBoxFrame(state, pw, ph, head, measureInfoBox(ctx, shown).h);
+  const frame = mirrorFrame(ctx, shown, h => profileBoxFrame(state, pw, ph, head, h));
   const rect = paintMirrorBox(ctx, shown, frame.x, y, frame.bounds, p, pick, placement)!;
   return { rect, frame };
 }
@@ -125,6 +126,28 @@ test('the map draws the profile column\'s box in that frame', () => {
   const start = heat.indexOf('  #paintProfile(ctx'), end = heat.indexOf('\n  }\n', start);
   assert.ok(start > 0 && end > start);
   const body = heat.slice(start, end);
-  assert.match(body, /const frame = profileBoxFrame\(state, pw, ph, this\.#liqHeadH, measureInfoBox\(ctx, box\.lines\)\.h\);/);
+  assert.match(body, /const frame = mirrorFrame\(ctx, box\.lines, h => profileBoxFrame\(state, pw, ph, this\.#liqHeadH, h\)\);/);
   assert.match(body, /paintMirrorBox\(ctx, box\.lines, frame\.x, box\.y, frame\.bounds,/);
+});
+
+test('on a phone\'s map a long verdict wraps to the room there: the box stays on the map, as tall as the frame measured it (review 2026-11-21)', () => {
+  // A 320 px phone: the map less the axis and the two strips, 230 px. The German verdict at six pixels a character is 318 px, wider than the map.
+  setCompactGutters(true, 320);
+  try {
+    const state = stateWith({});
+    const pw = 320 - 58 - 2 * PROFILE_STRIP_W;
+    const german: MirrorLine = { text: 'Innerhalb ≈±12.1%: Longs 5.00× so groß wie die Shorts', bold: true, rule: true, wrap: true };
+    const shown: MirrorLine[] = [{ text: 'Bids 58,400–58,450', bold: true }, { label: 'At this level', text: '$27.3M' }, german, depthBandVerdict(152.8e6, 412e6, '20.5%')];
+    const { rect, frame } = boxAt(state, 500, 'up', pw, PH, HEAD, shown);
+    assert.ok(rect.x >= frame.bounds.x0 + 2 && rect.x + rect.w <= frame.bounds.x1 - 2, `on the map: ${rect.x}-${rect.x + rect.w} of ${frame.bounds.x1}`);
+    assert.equal(rect.h, measureInfoBox(ctx, shown, wrapWithin(frame.bounds.x0, frame.bounds.x1)).h, 'drawn as tall as measured');
+    assert.equal(rect.h, measureInfoBox(ctx, shown, 1e9).h + INFO.lineH, 'the German sentence took two rows');
+  } finally { setCompactGutters(false, 2000); }
+});
+
+test('a wrapped line runs to the room less the box\'s padding and margins, between 120 and 300 px', () => {
+  assert.equal(wrapWithin(0, 230), 230 - 2 * INFO.pad - 4);
+  assert.equal(wrapWithin(50, 280), 210);
+  assert.equal(wrapWithin(0, 1000), 300, 'a desktop\'s map: no wider than 300 px');
+  assert.equal(wrapWithin(0, 100), 120, 'a sliver: still a readable width');
 });

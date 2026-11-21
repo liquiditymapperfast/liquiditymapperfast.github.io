@@ -1,7 +1,7 @@
 import type { Palette } from './theme.ts';
 import { price as fmtPrice, usd } from './format.ts';
 import { t } from './i18n.ts';
-import { paintInfoBox, type InfoColor, type InfoLine, type InfoRect } from './infobox.ts';
+import { measureInfoBox, paintInfoBox, wrapWithin, type InfoColor, type InfoLine, type InfoRect } from './infobox.ts';
 
 /**
  * Mirror hover: pointing at a price highlights the band from the mid to that price and the equally wide band on the other
@@ -72,11 +72,21 @@ export function mirrorLines(stats: MirrorStats, names: SideNames, title?: string
 
 /**
  * Draw `lines` in a box beside (x, y), kept inside `bounds`, and say where it was drawn. `placement` extends the box down or up from y (toward
- * the inside of a band, clear of its edge labels) instead of centring it.
+ * the inside of a band, clear of its edge labels) instead of centring it. A line told to wrap wraps to the room between the bounds' sides
+ * (`wrapWithin`), so a long sentence on a phone's narrow map stays inside the box and the box inside the map.
  */
 export function paintMirrorBox(ctx: CanvasRenderingContext2D, lines: MirrorLine[], x: number, y: number, bounds: { x0: number; y0: number; x1: number; y1: number }, p: Palette,
   pick: (color: InfoColor) => string, placement: 'center' | 'down' | 'up' = 'center'): InfoRect | null {
-  return paintInfoBox(ctx, lines, x, y, bounds, p, { pick, placement });
+  return paintInfoBox(ctx, lines, x, y, bounds, p, { pick, placement, wrapAt: wrapWithin(bounds.x0, bounds.x1) });
+}
+
+/**
+ * The frame `place(boxH)` gives a box of `lines`, with the box measured as `paintMirrorBox` will draw it there: wrapped to the frame's room,
+ * which does not depend on the height asked about, so the frame's sides come first and the height measured inside them second.
+ */
+export function mirrorFrame<F extends { bounds: { x0: number; x1: number } }>(ctx: CanvasRenderingContext2D, lines: readonly MirrorLine[], place: (boxH: number) => F): F {
+  const room = place(0).bounds;
+  return place(measureInfoBox(ctx, lines, wrapWithin(room.x0, room.x1)).h);
 }
 
 /** Shade everything in [y0, y1) outside the highlighted band [bandTop, bandBottom] so the inner layers stand out. */

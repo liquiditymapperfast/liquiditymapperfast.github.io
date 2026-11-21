@@ -38,6 +38,13 @@ export const MARK = Object.freeze({ size: 12, room: 16 });
 
 export const INFO = Object.freeze({ lineH: 16, pad: 8, gap: 14, rule: 5, wrapAt: 250 });
 
+/**
+ * How wide a wrapped line may run in a box kept between x0 and x1: the room less the box's padding and its 2 px margins, between 120 and
+ * 300 px (as `probeWrap` keeps a finger's box on the split ladder). At the default 250 px a box beside a phone's compact columns was wider
+ * than the map it stands on, and its sentence ran over the strips and the price axis (review 2026-11-21: German at 360 px, 24-37 px over).
+ */
+export const wrapWithin = (x0: number, x1: number): number => Math.max(120, Math.min(300, x1 - x0 - 2 * INFO.pad - 4));
+
 /** What a piece of text is, which decides the face it is drawn in: a label and a plain sentence in the sans face, a value in the monospace one. */
 export type InfoKind = 'label' | 'value' | 'plain';
 

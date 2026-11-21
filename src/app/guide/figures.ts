@@ -5,6 +5,7 @@ import { t } from '../i18n.ts';
 import { laneColorsFor } from '../cvd/colors.ts';
 import type { FigureId } from './content.ts';
 import { tg } from './words.ts';
+import { BALANCED_RATIO } from '../mirror.ts';
 
 /**
  * The guide's animated figures. Each is a small scene drawn on a canvas from the page's own colours and colour ramp, looping while it is
@@ -315,8 +316,8 @@ const mirror: Scene = {
     note(g, tg('±${price}  from the price', { price: priceText(dist) }), bx + 12, 58, th, 'left', th.muted, 11);
     note(g, tg('Asks (this side)  {amount}', { amount: money(asks) }), bx + 12, 84, th, 'left', th.ask, 12.5, 650);
     note(g, tg('Bids (opposite)  {amount}', { amount: money(bids) }), bx + 12, 108, th, 'left', th.bid, 12.5, 650);
-    const verdict = asks <= 0 && bids <= 0 ? tg('No liquidity in this range') : ratio < 1.05 ? tg('Balanced') : asks > bids ? tg('Asks have {ratio}x more', { ratio: ratio.toFixed(2) }) : tg('Bids have {ratio}x more', { ratio: ratio.toFixed(2) });
-    note(g, verdict, bx + 12, 140, th, 'left', asks > bids * 1.05 ? th.ask : bids > asks * 1.05 ? th.bid : th.text, 13, 700);
+    const verdict = asks <= 0 && bids <= 0 ? tg('No liquidity in this range') : ratio < BALANCED_RATIO ? tg('Balanced') : asks > bids ? tg('Asks have {ratio}x more', { ratio: ratio.toFixed(2) }) : tg('Bids have {ratio}x more', { ratio: ratio.toFixed(2) });
+    note(g, verdict, bx + 12, 140, th, 'left', asks > bids * BALANCED_RATIO ? th.ask : bids > asks * BALANCED_RATIO ? th.bid : th.text, 13, 700);
     note(g, tg('Move outward: the balance changes'), bx + 12, 168, th, 'left', th.muted, 10.5);
     badge(g, tg('Hover'), bx, 206, th, 1);
     note(g, tg('in the profile or the order book'), bx + 62, 217, th, 'left', th.muted, 11);

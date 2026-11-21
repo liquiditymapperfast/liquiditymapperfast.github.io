@@ -22,13 +22,15 @@ function grouping(): Grouped {
 const side = (lo: number[], hi: number[], usd: number[]) => ({ lo: Float64Array.from(lo), hi: Float64Array.from(hi), usd: Float64Array.from(usd) });
 const book = (id: string, bidLo: number, askHi: number): LiveBook => ({ id, venue: id.split(':')[0]!, timestamp: 0, coarse: false, bids: side([bidLo, 58_900], [bidLo + 10, 58_910], [1, 1]), asks: side([59_010, askHi - 10], [59_020, askHi], [1, 1]) });
 
-test('shares round together to 100 by the largest remainders, and a ratio prints in one fixed order', () => {
+test('shares round together to 100 by the largest remainders, and a ratio prints two decimals below ten, one up to a thousand, no more past it', () => {
   assert.deepEqual(wholeShares([74.715, 7.585, 17.7], 100), [75, 7, 18]);
   for (const vals of [[1, 1, 1], [5, 3, 2], [0.4, 0.4, 0.2], [10, 0, 0]]) assert.equal(wholeShares(vals, vals.reduce((s, x) => s + x, 0)).reduce((s, x) => s + x, 0), 100, String(vals));
   assert.deepEqual(wholeShares([1, 2], 0), [0, 0]);
   assert.equal(ratioWords(729, 721), '1.01×');
-  assert.equal(ratioWords(695, 747), '0.93×', 'below 1 when the asks are larger: the order never flips');
   assert.equal(ratioWords(130, 10), '13.0×');
+  assert.equal(ratioWords(999, 1), '999.0×');
+  assert.equal(ratioWords(1000, 1), '≥1000×');
+  assert.equal(ratioWords(5e6, 1e-9), '≥1000×', 'a side all but empty: no sixteen digits');
   assert.equal(ratioWords(5, 0), '–');
 });
 
@@ -86,7 +88,7 @@ test('the band says which side is heavier in one line, its totals only where no 
   assert.deepEqual(phone[1]!.runs!.map(r => r.color), ['below', 'below', 'muted', 'above', 'above']);
 });
 
-test('the liquidation card: the row\'s levels, what still stands there, the snapshot\'s count and largest, then longs over shorts', () => {
+test('the liquidation card: the row\'s levels, what still stands there, the snapshot\'s count and largest, then which side of the band is heavier', () => {
   const f = { kind: 'liq' as const, side: 'long' as const, lo: 51_850, hi: 51_900, step: 50, level: 53_944_068, total: 53_944_068, split: null, positions: 30, top: 51_861_076,
     below: 277e6, above: 173e6, pct: '12.1%', totals: false, bandSplit: null };
   assert.deepEqual(text(liqCardLines(f)), ['Long liquidations 51,850–51,900', 'At this level: $53.9M', 'Positions: 30', 'Largest position: $51.9M', 'Within ≈±12.1%: longs 1.60× the shorts']);
@@ -182,7 +184,14 @@ test('the map draws these boxes: the profile from its row and band, the band fro
   assert.match(body('#paintSeam'), /const clipped = past && !span;/);
   assert.match(body('#paintLiqColumnMirror'), /standingBins\(s, side, row\.kLo, row\.kHi\)/);
   assert.match(body('#paintLiqColumnMirror'), /binsBetween\(set\.levels, side, row\.kLo, row\.kHi\)/);
-  assert.match(body('#paintLiqSplit'), /liqSubBoxFrame\(at, subs\[at\]\.x0, pw, ph, this\.#liqHeadH, measureInfoBox\(ctx, box\.lines\)\.h\)/);
+  assert.match(body('#paintLiqSplit'), /mirrorFrame\(ctx, box\.lines, h => liqSubBoxFrame\(at, subs\[at\]\.x0, pw, ph, this\.#liqHeadH, h\)\)/, 'measured as drawn, wrapped to its frame');
+  // The book's band reaches the verdict the right way round: the bids below the price, the asks above it (`depthBand`'s below and above).
+  assert.match(profile, /const G = b\.grid, \{ above, below, loBin, hiBin \} = b;/);
+  assert.match(profile, /depthBandLines\(\{ bid: below, ask: above, /);
+  // Take profits on their own: the band's edges in the column's colours, as its bars and its box (review 2026-11-21).
+  assert.match(body('#paintLiqColumnMirror'), /alone = set\.levels\?\.kind === 'takes'/);
+  assert.match(body('#paintLiqColumnMirror'), /\{ y: top, color: alone \? p\.candleDown : p\.candleUp,/);
+  assert.match(body('#paintLiqColumnMirror'), /\{ y: bottom, color: alone \? p\.candleUp : p\.candleDown,/);
 });
 
 test('the liquidation card speaks of whole snapshot bins, by number: the column\'s row where it is made of them, the bin itself where narrower', () => {
@@ -231,12 +240,34 @@ test('the band names the heavier side and how many times the other it is; about 
   assert.deepEqual([v(0, 5).text, v(0, 5).color], ['Within ≈±1%: only asks', 'above']);
   assert.deepEqual([v(0, 0).text, v(0, 0).color], ['Within ≈±1%: no bids or asks', 'muted']);
   assert.equal(v(NaN, 5).text, 'Within ≈±1%: only asks', 'a side not known counts as nothing');
+  assert.equal(v(-5, 5).text, 'Within ≈±1%: only asks', 'nor one below zero');
+  assert.equal(v(Infinity, 5).text, 'Within ≈±1%: only asks', 'nor an endless one');
+  assert.equal(v(Infinity, Infinity).text, 'Within ≈±1%: no bids or asks');
+  assert.equal(v(102, 100).text, 'Within ≈±1%: bids 1.02× the asks', 'at the balance itself, named');
+  assert.deepEqual([v(100, 101.9).text, v(100, 101.9).bold], ['Within ≈±1%: bids and asks about even', true], 'about even, said as plainly as a side');
+  assert.equal(v(5e6, 1e-9).text, 'Within ≈±1%: bids ≥1000× the asks', 'a side all but empty: no sixteen digits');
   const l = (a: number, b: number) => liqBandVerdict(a, b, '5%', 'below', 'above');
   assert.deepEqual([l(10, 50).text, l(10, 50).color], ['Within ≈±5%: shorts 5.00× the longs', 'above']);
   assert.deepEqual([l(50, 10).text, l(50, 10).color], ['Within ≈±5%: longs 5.00× the shorts', 'below']);
-  assert.equal(l(100, 101).text, 'Within ≈±5%: longs and shorts about even');
+  assert.deepEqual([l(100, 101).text, l(100, 101).color, l(100, 101).bold], ['Within ≈±5%: longs and shorts about even', undefined, true]);
+  assert.equal(l(102, 100).text, 'Within ≈±5%: longs 1.02× the shorts', 'at the balance itself, named');
   assert.deepEqual([l(3, 0).text, l(0, 3).text, l(0, 0).text], ['Within ≈±5%: only longs', 'Within ≈±5%: only shorts', 'Within ≈±5%: no longs or shorts']);
+  assert.deepEqual([l(3, 0).color, l(0, 3).color, l(0, 0).color], ['below', 'above', 'muted'], 'only one side: in that side\'s colour');
+  assert.deepEqual([l(-1, 3).text, l(Infinity, 3).text], ['Within ≈±5%: only shorts', 'Within ≈±5%: only shorts']);
   assert.ok([l(3, 0), l(0, 3), l(0, 0), l(100, 101), l(10, 50)].every(x => x.rule === true), 'under the card\'s rule whatever it says');
+  // Every case wraps: in German or Russian the sentence is wider than a phone's map leaves the box (review 2026-11-21).
+  assert.ok([v(141, 100), v(100, 141), v(101.9, 100), v(5, 0), v(0, 5), v(0, 0), l(3, 0), l(0, 3), l(0, 0), l(100, 101), l(10, 50), l(50, 10)].every(x => x.wrap === true));
   // Take profits: the colours follow whose orders they are, where they stand.
   assert.equal(liqBandVerdict(10, 50, '5%', 'above', 'below').color, 'below');
+});
+
+test('the band reaches the verdict the right way round: more bids than asks says bids, from the grouping to the line', () => {
+  // Bids $2M a row and asks $1M: the price's row and ten more each way hold $22M of bids and $11M of asks.
+  const bid = new Float32Array(40).fill(2e6), ask = new Float32Array(40).fill(1e6);
+  const g: Grouped = { ids: ['x:BTC'], step: 50, bin0: 1160, nBins: 40, bid: [bid], ask: [ask], totalBid: bid, totalAsk: ask };
+  const b = depthBand(g, 59_025, 1170 - 1160, () => null)!;
+  assert.deepEqual([b.below, b.above], [22e6, 11e6]);
+  const reach = { bid: 1, ask: 1, of: 1 };
+  assert.equal(depthBandLines({ bid: b.below, ask: b.above, pct: '1%', reach, totals: false, clipped: false })[0]!.text, 'Within ≈±1%: bids 2.00× the asks');
+  assert.equal(depthBandLines({ bid: b.below, ask: b.above, pct: '1%', reach, totals: false, clipped: false })[0]!.color, 'below');
 });

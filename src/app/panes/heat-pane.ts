@@ -3,7 +3,7 @@ import { heatRenderer } from '../heatmap/canvas.ts';
 import { buildLut } from '../heatmap/lut.ts';
 import { colourWindow, nextBaseline, type Baseline } from '../heatmap/window.ts';
 import { isCoarse, isPhone } from '../device.ts';
-import { dimOutside, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorLine, type MirrorStats } from '../mirror.ts';
+import { dimOutside, mirrorFrame, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorLine, type MirrorStats } from '../mirror.ts';
 import { PROFILE_CANDLES_BACK_MS, TIMEFRAMES, askedSpan, valueAreaKey, windowProfileKey, type Hub, type RasterResult } from '../hub.ts';
 import { ensureDeltaFlow } from '../delta/flows.ts';
 import { StripHighlightMemo, coarseCandles, joinRows, paintVolumeStrip, stripBars, stripHistoryFrom, stripLines, stripNamesTop, stripTimeframe, withEarlier, type StripBar } from '../measures/volume-strip.ts';
@@ -45,7 +45,7 @@ import { describeSources } from '../cell-sources.ts';
 import { anomalies, type Anomalies } from '../anomaly.ts';
 import { paintWatermark } from '../watermark.ts';
 import { FOOTPRINT_SETTLE_MS, FootprintData, FootprintLod, VENUE_LINES, candleBody, footprintLayout, paintFootprint, readBar, rowCellAt, rowCellLines, visibilityFactor, type Bar as FootprintBar, type LodFrame, type RowCell } from './footprint.ts';
-import { layoutInfo, measureInfoBox, paintInfoBox, type InfoColor, type InfoLine, type InfoRect } from '../infobox.ts';
+import { layoutInfo, paintInfoBox, type InfoColor, type InfoLine, type InfoRect } from '../infobox.ts';
 import { TrapData, trapStatusText, trapText, type Trap } from '../traps.ts';
 import { GestureRecognizer, axisPinchScale, bindTouch, type GestureHandlers, type PinchInfo, type Pt } from '../touch.ts';
 import { PRICE_SPAN_SHARE, TIME_SPAN_MS, fitPrices, focusWindow, followPrice, holdPixel, limitFactor, liveEdgeShown, priceAtEdge, priceHeldAfter, priceRef, regionAt, wheelZoom, zoomedView } from './heat-zoom.ts';
@@ -4058,7 +4058,7 @@ export class HeatPane {
     if (box) {
       // The comparison pops up beside the profile column, pointing at it, and only while the pointer is on the column (`profileBoxFrame`).
       this.#profileBox = null;
-      const frame = profileBoxFrame(state, pw, ph, this.#liqHeadH, measureInfoBox(ctx, box.lines).h);
+      const frame = mirrorFrame(ctx, box.lines, h => profileBoxFrame(state, pw, ph, this.#liqHeadH, h));
       paintMirrorBox(ctx, box.lines, frame.x, box.y, frame.bounds, p, c => c === 'above' ? p.ask : c === 'below' ? p.bid : c === 'muted' ? p.muted : p.text, box.placement);
       ctx.textBaseline = 'middle';
     }
@@ -4373,7 +4373,7 @@ export class HeatPane {
     const box = this.#profileBox as { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null; // set by #paintLiqColumnMirror above
     if (box) {
       this.#profileBox = null;
-      const frame = liqSubBoxFrame(at, subs[at].x0, pw, ph, this.#liqHeadH, measureInfoBox(ctx, box.lines).h);
+      const frame = mirrorFrame(ctx, box.lines, h => liqSubBoxFrame(at, subs[at].x0, pw, ph, this.#liqHeadH, h));
       paintMirrorBox(ctx, box.lines, frame.x, box.y, frame.bounds, p, c => c === 'above' ? p.candleUp : c === 'below' ? p.candleDown : c === 'muted' ? p.muted : p.text, box.placement);
       ctx.textBaseline = 'middle';
     }
@@ -4476,8 +4476,9 @@ export class HeatPane {
   /**
    * Mirror hover on the liquidation column (Karl's pick of 2026-11-20): the band of the longs that go if price falls to the pointer against
    * the shorts that go if it rises as far, framed with its totals on the pills, and a card for the row under the pointer, as the column draws
-   * its rows (`liqCardLines`): what still stands there, how many positions or orders the snapshot puts there and the largest, then the band as
-   * longs over shorts, with its totals where no pill shows them (a strip, a split's sub-column, an edge off the screen).
+   * its rows (`liqCardLines`): what still stands there, how many positions or orders the snapshot puts there and the largest, then which side
+   * of the band is heavier and how many times the other (`liqBandVerdict`), with its totals where no pill shows them (a strip, a split's
+   * sub-column, an edge off the screen). The band's edges take the column's colours, take profits on their own included (`alone`).
    */
   #paintLiqColumnMirror(ctx: CanvasRenderingContext2D, state: AppState, s: LiqStanding, price: number, x0: number, ph: number, W: number, set: LiqSet = this.hub.liqLevels): void {
     const hv = this.#profileHover, p = this.#palette, v = this.view;
@@ -4489,9 +4490,10 @@ export class HeatPane {
     if (!stats) return;
     const top = v.yOf(price + d, ph), bottom = v.yOf(price - d, ph), pct = percentText(stats);
     // The strip has no room for the band's pills: its box says the same.
-    const wide = W >= PROFILE_W;
+    const wide = W >= PROFILE_W, alone = set.levels?.kind === 'takes';
     dimOutside(ctx, x0, W, 0, ph, top, bottom, p.panel, 0.6);
-    paintBand(ctx, p, x0, W, { y: top, color: p.candleUp, label: wide ? `${usd(stats.aboveUsd)} · ${pct}` : '' }, { y: bottom, color: p.candleDown, label: wide ? `${usd(stats.belowUsd)} · ${pct}` : '' }, { y0: 0, y1: ph });
+    paintBand(ctx, p, x0, W, { y: top, color: alone ? p.candleDown : p.candleUp, label: wide ? `${usd(stats.aboveUsd)} · ${pct}` : '' },
+      { y: bottom, color: alone ? p.candleUp : p.candleDown, label: wide ? `${usd(stats.belowUsd)} · ${pct}` : '' }, { y0: 0, y1: ph });
     // The row under the pointer: the column's row on the snapshot's own bins (`liqCardRow`), so what stands, the snapshot's amount, its count and
     // its largest describe the same prices.
     const row = liqCardRow(at, niceStep(v.p1 - v.p0, ph / 3), set.levels?.step ?? 0), { lo, hi } = row, step = hi - lo, side = at < price ? 'long' : 'short';
