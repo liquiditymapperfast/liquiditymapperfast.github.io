@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bookEmptyMessage, bookIds, bookMarketIds, bookPickOf, bookPickOptions, booksAskedAgain, readBookMarkets } from '../src/app/book-markets.ts';
+import { bookCountOutOf, bookEmptyMessage, bookIds, bookMarketIds, bookPickOf, bookPickOptions, booksAskedAgain, readBookMarkets } from '../src/app/book-markets.ts';
 import { activeIds, marketIds } from '../src/app/scope.ts';
 import { LAYOUT_KEYS, initialState, readSettings, type AppState } from '../src/app/store.ts';
 import { Alerts, type Player } from '../src/app/sound/alerts.ts';
@@ -208,4 +208,19 @@ test('the depth sound reads the recording of the markets the Depth pane counts',
   const alerts = new Alerts({ state: s }, new FlowBook(), new FakePlayer(), () => T, undefined, ids => { asked.push(ids.join(',')); return new Promise(() => {}); });
   s.bookMarkets = 'chart'; alerts.tick(T);
   assert.deepEqual(asked, ['binance:BTCUSDT:spot,binancespot:BTCUSDT']);
+});
+
+test('the books now are counted out of the books there with every feed: under All a venue that reconnects is held for ten minutes', () => {
+  const levels = { asOf: 1_000_000, books: FEED.filter(id => id !== 'okx:BTC-USDT-SWAP').map(id => book(id)) };
+  const away = state({ levels, bookGone: { okx: 1_000_000 - 60_000 } });
+  assert.equal(bookIds(away).length, 4, 'All asks for the books in the feed');
+  assert.equal(bookCountOutOf(away), 5, 'and the reading of the books now counts out of five: OKX is away a minute');
+  assert.equal(bookCountOutOf({ ...away, bookGone: { okx: 1_000_000 - 11 * 60_000 } }), 4, 'gone longer than the hold: not counted');
+  assert.equal(bookCountOutOf({ ...away, disabledVenues: ['okx'] }), 4, 'its chip off: not counted');
+  assert.equal(bookCountOutOf({ ...away, scope: 'spot' }), bookIds({ ...away, scope: 'spot' }).length, 'outside the Spot / Perp filter: not counted');
+  assert.equal(bookCountOutOf(state()), FEED.length, 'every feed there');
+  // The other choices hold an away book in the books asked for already.
+  const picked = state({ bookMarkets: 'custom', bookPicks: ['okx/perp', 'binance/perp'], levels, bookGone: { okx: 1_000_000 - 60_000 } });
+  assert.equal(bookCountOutOf(picked), bookIds(picked).length);
+  assert.ok(bookIds(picked).includes('okx:BTC-USDT-SWAP'));
 });

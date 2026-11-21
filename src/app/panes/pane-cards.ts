@@ -79,6 +79,19 @@ export function liqColumnRows(rows: readonly { fetchedAt: number }[], t0: number
   return rowAt;
 }
 
+/** How old the books now may be, and how far before now the view may end, for them to be read. */
+const LIVE_FRESH_MS = 2 * 60_000;
+/**
+ * Whether the Depth pane reads the books now (the worker's live reading, `DepthNow`) rather than a column, in its header (`header`) and its
+ * table (`table`). The header: whenever there is a reading under two minutes old (a dropped stream leaves the worker its last books), the view
+ * reaches the live edge (its end at most two minutes before now) and no replay runs. The table: then too, with no pointer, a pointer at or
+ * past the start of the column holding now (that column is a mean of the minutes in it), or one past the newest column with data.
+ */
+export function readsBooksNow(o: { liveAt: number | null; until: number; t1: number; replay: boolean; pointer: number | null; nowColumnStart: number; pastNewest: boolean }): { header: boolean; table: boolean } {
+  const header = !o.replay && o.liveAt !== null && o.until - o.liveAt <= LIVE_FRESH_MS && o.t1 >= o.until - LIVE_FRESH_MS;
+  return { header, table: header && (o.pointer === null || o.pointer >= o.nowColumnStart || o.pastNewest) };
+}
+
 /** The row of `rows` in force at `time` (the newest fetched by then, while it stands: `holdMs`), or -1. */
 export function liqRowAt(rows: readonly { fetchedAt: number }[], time: number, holdMs: number): number {
   const i = fetchedBy(rows, time);
@@ -93,7 +106,8 @@ export function liqRowAt(rows: readonly { fetchedAt: number }[], time: number, h
  * The take profits are read at the same moment, strictly: an orders file that lags is not printed beside fresher levels. Nothing before
  * `closedTo` (Plus): neither a moment nor a row fetched before it. `at`: the moment read.
  */
-export function liqReading(rows: readonly { fetchedAt: number }[], takes: readonly { fetchedAt: number }[] | null, pointer: number | null, t1: number, until: number, holdMs: number, closedTo = -Infinity): { row: number; take: number; at: number } {
+export function liqReading(rows: readonly { fetchedAt: number }[], takes: readonly { fetchedAt: number }[] | null, o: { pointer: number | null; t1: number; until: number; holdMs: number; closedTo?: number }): { row: number; take: number; at: number } {
+  const { pointer, t1, until, holdMs } = o, closedTo = o.closedTo ?? -Infinity;
   const newest = pointer === null || pointer >= until, at = newest ? Math.min(until, t1) : pointer;
   if (at < closedTo) return { row: -1, take: -1, at };
   const open = (list: readonly { fetchedAt: number }[], i: number): number => i >= 0 && list[i]!.fetchedAt >= closedTo ? i : -1;

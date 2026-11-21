@@ -1,5 +1,5 @@
 import type { AppState } from './store.ts';
-import { activeIds, emptyScopeMessage, kindOf, marketIds } from './scope.ts';
+import { activeIds, emptyScopeMessage, inScope, kindOf, marketIds } from './scope.ts';
 import { familyKey, venueOfInstrument } from './cvd/families.ts';
 import { BOOK_HOLD_MS, flowFeedSpotId } from './cvd/ids.ts';
 import { parsePick, pickOf, type MarketKind, type PickOption } from './market-choice.ts';
@@ -43,16 +43,28 @@ function countedPicks(state: BookState): Set<string> {
 export function bookIds(state: BookState): string[] {
   if (state.bookMarkets === 'all') return activeIds(state);
   const picks = countedPicks(state), feed = (state.levels?.books ?? []).map(book => book.id).filter(id => picks.has(bookPickOf(state.markets, id)));
-  return [...feed, ...heldBookIds(state, picks, new Set(feed))].sort();
+  return [...feed, ...heldBookIds(state, id => picks.has(bookPickOf(state.markets, id)), new Set(feed))].sort();
 }
 
 /**
- * The listed markets of the picks counted whose venue's book left the feed less than `BOOK_HOLD_MS` ago (`bookGone`, as the flow views hold
+ * How many books the choice counts when every venue's feed is there: `bookIds`, and for `all` also the books of the venues switched on inside
+ * the Spot / Perp filter whose feed left less than `BOOK_HOLD_MS` ago (the other choices hold those in `bookIds` itself). What the Depth
+ * pane's reading of the books now counts out of: under `all` a venue that reconnects leaves `bookIds` at once, so the books now lost its
+ * share unsaid (review 2026-11-21).
+ */
+export function bookCountOutOf(state: BookState): number {
+  const ids = bookIds(state);
+  if (state.bookMarkets !== 'all') return ids.length;
+  return ids.length + heldBookIds(state, id => !state.disabledVenues.includes(venueOfInstrument(id)) && inScope(state.scope, state.markets, id), new Set(ids)).length;
+}
+
+/**
+ * The listed markets counted (`counted`: the picks, or the venues switched on) whose venue's book left the feed less than `BOOK_HOLD_MS` ago (`bookGone`, as the flow views hold
  * it: a feed that reconnects drops its book for a minute or more), sorted: the recording holds their columns (`Hub.loadColumns` loads them with
  * the feed's books), so they are still asked for. A spot market listed under its perpetual venue's name (`binance:…:spot`, whose book is `binancespot:…`: `flowFeedSpotId`) is a market
  * of trades, never a book, so the perpetual's feed reconnecting never stands for it.
  */
-function heldBookIds(state: BookState, picks: ReadonlySet<string>, inFeed: ReadonlySet<string>): string[] {
+function heldBookIds(state: BookState, counted: (id: string) => boolean, inFeed: ReadonlySet<string>): string[] {
   const gone = state.bookGone, asOf = state.levels?.asOf;
   // None held (the usual case): nothing to look up in the market list.
   if (!gone || asOf === undefined || !Object.keys(gone).length) return [];
@@ -61,7 +73,7 @@ function heldBookIds(state: BookState, picks: ReadonlySet<string>, inFeed: Reado
     const id = m.instrumentId ?? m.id;
     if (!id || inFeed.has(id) || flowFeedSpotId(id) !== null) continue;
     const at = gone[venueOfInstrument(id)];
-    if (at !== undefined && asOf - at <= BOOK_HOLD_MS && picks.has(bookPickOf(state.markets, id))) out.add(id);
+    if (at !== undefined && asOf - at <= BOOK_HOLD_MS && counted(id)) out.add(id);
   }
   return [...out].sort();
 }

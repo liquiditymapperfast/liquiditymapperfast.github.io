@@ -56,6 +56,14 @@ export function depthBands(stores: readonly DepthStore[], stepMs: number, t0: nu
   return { k, bid, ask, bidCoin, askCoin, mid: by.mid, present, centred };
 }
 
+/**
+ * The books of `ids` the reading of the books now counts: those whose own time (`stamps`, `LiveBook.timestamp`) is at most `staleMs` before the
+ * frame's (`asOf`, the same clock), as the recorder samples a book (its STALE_MS): a frame carries books up to four times that old.
+ */
+export function freshBooks(ids: readonly string[], stamps: ReadonlyMap<string, number>, asOf: number, staleMs: number): string[] {
+  return ids.filter(id => asOf - (stamps.get(id) ?? -Infinity) <= staleMs);
+}
+
 /** A live column's length: the worker makes one per minute. */
 const MINUTE_MS = 60_000;
 /** The books as they stand now, per band (`depthNow`): bids and asks in USD and in coins, how many books were counted, and when (the page's clock). */

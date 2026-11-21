@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { depthBands, depthNow, depthSeries, touchOf, type DepthStore } from '../src/app/depth-series.ts';
+import { depthBands, depthNow, depthSeries, freshBooks, touchOf, type DepthStore } from '../src/app/depth-series.ts';
 
 const MIN = 60_000, STEP = 1;
 /** One instrument's minutes: each a book of `bids` and `asks` as [price, usd], on a grid of `STEP`. */
@@ -115,4 +115,10 @@ test('the books now (the Depth table at the live edge, at any zoom): their live 
   assert.equal(depthNow([store([bookAt(minute - MIN, 1_000)])], minute, radii, at), null);
   assert.equal(depthNow([], minute, radii, at), null);
   assert.equal(depthNow([store([{ t: minute, bids: [[999, 500]], asks: [] }])], minute, radii, at), null);
+});
+
+test('the books now count a book no older than the recorder would sample, by the frame\'s own clock', () => {
+  const stamps = new Map([['a', 1_000_000], ['b', 1_000_000 - 45_000], ['c', 1_000_000 - 45_001], ['d', 1_000_000 - 170_000]]);
+  assert.deepEqual(freshBooks(['a', 'b', 'c', 'd', 'e'], stamps, 1_000_000, 45_000), ['a', 'b'], 'up to 45 s old; a frame carries books up to 180 s old; one with no time is not counted');
+  assert.deepEqual(freshBooks(['d', 'a'], stamps, 1_000_000, 45_000), ['a'], 'in the order asked');
 });

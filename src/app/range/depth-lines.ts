@@ -142,6 +142,9 @@ export function depthLiqStretch(held: DepthPaneHeld, sel: Pick<RangeSelection, '
   let inForce = 0;
   const rows: DepthLiqRow[] = [];
   all.forEach((row, i) => {
+    // A row fetched before what is closed is closed too, though it stands into the open stretch: the pane draws none of it (a lapsed pass, or a
+    // tab open across midnight, may still hold it).
+    if (row.fetchedAt < (held.closedTo ?? -Infinity)) return;
     const from = row.fetchedAt, to = Math.min(all[i + 1]?.fetchedAt ?? Infinity, from + hold, now);
     const overlap = open.reduce((sum, [x, y]) => sum + Math.max(0, Math.min(to, y) - Math.max(from, x)), 0);
     if (overlap > 0) { inForce += overlap; rows.push(row); }

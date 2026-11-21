@@ -5,7 +5,7 @@ import type { ColumnSet, LiveBook } from '../wire.ts';
 import { ltSeries, type LtParams, type LtParts, type LtStore } from '../lt.ts';
 import { LT_FIELDS } from '../../shared/lt-sample.ts';
 import { shareInCell, type CellShare } from '../cell-sources.ts';
-import { depthBands, depthNow, type DepthNow } from '../depth-series.ts';
+import { depthBands, depthNow, freshBooks, type DepthNow } from '../depth-series.ts';
 import { dropAbsent } from './membership.ts';
 import { RecordedColumns, type ColumnStore as Store } from './column-store.ts';
 
@@ -143,7 +143,7 @@ function depth(message: Extract<WorkerIn, { type: 'depth' }>): void {
   const { k, bid, ask, bidCoin, askCoin, present, centred } = depthBands(stores, recorded.stepMs, message.t0, message.t1, message.w, message.radii);
   // The books as they stand now (their live columns), which the table reads at the live edge whatever the zoom: those the recorder would
   // sample, no older than its STALE_MS by the frame's own clock (a frame carries books up to four times that old).
-  const lives = message.enabled.filter(id => liveFrame.asOf - (liveStamps.get(id) ?? -Infinity) <= STALE_MS).map(id => live.get(id)).filter((rec): rec is Store & { minute: number } => rec !== undefined);
+  const lives = freshBooks(message.enabled, liveStamps, liveFrame.asOf, STALE_MS).map(id => live.get(id)).filter((rec): rec is Store & { minute: number } => rec !== undefined);
   const newest = lives.length ? depthNow(lives, Math.max(...lives.map(rec => rec.minute)), message.radii, liveFrame.now) : null;
   // `present` counts the books held (a market with none at all is not among the stores): the pane compares it with the markets it asked for.
   scope.postMessage({ type: 'depth', id: message.id, w: message.w, k, bid, ask, bidCoin, askCoin, present, centred, stepMs: recorded.stepMs, newest }, [bid.buffer, ask.buffer, bidCoin.buffer, askCoin.buffer, present.buffer, centred.buffer]);
@@ -199,7 +199,9 @@ scope.onmessage = event => {
     else if (message.type === 'live') {
       dropAbsent(live, message.books.map(book => book.id));
       dropAbsent(liveStamps, message.books.map(book => book.id));
-      liveFrame = { now: message.now, asOf: Number.isFinite(message.asOf) ? message.asOf! : message.now };
+      // A source that sends no time of its own: its newest book's, on the same clock as the books' own times.
+      const newestBook = message.books.reduce((at, book) => Math.max(at, Number.isFinite(book.timestamp) ? book.timestamp : -Infinity), -Infinity);
+      liveFrame = { now: message.now, asOf: Number.isFinite(message.asOf) ? message.asOf! : Number.isFinite(newestBook) ? newestBook : message.now };
       for (const book of message.books) {
         let step = steps.get(book.id);
         if (!step) {

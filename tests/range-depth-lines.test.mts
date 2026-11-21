@@ -76,12 +76,13 @@ test('tracked liquidation levels: the snapshots actually in force, their expiry,
   const empty = new DepthRangeSummary().lines(sel(0, 20), liq([], T + 10 * M), true, LKEY, NOW);
   assert.ok(text(empty, 'dp-empty'));
   assert.equal(text(empty, 'dp-cover'), 'Snapshots in force for 0 min of 20 min · no snapshot in force: 10 min · outside the columns drawn: 10 min');
-  // Plus: the pane holds the history before minute 6 closed. Nothing of that stretch is counted (a snapshot fetched in it still counts for the
-  // time it is in force after it, as the pane draws it), and it is called what it is, not a time without a snapshot.
+  // Plus: the pane holds the history before minute 6 closed. Nothing of that stretch is counted, and it is called what it is, not a time
+  // without a snapshot. A snapshot fetched in it is closed too, though it stands after it: the pane draws none of it (review 2026-11-21).
   const shut = { ...liq([row(0, 10, 20), row(8, 30, 10)]), closedTo: T + 6 * M };
   const part = depthLiqStretch(shut, sel(0, 10), NOW);
-  assert.deepEqual([part.rows.length, part.closed / M, part.inForce / M, part.none / M, part.outside / M], [2, 6, 4, 0, 0]);
-  assert.equal(text(new DepthRangeSummary().lines(sel(0, 10), shut, true, LKEY, NOW), 'dp-cover'), 'Snapshots in force for 4 min of 10 min · part of Plus: 6 min');
+  assert.deepEqual([part.rows.length, part.closed / M, part.inForce / M, part.none / M, part.outside / M], [1, 6, 2, 2, 0]);
+  assert.equal(part.rows[0]!.fetchedAt, T + 8 * M, 'only the snapshot fetched after the closed stretch');
+  assert.equal(text(new DepthRangeSummary().lines(sel(0, 10), shut, true, LKEY, NOW), 'dp-cover'), 'Snapshots in force for 2 min of 10 min · part of Plus: 6 min · no snapshot in force: 2 min');
   // The pane hatches the closed stretch from where the recording begins (`closedFrom`): before it there is nothing to close, only no snapshot.
   const late = depthLiqStretch({ ...liq([row(8, 30, 10)]), closedFrom: T + 3 * M, closedTo: T + 6 * M }, sel(0, 10), NOW);
   assert.deepEqual([late.closed / M, late.inForce / M, late.none / M, late.outside / M], [3, 2, 5, 0]);
