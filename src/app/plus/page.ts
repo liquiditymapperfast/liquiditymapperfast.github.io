@@ -305,7 +305,10 @@ function memberSection(buying: boolean): HTMLElement {
   const keyText = el('code', { class: 'key', textContent: shown ? key : '•'.repeat(24) });
   const copied = el('span', { class: 'copied', role: 'status' });
   const isArmed = (): boolean => { const since = Date.now() - state.armed; return since >= 400 && since < 6_000; };
-  const remove = el('button', { type: 'button', class: 'quiet', id: 'plus-remove', textContent: Date.now() - state.armed < 6_000 ? t('Press again to remove it') : t('Remove Plus from this browser') });
+  // Both labels sit in one cell, the other one hidden, so the button keeps its width (and its row stays put) when the first press arms it.
+  const remove = el('button', { type: 'button', class: 'subtle', id: 'plus-remove' },
+    el('span', { class: 'idle', textContent: t('Remove Plus from this browser') }), el('span', { class: 'armed', textContent: t('Press again to remove it') }));
+  remove.toggleAttribute('data-armed', Date.now() - state.armed < 6_000);
   remove.onclick = () => {
     // Twice, so that a slip does not take it away: the key would have to be typed again.
     // Twice, a moment apart: the two clicks of a double click are one press.
@@ -317,16 +320,29 @@ function memberSection(buying: boolean): HTMLElement {
       return;
     }
     if (Date.now() - state.armed < 400) return;
-    state.armed = Date.now(); remove.textContent = t('Press again to remove it');
-    window.setTimeout(() => { const now = document.getElementById('plus-remove'); if (!isArmed() && now) now.textContent = t('Remove Plus from this browser'); }, 6_100);
+    state.armed = Date.now(); remove.toggleAttribute('data-armed', true);
+    window.setTimeout(() => { const now = document.getElementById('plus-remove'); if (!isArmed() && now) now.toggleAttribute('data-armed', false); }, 6_100);
   };
   // Only the server's refusal is an end: a pass that ran out, or a server not reached, is being checked (the key may be perfectly good).
   const heading = stands === 'on' ? t('Plus is on in this browser') : stands === 'ended' ? t('Plus has ended in this browser') : t('Checking Plus with the server…');
   const standing = stands === 'on' ? (until ? (renews === true ? t('Paid until {date}. It renews by itself until you end it.', { date: day(until) }) : t('Plus runs until {date}.', { date: day(until) })) : renews === true ? t('It renews by itself until you end it.') : '')
     : stands === 'ended' ? (member.why === 'replaced' ? t('This key was replaced by newer ones (a subscription holds five). The email and the invoice number from your receipt bring Plus back here.') : t('This key no longer opens Plus: its subscription has ended, or the key was replaced by newer ones.'))
       : t('This browser holds a key that the server has not confirmed yet. If this stays, check your connection.');
+  // The thanks after a checkout, for its own key; a payment made here whose Plus is not set up (the membership changed while it was) is said
+  // beside the membership with its Try again, thanks or not (when no prices are drawn: they say it where they would be).
+  const beside = besideMembership(state.fresh, member.key, buying ? [] : paid.list());
+  // The thanks are the heading itself (and still announced), not a second box under the card saying the same; any other word kept for the
+  // buy rows (a Remove this tab could not store) shows under the heading as before.
+  const thanksText = t('Thank you. Plus is on in this browser.');
+  const thanked = beside.thanks && stands === 'on' && state.said?.where === 'buy' && state.said.text === thanksText;
+  // What ends or changes the subscription: Paddle's portal, or the receipt's link while there is none; nothing for a key that no longer
+  // renews (a gift, one ended at Paddle) or one the server ended. Remove stays on the right.
+  const manage = stands === 'ended' || renews === false ? [] : PADDLE.portal ? [link(PADDLE.portal, t('End the subscription or change the card'))] : [el('span', { textContent: t('To end the subscription or change the card, use the link in your receipt from Paddle.') })];
   box.append(
-    el('h2', { textContent: heading }),
+    el('div', { class: 'member-head' },
+      el('h2', {}, ...(stands === 'on' ? [el('span', { class: 'px-check', ariaHidden: 'true' })] : []), el('span', { textContent: thanked ? thanksText : heading })),
+      ...(stands === 'on' ? [el('a', { class: 'go', href: '../', textContent: t('Open the map') })] : [])),
+    ...(thanked ? [el('p', { class: 'vh', role: 'status', textContent: thanksText })] : beside.thanks ? said('buy') : []),
     ...(standing ? [el('p', { textContent: standing })] : []),
     ...(stands === 'ended' && member.why !== 'replaced' && plusOnSale() ? [el('p', { textContent: t('Subscribing again brings Plus back, with a new key.') })] : []),
     // A membership this tab took but could not store (the overlay): it lasts until the tab closes; another failure than a full storage
@@ -340,12 +356,8 @@ function memberSection(buying: boolean): HTMLElement {
     // A key the server has ended opens nothing anywhere; a membership that does not renew (a gift, one already ended at Paddle) has no
     // subscription to end.
     ...(stands !== 'ended' ? [el('p', { class: 'fine', textContent: t('The key is your Plus on your other devices too: open this page there and enter it. Keep it to yourself.') })] : []),
-    el('p', { class: 'actions' }, ...(stands === 'ended' || renews === false ? [] : PADDLE.portal ? [link(PADDLE.portal, t('End the subscription or change the card'))] : [el('span', { class: 'fine', textContent: t('To end the subscription or change the card, use the link in your receipt from Paddle.') })]), remove),
+    el('div', { class: 'member-manage' }, ...(manage.length ? [el('p', { class: 'member-manage-text' }, ...manage)] : []), remove),
   );
-  // The thanks after a checkout, for its own key; a payment made here whose Plus is not set up (the membership changed while it was) is said
-  // beside the membership with its Try again, thanks or not (when no prices are drawn: they say it where they would be).
-  const beside = besideMembership(state.fresh, member.key, buying ? [] : paid.list());
-  if (beside.thanks) box.append(...said('buy'), el('p', { class: 'actions' }, el('a', { class: 'go', href: '../', textContent: t('Open the map') })));
   if (beside.waiting) box.append(...pendingNote(beside.waiting, !beside.thanks));
   return box;
 }

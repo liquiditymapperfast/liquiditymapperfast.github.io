@@ -6,7 +6,7 @@ html[data-theme="dark"] { color-scheme: dark; }
 body { margin: 0; background: var(--bg, #fff); color: var(--text, #1b1d1e); font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
 /* The container px, as the sheet's body is: the shared feature sections stack by its width (present.css). */
 .plus-page { max-width: 880px; margin: 0 auto; padding: 28px 20px 48px; container: px / inline-size; }
-.plus-rest a, .plus-page footer a { color: var(--ui, #1f6feb); }
+.plus-rest a { color: var(--ui, #1f6feb); }
 .plus-head { display: flex; align-items: baseline; gap: 8px; font-size: 14px; }
 .plus-head b { font-weight: 700; }
 .plus-head .home { font-size: 13px; text-decoration: none; color: var(--muted, #5b6470); }
@@ -40,8 +40,18 @@ body { margin: 0; background: var(--bg, #fff); color: var(--text, #1b1d1e); font
 .plus-page .px-top-fine > :is(.said-bad, .said-good) { margin: 0 0 8px; padding: 6px 10px; border-left: 3px solid var(--ask, #c2255c); background: color-mix(in srgb, var(--ask, #c2255c) 8%, transparent); color: var(--text, #1b1d1e); font-size: 14px; }
 .plus-page .px-top-fine > .said-good { border-left-color: var(--bid, #2b8a3e); background: color-mix(in srgb, var(--bid, #2b8a3e) 10%, transparent); }
 .plus-rest .price-soon b { font-size: 22px; }
-.plus-rest button.quiet { border-color: transparent; background: none; color: var(--muted, #5b6470); padding: 6px 0; }
-.plus-rest button.quiet:hover { color: var(--text, #1b1d1e); border-color: transparent; }
+/* The membership card (Karl, 2026-11-21: tidier): the heading with "Open the map" on its right, the status, the key, and a last row under a
+   rule with what ends or changes the subscription on the left and Remove, a small outlined button, on the right. */
+.plus-rest .member-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 0 0 8px; }
+.plus-rest .member-head h2 { display: flex; align-items: center; gap: 8px; margin: 0; }
+.plus-rest .member-head .px-check { width: 16px; height: 16px; }
+.plus-rest .member-manage { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line, #d7dbe0); }
+.plus-rest .member-manage-text { flex: 1 1 280px; min-width: 0; margin: 0; color: var(--muted, #5b6470); font-size: 13px; }
+.plus-rest button.subtle { display: inline-grid; margin-left: auto; padding: 5px 12px; color: var(--muted, #5b6470); font-size: 13px; }
+.plus-rest button.subtle:hover:not(:disabled) { color: var(--text, #1b1d1e); }
+/* Both labels of Remove in one cell: the button is as wide as the longer one, armed or not. */
+#plus-remove > span { grid-area: 1 / 1; }
+#plus-remove:not([data-armed]) > .armed, #plus-remove[data-armed] > .idle { visibility: hidden; }
 .plus-rest .fine { color: var(--muted, #5b6470); font-size: 13px; }
 .plus-rest :is(.said-bad, .said-good) { margin: 0 0 10px; padding: 8px 10px; border-left: 3px solid var(--ask, #c2255c); background: color-mix(in srgb, var(--ask, #c2255c) 8%, transparent); font-size: 14px; }
 .plus-rest .said-good { border-left-color: var(--bid, #2b8a3e); background: color-mix(in srgb, var(--bid, #2b8a3e) 10%, transparent); }
@@ -58,7 +68,15 @@ body { margin: 0; background: var(--bg, #fff); color: var(--text, #1b1d1e); font
 .plus-rest .copied { color: var(--muted, #5b6470); font-size: 13px; }
 .plus-rest .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 0; }
 .plus-rest a.go { display: inline-block; padding: 8px 16px; border-radius: 6px; background: var(--ui, #1f6feb); color: var(--on-ui, #fff); text-decoration: none; font-weight: 600; }
-.plus-page footer { margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--line, #d7dbe0); font-size: 14px; }
+/* What stays free and the foot, on this page only (the map's Plus sheet shares what stays free and keeps present.css's look): one rule over
+   both, the lead line, then small grey lines; the foot's links and its contact line side by side where they fit. */
+.plus-page .px-trust { margin-top: 36px; padding-top: 20px; }
+.plus-page .px-trust-list { margin-top: 10px; gap: 6px 18px; color: var(--muted, #5b6470); font-size: 13px; }
+.plus-page .px-trust-fine { margin-top: 6px; }
+.plus-page footer { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 24px; margin-top: 18px; color: var(--muted, #5b6470); font-size: 13px; }
+.plus-page footer p { margin: 0; }
+.plus-page footer a { color: inherit; text-underline-offset: 2px; }
+.plus-page footer a:hover { color: var(--text, #1b1d1e); }
 @media (max-width: 640px) {
   .plus-page { padding: 18px 16px 36px; }
   .plus-page .px-buy, .plus-page .px-top [id^="plus-paid-again"] { min-height: 44px; }
