@@ -1326,7 +1326,7 @@ export class HeatPane {
     // baselines the Highlights' length of candles before the view (at least six hours: size-history/model.ts).
     let from = v.t0;
     if (state.show.stats && state.barStatOptions.cvdFrom === 'day') from = Math.min(from, dayStartOf(v.t0, resolveZone('page', state.timeZone)));
-    if (state.show.sizes) from = Math.min(from, v.t0 - preRollMs(state.highlight.length, tfMs));
+    if (state.show.sizes && state.highlight.on) from = Math.min(from, v.t0 - preRollMs(state.highlight.length, tfMs));
     const window = from < v.t0 ? { t0: from, t1: v.t1, p0: v.p0, p1: v.p1 } : v;
     if (markets.length) this.#footprint.ensure(markets.join(','), state.timeframe, window, rowStep, (inst, tf, from, to, rows, lines, budget, venues) => this.hub.footprint(inst, tf, from, to, rows, lines, budget, venues), () => this.invalidate(), cuts, this.hub.sourceNow());
     const rowH = rowStep > 0 ? Math.abs(v.yOf(0, ph) - v.yOf(rowStep, ph)) : 0;

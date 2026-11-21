@@ -101,7 +101,7 @@ export class SizeHistoryPane extends TimePane {
     this.#layout = [];
     if (!markets.length) { this.#message(t('No markets are counted: switch some on.')); this.#held = null; return; }
     // Replay: only the candles that ended by its moment. The candles of the view and one each side, and the baselines' history before it.
-    const now = pageNow(), live = !replaying(), until = live ? Infinity : now, from = v.t0 - preRollMs(state.highlight.length, tfMs);
+    const now = pageNow(), live = !replaying(), until = live ? Infinity : now, from = v.t0 - (state.highlight.on ? preRollMs(state.highlight.length, tfMs) : 0);
     const near = (start: number): boolean => start + tfMs <= until && start + tfMs > from && start < v.t1 + tfMs;
     const starts = new Set<number>();
     for (const c of state.candles) if (near(c[0])) starts.add(c[0]);
@@ -139,7 +139,8 @@ export class SizeHistoryPane extends TimePane {
     // The column under the pointer, lightly, behind the bars.
     if (hoverIdx >= 0) { ctx.save(); ctx.fillStyle = p.text; ctx.globalAlpha = p.dark ? 0.08 : 0.06; ctx.fillRect(v.xOf(times[hoverIdx]!, pw), top, Math.max(1, slot - 1), y - top); ctx.restore(); }
     const ramps = { up: colourRamp(p, p.candleUp), down: colourRamp(p, p.candleDown), flat: colourRamp(p, p.muted) };
-    let liqCutShown = false;
+    // Liquidations from a day the source cut at its 5,000 largest anywhere in view: the row's name says ≈ (a zero there means none held).
+    const liqCutShown = visible.some(i => model.liqCut[i] === 1);
     rows.forEach((row, r) => {
       const band = this.#layout[r]!, mid = Math.round(band.y + band.h / 2) + 0.5, half = Math.max(2, band.h / 2 - 2), cap = rowCap(row, visible);
       ctx.save(); ctx.globalAlpha = 0.6; ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(pw, mid); ctx.stroke(); ctx.restore();
@@ -157,7 +158,6 @@ export class SizeHistoryPane extends TimePane {
           else { ctx.fillStyle = on ? ramp[Math.round(e * (RAMP_STEPS - 1))]! : ramp[0]!; ctx.fillRect(x, by, bw, barH); }
           ctx.globalAlpha = 1;
           if (cut && barH > BAR_CUT_PX + BAR_CUT_H + 1) cutGap(ctx, x, up ? by + BAR_CUT_PX : by + barH - BAR_CUT_PX - BAR_CUT_H, bw);
-          if (row.kind === 'liq' && model.liqCut[i]) liqCutShown = true;
         }
       }
     });

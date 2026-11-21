@@ -85,6 +85,6 @@ test('panes covered by a maximized one draw nothing and put their cards away, bu
   assert.match(lower, /invalidate\(\): void \{ if \(!this\.#frame && !this\.#hidden && !this\.#covered\)/);
   assert.match(lower, /if \(this\.#pinned\) this\.#unpin\(\);\r?\n\s+this\.undrawn\(\);/);
   const main = fs.readFileSync('src/app/main.ts', 'utf8');
-  assert.match(main, /const covers = \{ bars, depth, oi, delta, ls, funding, lt, script \} as const;/);
+  assert.match(main, /const covers = \{ bars, sizes, depth, oi, delta, ls, funding, lt, script \} as const;/);
   assert.match(main, /id !== null && id !== pid && !\(pid === 'delta' && id === 'heat'\)/);
 });

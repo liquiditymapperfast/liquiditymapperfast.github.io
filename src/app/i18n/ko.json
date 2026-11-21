@@ -3306,5 +3306,5 @@
  "{k} of {n} size rows unusual": "크기 행 {n}개 중 {k}개가 이례적",
  "Show the Flow history": "플로우 이력 표시",
  "A pane under the chart: liquidations, open interest's change and market orders in six size bands, candle by candle, the most unusual amounts the brightest.": "차트 아래의 패널: 청산, 미결제약정의 변화, 여섯 개 크기 구간의 시장가 주문을 캔들마다 보여 주며, 가장 이례적인 금액이 가장 밝습니다.",
- "Not unusual": "이례적이지 않음"
+ "Not unusual": "이례적 아님"
 }

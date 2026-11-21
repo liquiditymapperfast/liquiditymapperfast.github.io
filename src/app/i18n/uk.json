@@ -3604,5 +3604,5 @@
  "{k} of {n} size rows unusual": "{k} із {n} рядків розміру незвичні",
  "Show the Flow history": "Показати історію потоку",
  "A pane under the chart: liquidations, open interest's change and market orders in six size bands, candle by candle, the most unusual amounts the brightest.": "Панель під графіком: ліквідації, зміна відкритого інтересу та ринкові ордери в шести діапазонах розміру, свічка за свічкою; найнезвичніші величини найяскравіші.",
- "Not unusual": "Не незвично"
+ "Not unusual": "Звично"
 }

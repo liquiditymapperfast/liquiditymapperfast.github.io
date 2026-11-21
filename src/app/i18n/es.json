@@ -3548,5 +3548,5 @@
  "{k} of {n} size rows unusual": "{k} de {n} filas de tamaño inusuales",
  "Show the Flow history": "Mostrar el historial de flujo",
  "A pane under the chart: liquidations, open interest's change and market orders in six size bands, candle by candle, the most unusual amounts the brightest.": "Un panel bajo el gráfico: liquidaciones, cambio del interés abierto y órdenes a mercado en seis tramos de tamaño, vela a vela, las cantidades más inusuales las más brillantes.",
- "Not unusual": "No inusual"
+ "Not unusual": "Normal"
 }

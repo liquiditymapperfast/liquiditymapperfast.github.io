@@ -156,7 +156,14 @@ export class Toolbar {
   #layer = el('select', { ariaLabel: t('Layer'), tip: t('Layer drawn on the map. Liquidity is the order-book heatmap; stop-loss and take-profit layers are upcoming (they need data a static page cannot hold a key for).') });
   #toggles = el('div', { class: 'seg toggles' });
   /** The Flow history's switch in a phone's Settings (Panels): it is no button of the top bar (the flow column's and the Bar stats' settings have it). */
-  #sizesToggle = el('button', { textContent: t('Flow history'), tip: HELP.sizes.tip, onclick: () => this.store.set({ show: { ...this.store.state.show, sizes: !this.store.state.show.sizes } }) });
+  #sizesToggle = el('button', { textContent: t('Flow history'), tip: HELP.sizes.tip, onclick: () => {
+    const on = !this.store.state.show.sizes;
+    this.store.set({ show: { ...this.store.state.show, sizes: on } });
+    // It sits under the map on the Map tab: switched on, the sheet closes on that tab so it is seen at once.
+    if (on) { this.#sheet?.close(); this.onShowMap(); }
+  } });
+  /** Show the map's tab of a phone (the page sets it: the dock is its). */
+  onShowMap: () => void = () => {};
   #chips = el('div', { class: 'chips' });
   /** Venues this location cannot reach, beside the live ones, so their absence is explained where it is noticed. */
   #blocked = el('div', { class: 'chips blocked-chips' });

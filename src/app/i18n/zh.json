@@ -3306,5 +3306,5 @@
  "{k} of {n} size rows unusual": "{n} 个大小行中有 {k} 个异常",
  "Show the Flow history": "显示资金流历史",
  "A pane under the chart: liquidations, open interest's change and market orders in six size bands, candle by candle, the most unusual amounts the brightest.": "图表下方的面板：按 K 线逐根显示强平、持仓量的变化和六个大小区间的市价单，最异常的金额最亮。",
- "Not unusual": "无异常"
+ "Not unusual": "正常"
 }

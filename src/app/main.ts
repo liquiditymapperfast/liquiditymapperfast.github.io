@@ -265,6 +265,7 @@ async function main(): Promise<void> {
   arrange.canMaximize = () => !store.state.rangeTool && !store.state.vwapAnchoring && !store.state.profileAnchoring && !heat.draw?.placing;
   heat.onMaximize = () => arrange.toggleMax('heat');
   toolbar.onMapMax = () => { arrange.toggleMax('heat'); };
+  toolbar.onShowMap = () => dock.select('map');
   const syncMapMax = (): void => toolbar.setMapMax(arrange.canMax('heat'), arrange.maximized === 'heat');
   // The panes under the map that a maximized pane covers draw nothing meanwhile and put their cards away (TimePane.cover). Delta stays
   // drawn under a maximized map: its drawing works out the CVD divergences the map draws (review r2), and a finger's pin on it is let go

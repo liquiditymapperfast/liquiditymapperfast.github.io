@@ -3487,5 +3487,5 @@
  "{k} of {n} size rows unusual": "{k} von {n} Größenzeilen ungewöhnlich",
  "Show the Flow history": "Flow-Verlauf anzeigen",
  "A pane under the chart: liquidations, open interest's change and market orders in six size bands, candle by candle, the most unusual amounts the brightest.": "Ein Bereich unter dem Chart: Liquidationen, Open-Interest-Änderung und Market-Orders in sechs Größenstufen, Kerze für Kerze, die ungewöhnlichsten Beträge am hellsten.",
- "Not unusual": "Nicht ungewöhnlich"
+ "Not unusual": "Gewöhnlich"
 }

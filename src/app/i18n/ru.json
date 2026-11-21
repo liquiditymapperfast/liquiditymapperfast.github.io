@@ -3599,5 +3599,5 @@
  "{k} of {n} size rows unusual": "{k} из {n} строк размера необычны",
  "Show the Flow history": "Показать историю потока",
  "A pane under the chart: liquidations, open interest's change and market orders in six size bands, candle by candle, the most unusual amounts the brightest.": "Панель под графиком: ликвидации, изменение открытого интереса и рыночные ордера в шести диапазонах размера, свеча за свечой; самые необычные величины ярче всего.",
- "Not unusual": "Не необычно"
+ "Not unusual": "Обычно"
 }

@@ -3481,5 +3481,5 @@
  "{k} of {n} size rows unusual": "{n} büyüklük satırından {k} tanesi alışılmadık",
  "Show the Flow history": "Akış geçmişini göster",
  "A pane under the chart: liquidations, open interest's change and market orders in six size bands, candle by candle, the most unusual amounts the brightest.": "Grafiğin altında bir panel: tasfiyeler, açık pozisyon değişimi ve altı büyüklük bandındaki piyasa emirleri, mum mum; en alışılmadık tutarlar en parlak.",
- "Not unusual": "Alışılmadık değil"
+ "Not unusual": "Olağan"
 }
