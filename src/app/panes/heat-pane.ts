@@ -22,12 +22,12 @@ import { anchorDate, anchorDay, clock, clockYear, price as fmtPrice, startOfDay,
 import { timeAxis } from '../time-axis.ts';
 export { timeTicks } from '../time-axis.ts';
 import type { Store, AppState, CandleRow } from '../store.ts';
-import { cumulative, groupLevels, groupSpan, type Grouped } from './levels-data.ts';
-import { Held, ROW_HOLD_MS, booksReaching, depthBand, depthBandLines, depthHereLine, depthRow, depthRowLines, liqCardLines, liqCardRow, seamCardLines, type DepthRow } from '../hover-rows.ts';
+import { MAX_BINS, cumulative, groupLevels, groupSpan, type Grouped } from './levels-data.ts';
+import { Held, ROW_HOLD_MS, booksReaching, depthBand, depthBandLines, depthHereLine, depthRow, depthRowLines, liqCardLines, liqCardRow, seamCardLines, seamSpan, type DepthRow } from '../hover-rows.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from '../scope.ts';
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText, wrapText } from '../text-fit.ts';
-import { LIQ_PROFILE_ROWS, binsIn, captionPlace, dollarPriceOf, laneRows, liqCurves, liqProfile, liqStanding, onTheWay, partsBetween, seamStats, standingBelow, TAKE_DASH, type CurvePoint, type LaneRows, type LiqLevels, type LiqRow, type LiqSet, type LiqStanding } from '../liq-levels.ts';
+import { LIQ_PROFILE_ROWS, binsBetween, captionPlace, dollarPriceOf, laneRows, liqCurves, liqProfile, liqStanding, onTheWay, partsBetween, seamStats, standingBelow, standingBins, TAKE_DASH, type CurvePoint, type LaneRows, type LiqLevels, type LiqRow, type LiqSet, type LiqStanding } from '../liq-levels.ts';
 import { SPLIT_COLUMN_W, captionKeepOut, cornerSpan, liqColumnWidth, placeCaptions, splitHeads, splitScales, stripePlan, subAt, subColumns, type Rect, type Sub, type SubScale } from '../liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../layouts/dock-model.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
@@ -4432,12 +4432,11 @@ export class HeatPane {
     const p = this.#palette, v = this.view, step = niceStep(v.p1 - v.p0, ph / 3), price = this.#liqPrice(state);
     if (!(price > 0)) return;
     const at = v.pOf(hv.y, ph), d = Math.abs(at - price);
-    // The prices grouped: the view, or where the band runs past it (the price scrolled away), a grouping that holds the price and the band's
-    // far edge (`groupSpan`), so the book is counted from the price, not from the view's edge.
-    // Only a span the liquidation profile can hold row for row (`LIQ_PROFILE_ROWS`; the book's grouping holds more): past that, levels at its
-    // far end would read as none (Sol, review 2026-11-20), so the view's rows are weighed, as before.
-    const past = price - d < v.p0 || price + d > v.p1, wanted = past ? groupSpan(v.p0, v.p1, price, step) : null;
-    const span = wanted && Math.floor(wanted.hi / step) - Math.floor(wanted.lo / step) + 1 <= LIQ_PROFILE_ROWS ? wanted : null, p0 = span?.lo ?? v.p0, p1 = span?.hi ?? v.p1;
+    // The prices grouped: the view, or where the band runs past it (the price scrolled away), the view and the whole band (`seamSpan`), so the
+    // book and the levels count from the price, not from the view's edge; only as many rows as the liquidation profile holds (`LIQ_PROFILE_ROWS`,
+    // under the grouping's own `MAX_BINS`), past which levels at the far end would read as none (Sol, review 2026-11-20).
+    const past = price - d < v.p0 || price + d > v.p1, span = past ? seamSpan(v.p0, v.p1, price, d, step, Math.min(MAX_BINS, LIQ_PROFILE_ROWS)) : null;
+    const p0 = span?.lo ?? v.p0, p1 = span?.hi ?? v.p1;
     // A band past the view that no grouping could hold: its amounts are the view's part only, and the box says so (Sol, review 2026-11-20).
     const clipped = past && !span;
     const g = groupLevels(this.kernels, frame, this.#enabledIds(), step, p0, p1), prof = liqProfile(s, step, p0, p1, price);
@@ -4483,13 +4482,16 @@ export class HeatPane {
     const wide = W >= PROFILE_W;
     dimOutside(ctx, x0, W, 0, ph, top, bottom, p.panel, 0.6);
     paintBand(ctx, p, x0, W, { y: top, color: p.candleUp, label: wide ? `${usd(stats.aboveUsd)} · ${pct}` : '' }, { y: bottom, color: p.candleDown, label: wide ? `${usd(stats.belowUsd)} · ${pct}` : '' }, { y0: 0, y1: ph });
-    // The row under the pointer on the column's own rows (the step the column groups its levels in).
-    // On the snapshot's own bins (`liqCardRow`), so what stands, the snapshot's amount, its count and its largest describe the same prices.
-    const { lo, hi } = liqCardRow(at, niceStep(v.p1 - v.p0, ph / 3), set.levels?.step ?? 0), step = hi - lo, side = at < price ? 'long' : 'short';
+    // The row under the pointer: the column's row on the snapshot's own bins (`liqCardRow`), so what stands, the snapshot's amount, its count and
+    // its largest describe the same prices.
+    const row = liqCardRow(at, niceStep(v.p1 - v.p0, ph / 3), set.levels?.step ?? 0), { lo, hi } = row, step = hi - lo, side = at < price ? 'long' : 'short';
     const kind = set.levels?.kind ?? 'liq', parts = kind === 'both' ? set.partStandings() : null;
-    // What still stands in the row, and what the snapshot put there (its count and largest are the snapshot's, `binsIn`).
-    const level = Math.max(0, standingBelow(s, side, hi) - standingBelow(s, side, lo)), whole = set.levels ? liqStanding(set.levels, null) : null;
-    const total = whole ? Math.max(level, standingBelow(whole, side, hi) - standingBelow(whole, side, lo)) : level, bins = set.levels ? binsIn(set.levels, side, lo, hi) : { positions: 0, top: 0 };
+    // What still stands in the row and what the snapshot put there, by bin number (`standingBins`, `binsBetween`): whole bins, no proration, no
+    // bin lost to rounding.
+    const whole = set.levels ? liqStanding(set.levels, null) : null;
+    const level = row.kLo !== null ? standingBins(s, side, row.kLo, row.kHi) : Math.max(0, standingBelow(s, side, hi) - standingBelow(s, side, lo));
+    const total = whole && row.kLo !== null ? Math.max(level, standingBins(whole, side, row.kLo, row.kHi)) : level;
+    const bins = set.levels && row.kLo !== null ? binsBetween(set.levels, side, row.kLo, row.kHi) : { positions: 0, top: 0 };
     const ry0 = v.yOf(hi, ph), ry1 = v.yOf(lo, ph);
     ctx.save(); ctx.globalAlpha = 0.9; ctx.strokeStyle = p.text; ctx.lineWidth = 1; ctx.strokeRect(x0 + 1.5, Math.round(ry0) - 0.5, W - 3, Math.max(2, Math.round(ry1 - ry0) + 1)); ctx.restore();
     const lines = liqCardLines({ kind, side, lo, hi, step, level, total, split: parts ? partsBetween(parts, side, lo, hi) : null, positions: bins.positions, top: bins.top,

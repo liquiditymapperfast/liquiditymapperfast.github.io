@@ -402,6 +402,19 @@ export function binsIn(levels: LiqLevels, side: 'long' | 'short', lo: number, hi
   return { positions, top };
 }
 
+/**
+ * `binsIn` by bin number: the positions of a side in the bins [kLo, kHi) and the largest. The liquidation card asks by number so a price that
+ * divides back to 42.99999 never counts the bin before (Sol, review 2026-11-20).
+ */
+export function binsBetween(levels: LiqLevels, side: 'long' | 'short', kLo: number, kHi: number): { positions: number; top: number } {
+  let positions = 0, top = 0;
+  for (let i = lowerBound(levels.k, kLo); i < levels.k.length && levels.k[i]! < kHi; i++) {
+    positions += side === 'long' ? levels.longWallets[i]! : levels.shortWallets[i]!;
+    top = Math.max(top, side === 'long' ? levels.longTop[i]! : levels.shortTop[i]!);
+  }
+  return { positions, top };
+}
+
 /** What still stands of each side, added up bin by bin from the lowest (sums with a leading 0), for the profile column. */
 export interface LiqStanding { k: Int32Array; step: number; long: Float64Array; short: Float64Array }
 
@@ -412,6 +425,12 @@ export function liqStanding(levels: LiqLevels, taken: { long: Taken; short: Take
     short[i + 1] = short[i]! + (levels.shortIso[i]! + levels.shortCross[i]!) * (1 - (taken?.short.frac[i] ?? 0));
   }
   return { k: levels.k, step: levels.step, long, short };
+}
+
+/** What stands of one side in the whole bins [kLo, kHi) (bin numbers of the standing's own step), read off the running sums: no proration. */
+export function standingBins(s: LiqStanding, side: 'long' | 'short', kLo: number, kHi: number): number {
+  const sums = s[side];
+  return kHi > kLo ? Math.max(0, sums[lowerBound(s.k, kHi)]! - sums[lowerBound(s.k, kLo)]!) : 0;
 }
 
 /** The dollars of one side standing below `price`; a bin the price cuts counts in proportion, its dollars spread evenly over it. */

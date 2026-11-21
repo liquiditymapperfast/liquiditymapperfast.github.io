@@ -3,7 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { Held, ROW_HOLD_MS, booksReaching, depthBand, depthBandLines, depthHereLine, depthRow, depthRowLines, liqCardLines, liqCardRow, ratioWords, seamCardLines, wholeShares } from '../src/app/hover-rows.ts';
+import { Held, ROW_HOLD_MS, booksReaching, depthBand, depthBandLines, depthHereLine, depthRow, depthRowLines, liqCardLines, liqCardRow, ratioWords, seamCardLines, seamSpan, wholeShares } from '../src/app/hover-rows.ts';
+import { binsBetween, liqStanding, standingBins, type LiqLevels } from '../src/app/liq-levels.ts';
 import type { Grouped } from '../src/app/panes/levels-data.ts';
 import type { LevelsFrame, LiveBook } from '../src/app/wire.ts';
 import { INFO, MARK, layoutInfo, type InfoLine } from '../src/app/infobox.ts';
@@ -174,14 +175,39 @@ test('the map draws these boxes: the profile from its row and band, the band fro
   assert.match(profile, /depthHereLine\(/);
   assert.match(body('#paintLiqColumnMirror'), /liqCardLines\(/);
   assert.match(body('#paintSeam'), /seamCardLines\(/);
-  assert.match(body('#paintSeam'), /groupSpan\(v\.p0, v\.p1, price, step\)/);
-  assert.match(body('#paintSeam'), /<= LIQ_PROFILE_ROWS \? wanted : null/, 'a span only where the liquidation profile holds every row of it');
+  assert.match(body('#paintSeam'), /seamSpan\(v\.p0, v\.p1, price, d, step, Math\.min\(MAX_BINS, LIQ_PROFILE_ROWS\)\)/, 'the whole band, within what both groupings hold');
+  assert.match(body('#paintSeam'), /const clipped = past && !span;/);
+  assert.match(body('#paintLiqColumnMirror'), /standingBins\(s, side, row\.kLo, row\.kHi\)/);
+  assert.match(body('#paintLiqColumnMirror'), /binsBetween\(set\.levels, side, row\.kLo, row\.kHi\)/);
   assert.match(body('#paintLiqSplit'), /liqSubBoxFrame\(at, subs\[at\]\.x0, pw, ph, this\.#liqHeadH, measureInfoBox\(ctx, box\.lines\)\.h\)/);
 });
 
-test('the liquidation card speaks of whole snapshot bins: the column\'s row where it is made of them, the bin itself where the row is narrower', () => {
-  assert.deepEqual(liqCardRow(58_472, 50, 10), { lo: 58_450, hi: 58_500 }, 'a $50 row of $10 bins');
-  assert.deepEqual(liqCardRow(58_452.3, 0.5, 10), { lo: 58_450, hi: 58_460 }, 'zoomed far in: the $10 bin, so its count and largest match its amount');
-  assert.deepEqual(liqCardRow(58_512, 25, 10), { lo: 58_500, hi: 58_530 }, 'a row that is no whole number of bins: the bins that start in it');
-  assert.deepEqual(liqCardRow(58_472, 50, 0), { lo: 58_450, hi: 58_500 }, 'no bin size known: the column\'s own row');
+test('the liquidation card speaks of whole snapshot bins, by number: the column\'s row where it is made of them, the bin itself where narrower', () => {
+  assert.deepEqual(liqCardRow(58_472, 50, 10), { lo: 58_450, hi: 58_500, kLo: 5845, kHi: 5850 }, 'a $50 row of $10 bins');
+  assert.deepEqual(liqCardRow(58_452.3, 0.5, 10), { lo: 58_450, hi: 58_460, kLo: 5845, kHi: 5846 }, 'zoomed far in: the $10 bin, so its count and largest match its amount');
+  assert.deepEqual(liqCardRow(58_512, 25, 10), { lo: 58_500, hi: 58_530, kLo: 5850, kHi: 5853 }, 'a row that is no whole number of bins: the bins that start in it');
+  assert.deepEqual(liqCardRow(58_472, 50, 0), { lo: 58_450, hi: 58_500, kLo: null, kHi: null }, 'no bin size known: the column\'s own row');
+  // Quotients a hair off a whole number are that number (Sol, review 2026-11-20): no bin skipped, none borrowed from below.
+  const fine = liqCardRow(50_000.125, 0.05, 0.001);
+  assert.deepEqual([fine.kLo, fine.kHi], [50_000_100, 50_000_150]);
+  const tiny = liqCardRow(4.32, 0.02, 0.1);
+  assert.deepEqual([tiny.kLo, tiny.kHi], [43, 44]);
+});
+
+test('the card reads whole bins by number: what stands, and the snapshot\'s count and largest, of the same bins', () => {
+  // Two bins of $0.10: 42 holds $1M of 90 positions, 43 holds $10K of one.
+  const levels = { step: 0.1, k: Int32Array.from([42, 43]), longIso: Float64Array.from([1e6, 1e4]), longCross: Float64Array.from([0, 0]), shortIso: Float64Array.from([0, 0]), shortCross: Float64Array.from([0, 0]),
+    longWallets: Uint32Array.from([90, 1]), shortWallets: Uint32Array.from([0, 0]), longTop: Float64Array.from([1e6, 1e4]), shortTop: Float64Array.from([0, 0]) } as unknown as LiqLevels;
+  const s = liqStanding(levels, null);
+  assert.equal(standingBins(s, 'long', 43, 44), 1e4);
+  assert.deepEqual(binsBetween(levels, 'long', 43, 44), { positions: 1, top: 1e4 }, 'not bin 42\'s 90 positions and $1M');
+  assert.equal(standingBins(s, 'long', 42, 44), 1_010_000);
+  assert.equal(standingBins(s, 'long', 44, 44), 0);
+});
+
+test('the seam spans the view and its whole band, from the price itself, within what the groupings hold', () => {
+  // Sol's case: the price above the view; the band reaches 79,630, past where a span mirrored about the price's row stopped (79,595).
+  const span = seamSpan(58_455, 68_455, 69_045, 69_045 - 58_460, 50, 5_000)!;
+  assert.ok(span.lo <= 58_455 && span.hi >= 69_045 + (69_045 - 58_460), JSON.stringify(span));
+  assert.equal(seamSpan(58_000, 58_100, 59_350, 1_300, 0.2, 5_000), null, 'more rows than a profile holds: none (the box says part is outside)');
 });

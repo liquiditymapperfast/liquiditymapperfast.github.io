@@ -148,12 +148,25 @@ export function depthBandLines(b: DepthBand): InfoLine[] {
  * counts the bins starting in [lo, hi)). Where the column's row is narrower than a bin (zoomed far in), the bin itself (Sol, review 2026-11-20:
  * a prorated "$0 of $260K" beside the whole bin's "Positions 14").
  */
-export function liqCardRow(at: number, step: number, unit: number): { lo: number; hi: number } {
-  const bin = (): { lo: number; hi: number } => { const lo = Math.floor(at / unit) * unit; return { lo, hi: lo + unit }; };
-  if (!(unit > 0)) { const lo = Math.floor(at / step) * step; return { lo, hi: lo + step }; }
+export function liqCardRow(at: number, step: number, unit: number): { lo: number; hi: number; kLo: number; kHi: number } | { lo: number; hi: number; kLo: null; kHi: null } {
+  if (!(unit > 0)) { const lo = Math.floor(at / step) * step; return { lo, hi: lo + step, kLo: null, kHi: null }; }
+  // In bin numbers, so the card reads whole bins by number (`standingBins`, `binsBetween`): a quotient a hair off a whole number (50000100.00000001,
+  // 42.99999999999999) is that whole number, never the next bin up or the one before (Sol, review 2026-11-20).
+  const whole = (q: number): number => { const r = Math.round(q); return Math.abs(q - r) <= 1e-7 * Math.max(1, Math.abs(r)) ? r : Math.ceil(q); };
+  const bin = (): { lo: number; hi: number; kLo: number; kHi: number } => { const k = Math.floor(at / unit); return { lo: k * unit, hi: (k + 1) * unit, kLo: k, kHi: k + 1 }; };
   if (step <= unit) return bin();
-  const rowLo = Math.floor(at / step) * step, lo = Math.ceil(rowLo / unit - 1e-9) * unit, hi = Math.ceil((rowLo + step) / unit - 1e-9) * unit;
-  return hi > lo ? { lo, hi } : bin();
+  const row = Math.floor(at / step), kLo = whole(row * step / unit), kHi = whole((row + 1) * step / unit);
+  return kHi > kLo ? { lo: kLo * unit, hi: kHi * unit, kLo, kHi } : bin();
+}
+
+/**
+ * The prices the seam groups where its band runs past the view: the view and the band (the price out to the pointer and as far the other way)
+ * with a row to spare each side, or null where that is more rows than the liquidation profile holds (the box then says part is outside).
+ * Not `groupSpan`, which mirrors about the price's row rather than the price, and so could stop up to a row short of the band's far edge.
+ */
+export function seamSpan(p0: number, p1: number, price: number, d: number, step: number, maxRows: number): { lo: number; hi: number } | null {
+  const lo = Math.min(p0, price - d) - step, hi = Math.max(p1, price + d) + step;
+  return Math.floor(hi / step) - Math.floor(lo / step) + 1 <= maxRows ? { lo, hi } : null;
 }
 
 export interface LiqCard {
