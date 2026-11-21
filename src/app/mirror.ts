@@ -29,7 +29,8 @@ export interface MirrorStats {
   clipped: boolean;
 }
 
-const BALANCED = 1.02;
+/** Under this, the larger side over the smaller, two sides are called even (the order book's Balanced, the column boxes' about even). */
+export const BALANCED_RATIO = 1.02;
 
 export function mirrorStats(mid: number, price: number, aboveUsd: number, belowUsd: number, clipped = false): MirrorStats | null {
   const distance = Math.abs(price - mid);
@@ -38,7 +39,7 @@ export function mirrorStats(mid: number, price: number, aboveUsd: number, belowU
   const hovered = hoveredSide === 'above' ? aboveUsd : belowUsd, opposite = hoveredSide === 'above' ? belowUsd : aboveUsd;
   const big = Math.max(hovered, opposite), small = Math.min(hovered, opposite);
   const ratio = big === 0 ? 1 : small === 0 ? Infinity : big / small;
-  const dominant = big === 0 ? 'none' : ratio < BALANCED ? 'balanced' : hovered > opposite ? 'this' : 'opposite';
+  const dominant = big === 0 ? 'none' : ratio < BALANCED_RATIO ? 'balanced' : hovered > opposite ? 'this' : 'opposite';
   return { mid, price, mirror: 2 * mid - price, distance, distanceBp: distance / mid * 1e4, hoveredSide, hovered, opposite, aboveUsd, belowUsd, ratio, dominant, clipped };
 }
 

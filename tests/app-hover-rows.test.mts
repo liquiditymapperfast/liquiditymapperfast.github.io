@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { Held, ROW_HOLD_MS, booksReaching, depthBand, depthBandLines, depthHereLine, depthRow, depthRowLines, liqCardLines, liqCardRow, ratioWords, seamCardLines, seamSpan, wholeShares } from '../src/app/hover-rows.ts';
+import { Held, ROW_HOLD_MS, booksReaching, depthBand, depthBandLines, depthBandVerdict, depthHereLine, depthRow, depthRowLines, liqBandVerdict, liqCardLines, liqCardRow, ratioWords, seamCardLines, seamSpan, wholeShares } from '../src/app/hover-rows.ts';
 import { binsBetween, liqStanding, standingBins, type LiqLevels } from '../src/app/liq-levels.ts';
 import type { Grouped } from '../src/app/panes/levels-data.ts';
 import type { LevelsFrame, LiveBook } from '../src/app/wire.ts';
@@ -77,18 +77,20 @@ test('how many books send data as far as a row: a book whose feed stops nearer t
   assert.deepEqual(text([depthHereLine(2, 3)]), ['Depth coverage here: 2/3 books']);
 });
 
-test('the band says bids over asks in one line, its totals only where no pill shows them, how far the feeds reach, and when part is outside', () => {
+test('the band says which side is heavier in one line, its totals only where no pill shows them, how far the feeds reach, and when part is outside', () => {
   const base = { bid: 729_900_000, ask: 721_000_000, pct: '0.93%', reach: { bid: 15, ask: 14, of: 24 }, totals: false, clipped: false };
-  assert.deepEqual(text(depthBandLines(base)), ['Within ≈±0.93%: bids / asks 1.01×', 'Depth coverage: bids 15/24 · asks 14/24']);
+  assert.deepEqual(text(depthBandLines(base)), ['Within ≈±0.93%: bids and asks about even', 'Depth coverage: bids 15/24 · asks 14/24']);
+  assert.deepEqual(text(depthBandLines({ ...base, ask: 517_000_000 })).slice(0, 1), ['Within ≈±0.93%: bids 1.41× the asks']);
   const phone = depthBandLines({ ...base, totals: true, clipped: true });
-  assert.deepEqual(text(phone), ['Within ≈±0.93%: bids / asks 1.01×', 'Bids $729.9M  ·  Asks $721M', 'Depth coverage: bids 15/24 · asks 14/24', 'part of the range is outside the data']);
+  assert.deepEqual(text(phone), ['Within ≈±0.93%: bids and asks about even', 'Bids $729.9M  ·  Asks $721M', 'Depth coverage: bids 15/24 · asks 14/24', 'part of the range is outside the data']);
   assert.deepEqual(phone[1]!.runs!.map(r => r.color), ['below', 'below', 'muted', 'above', 'above']);
 });
 
 test('the liquidation card: the row\'s levels, what still stands there, the snapshot\'s count and largest, then longs over shorts', () => {
   const f = { kind: 'liq' as const, side: 'long' as const, lo: 51_850, hi: 51_900, step: 50, level: 53_944_068, total: 53_944_068, split: null, positions: 30, top: 51_861_076,
     below: 277e6, above: 173e6, pct: '12.1%', totals: false, bandSplit: null };
-  assert.deepEqual(text(liqCardLines(f)), ['Long liquidations 51,850–51,900', 'At this level: $53.9M', 'Positions: 30', 'Largest position: $51.9M', 'Within ≈±12.1%: longs / shorts 1.60×']);
+  assert.deepEqual(text(liqCardLines(f)), ['Long liquidations 51,850–51,900', 'At this level: $53.9M', 'Positions: 30', 'Largest position: $51.9M', 'Within ≈±12.1%: longs 1.60× the shorts']);
+  assert.deepEqual([liqCardLines(f).at(-1)!.color, liqCardLines(f).at(-1)!.bold, liqCardLines(f).at(-1)!.rule], ['below', true, true], 'the heavier side in its colour, under a rule');
   assert.equal(liqCardLines(f)[0]!.runs![0]!.color, 'below', 'the side in the colour the column draws it');
   // A row price has taken (a wick through it): what stands of what the snapshot put there, so the snapshot's count and largest still agree.
   assert.deepEqual(text(liqCardLines({ ...f, level: 0, total: 5_200_000, positions: 14, top: 2_000_000 })).slice(1, 4), ['At this level: $0 of $5.2M', 'Positions: 14', 'Largest position: $2M']);
@@ -98,12 +100,13 @@ test('the liquidation card: the row\'s levels, what still stands there, the snap
   assert.deepEqual(text(both).slice(-2), ['Longs: Total $277M = liquidations $250M + stops $27M', 'Shorts: Total $173M = liquidations $160M + stops $13M']);
   // Take profits on their own keep the shorts' below the price (the arrays' long side) and the longs' above: the band says whose they are.
   const takes = liqCardLines({ ...f, kind: 'takes', below: 50, above: 10, totals: true });
-  assert.ok(text(takes).includes('Within ≈±12.1%: longs / shorts 0.20×'), text(takes).join(' | '));
+  assert.ok(text(takes).includes('Within ≈±12.1%: shorts 5.00× the longs'), text(takes).join(' | '));
+  assert.equal(takes.find(l => l.text.startsWith('Within'))!.color, 'below', 'the shorts\' take profits stand below the price, in its colour');
   assert.equal(takes.at(-1)!.text, 'Longs $10  ·  Shorts $50');
   assert.deepEqual(takes.at(-1)!.runs!.map(r => r.color), ['above', 'above', 'muted', 'below', 'below'], 'each in the colour of where it stands');
   // A strip or sub-column: the band's totals; an empty row of an empty snapshot: no count or largest.
   assert.equal(liqCardLines({ ...f, totals: true }).at(-1)!.text, 'Longs $277M  ·  Shorts $173M');
-  assert.deepEqual(text(liqCardLines({ ...f, side: 'short', level: 0, total: 0, positions: 0, top: 0 })), ['Short liquidations 51,850–51,900', 'At this level: $0', 'Within ≈±12.1%: longs / shorts 1.60×']);
+  assert.deepEqual(text(liqCardLines({ ...f, side: 'short', level: 0, total: 0, positions: 0, top: 0 })), ['Short liquidations 51,850–51,900', 'At this level: $0', 'Within ≈±12.1%: longs 1.60× the shorts']);
 });
 
 test('the band counts from the price: from a grouping that holds the price and the mirror where the view\'s does not, clipped only where none can', () => {
@@ -213,4 +216,27 @@ test('the seam spans the view and its whole band, from the price itself, within 
   const span = seamSpan(58_455, 68_455, 69_045, 69_045 - 58_460, 50, 5_000)!;
   assert.ok(span.lo <= 58_455 && span.hi >= 69_045 + (69_045 - 58_460), JSON.stringify(span));
   assert.equal(seamSpan(58_000, 58_100, 59_350, 1_300, 0.2, 5_000), null, 'more rows than a profile holds: none (the box says part is outside)');
+});
+
+test('the band names the heavier side and how many times the other it is; about even under 1.02×; only one side where the other has nothing (Karl, 2026-11-21)', () => {
+  // The old box said it ("This side has 1.4× more"); a ratio in one fixed order ("longs / shorts 0.20×") had him work it out.
+  const v = (b: number, a: number) => depthBandVerdict(b, a, '1%');
+  assert.deepEqual([v(141, 100).text, v(141, 100).color, v(141, 100).bold], ['Within ≈±1%: bids 1.41× the asks', 'below', true]);
+  assert.deepEqual([v(100, 141).text, v(100, 141).color], ['Within ≈±1%: asks 1.41× the bids', 'above']);
+  assert.equal(v(101.9, 100).text, 'Within ≈±1%: bids and asks about even', 'under the Mirror\'s balance');
+  assert.equal(v(100, 101.9).color, undefined, 'in the text\'s ink');
+  assert.equal(v(102.1, 100).text, 'Within ≈±1%: bids 1.02× the asks', 'just past it, named');
+  assert.equal(v(1_250, 100).text, 'Within ≈±1%: bids 12.5× the asks');
+  assert.deepEqual([v(5, 0).text, v(5, 0).color], ['Within ≈±1%: only bids', 'below']);
+  assert.deepEqual([v(0, 5).text, v(0, 5).color], ['Within ≈±1%: only asks', 'above']);
+  assert.deepEqual([v(0, 0).text, v(0, 0).color], ['Within ≈±1%: no bids or asks', 'muted']);
+  assert.equal(v(NaN, 5).text, 'Within ≈±1%: only asks', 'a side not known counts as nothing');
+  const l = (a: number, b: number) => liqBandVerdict(a, b, '5%', 'below', 'above');
+  assert.deepEqual([l(10, 50).text, l(10, 50).color], ['Within ≈±5%: shorts 5.00× the longs', 'above']);
+  assert.deepEqual([l(50, 10).text, l(50, 10).color], ['Within ≈±5%: longs 5.00× the shorts', 'below']);
+  assert.equal(l(100, 101).text, 'Within ≈±5%: longs and shorts about even');
+  assert.deepEqual([l(3, 0).text, l(0, 3).text, l(0, 0).text], ['Within ≈±5%: only longs', 'Within ≈±5%: only shorts', 'Within ≈±5%: no longs or shorts']);
+  assert.ok([l(3, 0), l(0, 3), l(0, 0), l(100, 101), l(10, 50)].every(x => x.rule === true), 'under the card\'s rule whatever it says');
+  // Take profits: the colours follow whose orders they are, where they stand.
+  assert.equal(liqBandVerdict(10, 50, '5%', 'above', 'below').color, 'below');
 });

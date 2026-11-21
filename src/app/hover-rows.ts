@@ -4,7 +4,7 @@
  * the pointer with its mirror and says how many books send data that far; the liquidation column's card says what stands in the row; the seam
  * weighs the book against the levels per side. Pure: the map finds the figures (`HeatPane`), these say them.
  */
-import type { InfoLine, InfoRun } from './infobox.ts';
+import type { InfoColor, InfoLine, InfoRun } from './infobox.ts';
 import { t } from './i18n.ts';
 import { price as fmtPrice, usd } from './format.ts';
 import { coverage, cumulative, pastReach, type Grouped } from './panes/levels-data.ts';
@@ -12,6 +12,7 @@ import type { LevelsFrame } from './wire.ts';
 import { venueLabel } from './venues.ts';
 import type { LevelsKind } from './liq-levels.ts';
 import { countLabel, sideTitle, splitText, topLabel } from './liq-words.ts';
+import { BALANCED_RATIO } from './mirror.ts';
 
 const dollars = (value: number): string => `$${usd(value)}`;
 
@@ -122,11 +123,39 @@ export function depthHereLine(count: number, of: number): InfoLine {
   return { text: t('Depth coverage here: {count}/{n} books', { count: String(count), n: String(of) }), color: 'muted' };
 }
 
-/** The band from the price to the pointer and its mirror: bids over asks in one fixed order, their totals where no pill shows them, and how far the feeds reach. */
+/** The band from the price to the pointer and its mirror: which side is heavier and by how much (`depthBandVerdict`), their totals where no pill shows them, and how far the feeds reach. */
 export interface DepthBand { bid: number; ask: number; pct: string; reach: { bid: number; ask: number; of: number }; totals: boolean; clipped: boolean }
 
+/**
+ * The band's two sides in one line: the heavier named, in its colour, with how many times the other it is ("bids 1.41× the asks"); about even
+ * under the Mirror's balance (`BALANCED_RATIO`, as the order book's box says Balanced); only one side where the other holds nothing. Karl,
+ * 2026-11-21: a ratio in one fixed order ("bids / asks 0.71×", "longs / shorts 0.20×") made him work out which side leads, where the box
+ * before it said so ("This side has 1.4× more"). Named by price side, never this side or that, so moving the pointer across the price
+ * does not turn it over.
+ */
+export function depthBandVerdict(bid: number, ask: number, pct: string): InfoLine {
+  const b = bid > 0 ? bid : 0, a = ask > 0 ? ask : 0;
+  if (!b && !a) return { text: t('Within ≈±{pct}: no bids or asks', { pct }), color: 'muted' };
+  if (!a) return { text: t('Within ≈±{pct}: only bids', { pct }), color: 'below', bold: true };
+  if (!b) return { text: t('Within ≈±{pct}: only asks', { pct }), color: 'above', bold: true };
+  if (Math.max(b, a) / Math.min(b, a) < BALANCED_RATIO) return { text: t('Within ≈±{pct}: bids and asks about even', { pct }), bold: true };
+  return b > a ? { text: t('Within ≈±{pct}: bids {ratio} the asks', { pct, ratio: ratioWords(b, a) }), color: 'below', bold: true }
+    : { text: t('Within ≈±{pct}: asks {ratio} the bids', { pct, ratio: ratioWords(a, b) }), color: 'above', bold: true };
+}
+
+/** The liquidation card's band in one line, as `depthBandVerdict` says the book's: longs and shorts by whose positions (or orders) they are, each in the colour the column draws it in. */
+export function liqBandVerdict(longs: number, shorts: number, pct: string, longColor: InfoColor, shortColor: InfoColor): InfoLine {
+  const l = longs > 0 ? longs : 0, s = shorts > 0 ? shorts : 0;
+  if (!l && !s) return { text: t('Within ≈±{pct}: no longs or shorts', { pct }), color: 'muted', rule: true };
+  if (!s) return { text: t('Within ≈±{pct}: only longs', { pct }), color: longColor, bold: true, rule: true };
+  if (!l) return { text: t('Within ≈±{pct}: only shorts', { pct }), color: shortColor, bold: true, rule: true };
+  if (Math.max(l, s) / Math.min(l, s) < BALANCED_RATIO) return { text: t('Within ≈±{pct}: longs and shorts about even', { pct }), bold: true, rule: true };
+  return l > s ? { text: t('Within ≈±{pct}: longs {ratio} the shorts', { pct, ratio: ratioWords(l, s) }), color: longColor, bold: true, rule: true }
+    : { text: t('Within ≈±{pct}: shorts {ratio} the longs', { pct, ratio: ratioWords(s, l) }), color: shortColor, bold: true, rule: true };
+}
+
 export function depthBandLines(b: DepthBand): InfoLine[] {
-  const lines: InfoLine[] = [{ text: t('Within ≈±{pct}: bids / asks {ratio}', { pct: b.pct, ratio: ratioWords(b.bid, b.ask) }) }];
+  const lines: InfoLine[] = [depthBandVerdict(b.bid, b.ask, b.pct)];
   if (b.totals) {
     const runs: InfoRun[] = [{ text: `${t('Bids')} `, color: 'below' }, { text: dollars(b.bid), color: 'below', value: true }, { text: '  ·  ', color: 'muted' },
       { text: `${t('Asks')} `, color: 'above' }, { text: dollars(b.ask), color: 'above', value: true }];
@@ -140,7 +169,7 @@ export function depthBandLines(b: DepthBand): InfoLine[] {
 /**
  * What the liquidation column's card says for the row [lo, hi) under the pointer: the side's levels and the row's prices, what still stands
  * there (and for Liq + stops its two parts), how many positions or orders the snapshot puts there and the largest, then the band from the
- * price to the pointer and its mirror as longs over shorts, with their totals where no pill shows them (a phone's strip).
+ * price to the pointer and its mirror, which side is heavier and by how much (`liqBandVerdict`), with their totals where no pill shows them (a phone's strip).
  */
 /**
  * The prices the liquidation card speaks of for a pointer at `at`: the column's row (`step` wide), on the snapshot's own bins (`unit` wide,
@@ -196,7 +225,7 @@ export function liqCardLines(f: LiqCard): InfoLine[] {
   // review 2026-11-20: the ratio of a take-profit band read them the wrong way round).
   const takes = f.kind === 'takes', longs = takes ? f.above : f.below, shorts = takes ? f.below : f.above;
   const longColor = takes ? 'above' : 'below', shortColor = takes ? 'below' : 'above';
-  lines.push({ text: t('Within ≈±{pct}: longs / shorts {ratio}', { pct: f.pct, ratio: ratioWords(longs, shorts) }), rule: true });
+  lines.push(liqBandVerdict(longs, shorts, f.pct, longColor, shortColor));
   if (f.bandSplit) {
     // Each side's total in its two parts: the total is in it, so it serves where no pill shows one too.
     lines.push({ label: t('Longs'), text: f.bandSplit.long, color: 'muted', wrap: true }, { label: t('Shorts'), text: f.bandSplit.short, color: 'muted', wrap: true });

@@ -141,7 +141,7 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'mirror', title: 'Mirror: which side has more?',
     blocks: [
-      { t: 'p', text: 'Mirror answers one question: *is there more on this side of the price, or the other?* Point at a price in the profile or the order book. The band between the price and your pointer is outlined, and so is the equal band on the other side, with each band\'s total on its edge. The order book\'s box says which is bigger; the profile\'s, under what is in your row, gives bids over asks as one number (above 1, more bids). Move outward and watch the balance change with distance.' },
+      { t: 'p', text: 'Mirror answers one question: *is there more on this side of the price, or the other?* Point at a price in the profile or the order book. The band between the price and your pointer is outlined, and so is the equal band on the other side, with each band\'s total on its edge. The order book\'s box and the profile\'s (under what is in your row) both say which is bigger and how many times the other it is, or about even within 2 %. Move outward and watch the balance change with distance.' },
       { t: 'fig', id: 'mirror', caption: 'The pointer moves away from the price. The box compares the two bands as they grow.' },
       { t: 'note', kind: 'warn', text: 'Mirror only shows while you hover, and it is on unless you switch it off. Its switch is **Mirror** in the order book\'s **Cues** panel (the Cues key in the book\'s title bar; on a phone, behind the book\'s settings key): if hovering stops showing the box, check it there, as its state is saved between visits. On a touch screen, tap the profile or the order book to pin the box there, and tap again to let go.' },
     ],
