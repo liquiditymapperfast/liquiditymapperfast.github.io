@@ -3,7 +3,7 @@ import { heatRenderer } from '../heatmap/canvas.ts';
 import { buildLut } from '../heatmap/lut.ts';
 import { colourWindow, nextBaseline, type Baseline } from '../heatmap/window.ts';
 import { isCoarse, isPhone } from '../device.ts';
-import { dimOutside, mirrorLines, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorLine, type MirrorStats } from '../mirror.ts';
+import { dimOutside, mirrorStats, paintBand, paintMirrorBox, percentText, type MirrorLine, type MirrorStats } from '../mirror.ts';
 import { PROFILE_CANDLES_BACK_MS, TIMEFRAMES, askedSpan, valueAreaKey, windowProfileKey, type Hub, type RasterResult } from '../hub.ts';
 import { ensureDeltaFlow } from '../delta/flows.ts';
 import { StripHighlightMemo, coarseCandles, joinRows, paintVolumeStrip, stripBars, stripHistoryFrom, stripLines, stripNamesTop, stripTimeframe, withEarlier, type StripBar } from '../measures/volume-strip.ts';
@@ -22,11 +22,12 @@ import { anchorDate, anchorDay, clock, clockYear, price as fmtPrice, startOfDay,
 import { timeAxis } from '../time-axis.ts';
 export { timeTicks } from '../time-axis.ts';
 import type { Store, AppState, CandleRow } from '../store.ts';
-import { cumulative, groupLevels, type Grouped } from './levels-data.ts';
+import { cumulative, groupLevels, groupSpan, type Grouped } from './levels-data.ts';
+import { Held, ROW_HOLD_MS, booksReaching, depthBandLines, depthHereLine, depthRow, depthRowLines, liqCardLines, seamCardLines, type DepthRow } from '../hover-rows.ts';
 import { activeIds, emptyScopeMessage, heatmapSourceOf, kindOf, type Kind } from '../scope.ts';
 import { venueOfInstrument } from '../cvd/families.ts';
 import { fitText, wrapText } from '../text-fit.ts';
-import { captionPlace, dollarPriceOf, laneRows, liqCurves, liqProfile, onTheWay, seamStats, standingBelow, TAKE_DASH, type CurvePoint, type LaneRows, type LiqLevels, type LiqRow, type LiqSet, type LiqStanding } from '../liq-levels.ts';
+import { binsIn, captionPlace, dollarPriceOf, laneRows, liqCurves, liqProfile, onTheWay, partsBetween, seamStats, standingBelow, TAKE_DASH, type CurvePoint, type LaneRows, type LiqLevels, type LiqRow, type LiqSet, type LiqStanding } from '../liq-levels.ts';
 import { SPLIT_COLUMN_W, captionKeepOut, cornerSpan, liqColumnWidth, placeCaptions, splitHeads, splitScales, stripePlan, subAt, subColumns, type Rect, type Sub, type SubScale } from '../liq-split.ts';
 import { MAP_PLOT_FLOOR } from '../layouts/dock-model.ts';
 import { bubbleHidden, bubbleRadius, printPriceLines, topPrints, type Print } from '../prints.ts';
@@ -56,8 +57,8 @@ import { blockMsOf, editScope, withEdits } from '../tpo/settings.ts';
 import { currentCoin, scaledUsd } from '../coin.ts';
 import { liqLevelsUrl } from '../liq-url.ts';
 import { curveOf, groupName, groupTitle, heldBack, kindName, kindTitle, levelsDescription, liveAsk, liveSplit, liveView, narrowView, pairKey, plusOn, viewKey, viewParts, type LiqPair, type LiqView } from '../liq-view.ts';
-import { columnNotes, liqWhy, narrowNote, ordersAbsent, pairDescription, sideTitle, splitName, subNames, takesLeftOut } from '../liq-words.ts';
-import { mirrorSplits, readingTexts, setBoxLines, stripeBoxLines } from '../liq-box.ts';
+import { columnNotes, liqWhy, narrowNote, ordersAbsent, pairDescription, splitName, subNames, takesLeftOut } from '../liq-words.ts';
+import { readingTexts, setBoxLines, stripeBoxLines } from '../liq-box.ts';
 import { layNote, paintStripe, stripeNote, stripeStands, type LaneCaption, type StripeHeld, type StripePainted } from '../liq-stripe.ts';
 import { toggleLevels } from '../levels-control.ts';
 import { linesToAsk } from '../sizes.ts';
@@ -334,6 +335,14 @@ export function profileColumnW(state: AppState): number { return !state.show.pro
 export function profileBoxFrame(state: AppState, pw: number, ph: number, liqHead: number, boxH: number): { x: number; bounds: { x0: number; y0: number; x1: number; y1: number } } {
   const liqW = liqColumnW(state), x = pw + liqW, wide = liqW >= PROFILE_W;
   return { x, bounds: { x0: 0, y0: wide && liqHead + boxH + 4 <= ph ? liqHead : 0, x1: wide ? x : pw, y1: ph } };
+}
+/**
+ * Where the Mirror box of a split liquidation column's sub-column `at` stands (Karl's pick of 2026-11-20): the left one's beside the map's
+ * edge, as the unsplit column's; the right one's against its own left edge (`subX0`), over the left sub-column, and below the column's heading
+ * where the box fits under it, as `profileBoxFrame` keeps the profile column's. Bounded by the map's edge it stood a sub-column away.
+ */
+export function liqSubBoxFrame(at: 0 | 1, subX0: number, pw: number, ph: number, liqHead: number, boxH: number): { x: number; bounds: { x0: number; y0: number; x1: number; y1: number } } {
+  return at === 0 ? { x: subX0, bounds: { x0: 0, y0: 0, x1: pw, y1: ph } } : { x: subX0, bounds: { x0: 0, y0: liqHead + boxH + 4 <= ph ? liqHead : 0, x1: subX0, y1: ph } };
 }
 export function gutter(state: AppState): number { return AXIS_W + liqColumnW(state) + profileColumnW(state) + sideColumns(state).right.length * TRADED_W; }
 /** The width the columns left of the map take, between the flow column and the map: the map and the panes under it start after them. */
@@ -4038,7 +4047,7 @@ export class HeatPane {
       ctx.fillText(t('LEVEL MAX {value}', { value: usd(maxLevel) }), x0 + 4, 4); ctx.fillText(t('CUM MAX {value}', { value: usd(maxCum) }), x0 + 4, 16);
     }
     this.#profileBox = null;
-    this.#paintProfileMirror(ctx, state, g, cum, step, x0, ph, W);
+    this.#paintProfileMirror(ctx, state, g, step, x0, ph, W);
     ctx.restore(); ctx.textBaseline = 'middle';
     const box = this.#profileBox as { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null; // set by #paintProfileMirror above
     if (box) {
@@ -4051,23 +4060,53 @@ export class HeatPane {
     ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(x0 + 0.5, 0); ctx.lineTo(x0 + 0.5, ph); ctx.stroke();
   }
 
-  /** Mirror hover on the profile column: frame the band from the mark to the pointer and the equally wide band on the other side, and compare them. */
-  #paintProfileMirror(ctx: CanvasRenderingContext2D, state: AppState, g: Grouped, cum: ReturnType<typeof cumulative>, step: number, x0: number, ph: number, W: number): void {
-    const hv = this.#profileHover, p = this.#palette, v = this.view, mark = state.mark.price;
-    if (!hv || hv.column !== 'book' || !state.show.mirror || !(mark > 0)) return;
-    const markBin = Math.floor(mark / step) - g.bin0, hb = Math.floor(v.pOf(hv.y, ph) / step) - g.bin0, mb = 2 * markBin - hb;
-    if (hb === markBin) return;
-    const clamp = (i: number) => Math.max(0, Math.min(g.nBins - 1, i));
-    const above = cum.ask[clamp(hb > markBin ? hb : mb)]!, below = cum.bid[clamp(hb > markBin ? mb : hb)]!;
-    const stats = mirrorStats(mark, mark + (hb - markBin) * step, above, below, mb < 0 || mb >= g.nBins || hb < 0 || hb >= g.nBins);
-    if (!stats) return;
-    this.mirror = stats;
-    const top = v.yOf((g.bin0 + Math.max(hb, mb) + 1) * step, ph), bottom = v.yOf((g.bin0 + Math.min(hb, mb)) * step, ph), pct = percentText(stats);
-    // The strip has no room for the band's pills: its box says the same.
-    const wide = W >= PROFILE_W;
-    dimOutside(ctx, x0, W, 0, ph, top, bottom, p.panel, 0.6);
-    paintBand(ctx, p, x0, W, { y: top, color: p.ask, label: wide ? `${usd(stats.aboveUsd)} · ${pct}` : '' }, { y: bottom, color: p.bid, label: wide ? `${usd(stats.belowUsd)} · ${pct}` : '' }, { y0: 0, y1: ph });
-    this.#profileBox = { lines: mirrorLines(stats, { above: t('Asks'), below: t('Bids') }), y: hv.y, placement: stats.hoveredSide === 'above' ? 'down' : 'up' };
+  /**
+   * The profile column under the pointer (Karl's pick of 2026-11-20 from the hover-box proposal): the row there, its size and the two books
+   * holding most of it (`depthRowLines`), read once a second while the pointer stays on it (`#heldRow`); then, with Mirror on, the band from
+   * the price to the pointer and its mirror, framed and compared in one line, with how far the books' feeds reach; with Mirror off, or on the
+   * price's own row (no band), how far they reach there. The band counts from the price even when the price is off screen: from a grouping that
+   * holds it (`groupSpan`, as the order book does), not from the view's edge; with too many rows for one grouping it says part is outside.
+   */
+  #paintProfileMirror(ctx: CanvasRenderingContext2D, state: AppState, g: Grouped, step: number, x0: number, ph: number, W: number): void {
+    const hv = this.#profileHover, p = this.#palette, v = this.view, mark = state.mark.price, frame = state.levels;
+    if (!hv || hv.column !== 'book' || !(mark > 0) || !frame) return;
+    const at = v.pOf(hv.y, ph), hb = Math.floor(at / step) - g.bin0;
+    if (hb < 0 || hb >= g.nBins) return;
+    const side = at < mark ? 'bid' : 'ask', wide = W >= PROFILE_W, row = this.#heldRow(g, hb, side), lines = depthRowLines(row, step);
+    const markBin = Math.floor(mark / step) - g.bin0, outside = (n: number, i: number): boolean => i < 0 || i >= n;
+    let band = false;
+    if (state.show.mirror && hb !== markBin) {
+      let G = g, hB = hb, mB = markBin;
+      if (outside(g.nBins, markBin) || outside(g.nBins, 2 * markBin - hb)) {
+        const span = groupSpan(v.p0, v.p1, mark, step);
+        if (span) { G = groupLevels(this.kernels, frame, g.ids, step, span.lo, span.hi); hB = hb + g.bin0 - G.bin0; mB = Math.floor(mark / step) - G.bin0; }
+      }
+      const mb = 2 * mB - hB, cum = cumulative(G, mark), clamp = (i: number): number => Math.max(0, Math.min(G.nBins - 1, i));
+      const above = cum.ask[clamp(hB > mB ? hB : mb)]!, below = cum.bid[clamp(hB > mB ? mb : hB)]!;
+      const stats = mirrorStats(mark, mark + (hB - mB) * step, above, below, outside(G.nBins, mb) || outside(G.nBins, mB));
+      if (stats) {
+        band = true; this.mirror = stats;
+        const loBin = Math.min(hB, mb), hiBin = Math.max(hB, mb), pct = percentText(stats);
+        const top = v.yOf((G.bin0 + hiBin + 1) * step, ph), bottom = v.yOf((G.bin0 + loBin) * step, ph);
+        // The strip has no room for the band's pills, and an edge off the screen shows none: the box says those totals.
+        dimOutside(ctx, x0, W, 0, ph, top, bottom, p.panel, 0.6);
+        paintBand(ctx, p, x0, W, { y: top, color: p.ask, label: wide ? `${usd(stats.aboveUsd)} · ${pct}` : '' }, { y: bottom, color: p.bid, label: wide ? `${usd(stats.belowUsd)} · ${pct}` : '' }, { y0: 0, y1: ph });
+        const reach = { bid: booksReaching(frame, G.ids, mark, (G.bin0 + loBin) * step, step, 'bid'), ask: booksReaching(frame, G.ids, mark, (G.bin0 + hiBin) * step, step, 'ask'), of: G.ids.length };
+        lines.push(...depthBandLines({ bid: below, ask: above, pct, reach, totals: !wide || top < 0 || bottom > ph, clipped: stats.clipped }));
+      }
+    }
+    if (!band) lines.push(depthHereLine(booksReaching(frame, g.ids, mark, row.lo, step, side), g.ids.length));
+    // The row the box speaks of, outlined in the column.
+    const ry0 = v.yOf(row.hi, ph), ry1 = v.yOf(row.lo, ph);
+    ctx.save(); ctx.globalAlpha = 0.9; ctx.strokeStyle = p.text; ctx.lineWidth = 1; ctx.strokeRect(x0 + 1.5, Math.round(ry0) - 0.5, W - 3, Math.max(2, Math.round(ry1 - ry0) + 1)); ctx.restore();
+    this.#profileBox = { lines, y: hv.y, placement: side === 'ask' ? 'down' : 'up' };
+  }
+
+  /** The row read for the profile column's box, kept for `ROW_HOLD_MS` while the pointer stays on the same row of the same books. */
+  #rowHeld = new Held<DepthRow>(ROW_HOLD_MS);
+  /** The row at bin `i` of `g`, read again at most once a `ROW_HOLD_MS`; another row, side, zoom or set of books reads at once. */
+  #heldRow(g: Grouped, i: number, side: 'bid' | 'ask'): DepthRow {
+    return this.#rowHeld.get(`${side}|${g.bin0 + i}|${g.step}|${g.ids.join(',')}`, performance.now(), () => depthRow(g, i, side));
   }
 
   /** The History link at the column's left edge under its heading (`x`, a plot x), or out of sight (null); `head` is the heading's height above it. */
@@ -4330,7 +4369,8 @@ export class HeatPane {
     const box = this.#profileBox as { lines: MirrorLine[]; y: number; placement: 'down' | 'up' } | null; // set by #paintLiqColumnMirror above
     if (box) {
       this.#profileBox = null;
-      paintMirrorBox(ctx, box.lines, subs[at].x0, box.y, { x0: 0, y0: 0, x1: pw, y1: ph }, p, c => c === 'above' ? p.candleUp : c === 'below' ? p.candleDown : c === 'muted' ? p.muted : p.text, box.placement);
+      const frame = liqSubBoxFrame(at, subs[at].x0, pw, ph, this.#liqHeadH, measureInfoBox(ctx, box.lines).h);
+      paintMirrorBox(ctx, box.lines, frame.x, box.y, frame.bounds, p, c => c === 'above' ? p.candleUp : c === 'below' ? p.candleDown : c === 'muted' ? p.muted : p.text, box.placement);
       ctx.textBaseline = 'middle';
     }
     ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(x0 + 0.5, 0); ctx.lineTo(x0 + 0.5, ph); ctx.stroke();
@@ -4384,12 +4424,12 @@ export class HeatPane {
 
   /**
    * The seam between the liquidation column and the profile column, pointed at: the book against the liquidations from the price out to the
-   * pointer and its mirror, as one band across both columns, and a box that weighs them. Each side: what rests in the book against what
-   * would be liquidated (the bids against the longs below, the asks against the shorts above), in the band and over the columns on screen;
-   * the rank correlation of level size with book size over the rows that hold liquidations; and at the largest levels, whether the book
-   * stands as a wall or thins to a void. The liquidations are Hyperliquid's alone and some 40 minutes old; the book is every enabled
-   * venue's, now: the box says so. It weighs what the column beside it draws (`#liqDrawnSet`: under a split too narrow to draw, liquidations
-   * and stops added up); beside a drawn split, the left set, as the Depth pane does (2026-11-19).
+   * pointer and its mirror, as one band across both columns, and a box that weighs them (`seamCardLines`, cut down on Karl's pick of
+   * 2026-11-20): per side what rests in the book against what would be liquidated (the bids against the longs below, the asks against the
+   * shorts above), how far the book's feeds reach, and how old the levels are next to a book that is now. No cover verdicts, rank
+   * correlations, neighbour ratios or whole-screen lines. The book counts from the price even when the price is off screen (`groupSpan`). It
+   * weighs what the column beside it draws (`#liqDrawnSet`: under a split too narrow to draw, liquidations and stops added up); beside a
+   * drawn split, the left set, as the Depth pane does (2026-11-19).
    */
   #paintSeam(ctx: CanvasRenderingContext2D, state: AppState, pw: number, ph: number): void {
     const hv = this.#profileHover, src: LiqSet = this.#liqDrawnSet ?? this.hub.liqLevels, frame = state.levels, s = src.levels && src.state === 'ready' ? src.standing() : null;
@@ -4397,11 +4437,14 @@ export class HeatPane {
     if (!hv || hv.column !== 'seam' || !frame || !s || !liqColumnShown(state) || !state.show.profile || src.levels?.kind === 'takes') return;
     const p = this.#palette, v = this.view, step = niceStep(v.p1 - v.p0, ph / 3), price = this.#liqPrice(state);
     if (!(price > 0)) return;
-    const g = groupLevels(this.kernels, frame, this.#enabledIds(), step, v.p0, v.p1), prof = liqProfile(s, step, v.p0, v.p1, price);
+    const at = v.pOf(hv.y, ph), d = Math.abs(at - price);
+    // The prices grouped: the view, or where the band runs past it (the price scrolled away), a grouping that holds the price and the band's
+    // far edge (`groupSpan`), so the book is counted from the price, not from the view's edge.
+    const span = price - d < v.p0 || price + d > v.p1 ? groupSpan(v.p0, v.p1, price, step) : null, p0 = span?.lo ?? v.p0, p1 = span?.hi ?? v.p1;
+    const g = groupLevels(this.kernels, frame, this.#enabledIds(), step, p0, p1), prof = liqProfile(s, step, p0, p1, price);
     // The two columns' rows at the same prices (both begin at floor(p0 / step), so the offset is 0 unless one of them ends sooner).
     const long = new Float64Array(g.nBins), short = new Float64Array(g.nBins);
     for (let i = 0; i < g.nBins; i++) { const j = g.bin0 + i - prof.row0; if (j >= 0 && j < prof.long.length) { long[i] = prof.long[j]!; short[i] = prof.short[j]!; } }
-    const at = v.pOf(hv.y, ph), d = Math.abs(at - price);
     const st = seamStats({ row0: g.bin0, step, bid: g.totalBid, ask: g.totalAsk, long, short }, price, d);
     const x0 = pw, liqW = liqColumnW(state), W = liqW + profileColumnW(state), top = v.yOf(price + d, ph), bottom = v.yOf(price - d, ph);
     ctx.save();
@@ -4412,41 +4455,22 @@ export class HeatPane {
     // The seam itself, lit while it is pointed at.
     ctx.strokeStyle = p.ui; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0 + liqW, 0); ctx.lineTo(x0 + liqW, ph); ctx.stroke();
     ctx.restore();
-    // A neighbour row with almost nothing would make a ratio of millions: past 100 it says so and no more.
-    const times = (r: number): string => !Number.isFinite(r) || r >= 100 ? '100×+' : `${r >= 10 ? r.toFixed(0) : r.toFixed(1)}×`;
-    const kind = src.levels?.kind ?? 'liq';
-    const cover = (book: number, liq: number, below: boolean): string => liq <= 0 ? (kind === 'liq' ? t('No liquidation levels in this range') : t('No levels in this range'))
-      : book >= liq ? (below ? t('Bids cover the longs {ratio}', { ratio: times(book / liq) }) : t('Asks cover the shorts {ratio}', { ratio: times(book / liq) }))
-      : (below ? t('Longs exceed the bids {ratio}', { ratio: times(liq / Math.max(book, 1)) }) : t('Shorts exceed the asks {ratio}', { ratio: times(liq / Math.max(book, 1)) }));
-    const rhoText = (rho: number | null, n: number): string => rho === null ? t('too few levels') : t('{rho} over {n} levels', { rho: rho.toFixed(2), n: String(n) });
-    const bp = d / price * 1e4;
-    const lines: InfoLine[] = [
-      { text: kind === 'stops' ? t('Book against stops') : kind === 'both' ? t('Book against liquidations and stops') : t('Book against liquidations'), bold: true },
-      { text: t('±{distance} ({bp} bp) from {mid}', { distance: fmtPrice(d), bp: bp < 10 ? bp.toFixed(1) : String(Math.round(bp)), mid: fmtPrice(price) }), color: 'muted' },
-    ];
-    for (const below of [false, true]) {
-      const side = below ? st.below : st.above;
-      lines.push({ text: below ? t('Below the price') : t('Above the price'), bold: true, rule: true });
-      lines.push({ label: below ? t('Bids') : t('Asks'), text: `$${usd(side.book)}`, color: below ? 'below' : 'above' });
-      lines.push({ label: sideTitle(kind, below ? 'long' : 'short'), text: `$${usd(side.liq)}`, color: below ? 'sell' : 'buy' });
-      lines.push({ text: cover(side.book, side.liq, below), bold: true });
-      if (side.liqAll > 0) lines.push({ label: t('On screen'), text: cover(side.bookAll, side.liqAll, below), color: 'muted', wrap: COMPACT });
-    }
-    // A phone's map is narrower than this box: there its long lines wrap under their labels, and the box may lie over the two columns.
-    lines.push({ text: t('Rank correlation, level size with book size'), bold: true, rule: true });
-    lines.push({ label: t('Above the price'), text: `${rhoText(st.above.rho, st.above.n)} · ${t('on screen {value}', { value: rhoText(st.above.rhoAll, st.above.nAll) })}`, wrap: COMPACT });
-    lines.push({ label: t('Below the price'), text: `${rhoText(st.below.rho, st.below.n)} · ${t('on screen {value}', { value: rhoText(st.below.rhoAll, st.below.nAll) })}`, wrap: COMPACT });
-    if (st.walls.length) {
-      lines.push({ text: t('At the largest liquidation levels'), bold: true, rule: true });
-      for (const w of st.walls) lines.push({ label: `${fmtPrice(w.price)} · $${usd(w.usd)}`, text: t('book {ratio} its neighbours', { ratio: times(w.ratio) }), color: w.side === 'long' ? 'sell' : 'buy', wrap: COMPACT });
-    }
-    lines.push({ text: kind === 'liq' ? t('Liquidations are Hyperliquid\'s alone, the book every enabled venue\'s; the positions are about 40 minutes old, the book is now.')
-      : t('The levels are Hyperliquid\'s alone, the book every enabled venue\'s; the snapshot is at least 40 minutes old, the book is now.'), color: 'muted', wrap: true, rule: true });
+    const kind = src.levels?.kind ?? 'liq', pctOf = d / price * 100;
+    // How far the book's feeds reach at the band's two far rows, and how old the levels' snapshot is (the page's clock, as the column's).
+    const bidRow = Math.floor((price - d) / step) * step, askRow = Math.floor((price + d) / step) * step, asOf = src.levels?.asOf;
+    const lines = seamCardLines({ kind, pct: `${pctOf < 1 ? pctOf.toFixed(2) : pctOf.toFixed(1)}%`, above: { book: st.above.book, liq: st.above.liq }, below: { book: st.below.book, liq: st.below.liq },
+      reach: { bid: booksReaching(frame, g.ids, price, bidRow, step, 'bid'), ask: booksReaching(frame, g.ids, price, askRow, step, 'ask'), of: g.ids.length },
+      minutes: asOf ? (pageNow() - asOf) / 60_000 : null });
     // On a phone the box also keeps below the legend, whose buttons lie over the canvas and would hide its first lines.
     paintMirrorBox(ctx, lines, x0, hv.y, { x0: 0, y0: COMPACT ? Math.min(this.#legendBox.bottom + 4, ph / 3) : 0, x1: COMPACT ? pw + W : pw, y1: ph }, p, c => c === 'above' ? p.ask : c === 'below' ? p.bid : c === 'buy' ? p.candleUp : c === 'sell' ? p.candleDown : c === 'muted' ? p.muted : p.text, hv.y < ph / 2 ? 'down' : 'up');
   }
 
-  /** Mirror hover on the liquidation column: the longs that go if price falls to the pointer against the shorts that go if it rises as far. */
+  /**
+   * Mirror hover on the liquidation column (Karl's pick of 2026-11-20): the band of the longs that go if price falls to the pointer against
+   * the shorts that go if it rises as far, framed with its totals on the pills, and a card for the row under the pointer, as the column draws
+   * its rows (`liqCardLines`): what still stands there, how many positions or orders the snapshot puts there and the largest, then the band as
+   * longs over shorts, with its totals where no pill shows them (a strip, a split's sub-column, an edge off the screen).
+   */
   #paintLiqColumnMirror(ctx: CanvasRenderingContext2D, state: AppState, s: LiqStanding, price: number, x0: number, ph: number, W: number, set: LiqSet = this.hub.liqLevels): void {
     const hv = this.#profileHover, p = this.#palette, v = this.view;
     if (!hv || hv.column !== 'liq' || !state.show.mirror || !(price > 0)) return;
@@ -4460,18 +4484,14 @@ export class HeatPane {
     const wide = W >= PROFILE_W;
     dimOutside(ctx, x0, W, 0, ph, top, bottom, p.panel, 0.6);
     paintBand(ctx, p, x0, W, { y: top, color: p.candleUp, label: wide ? `${usd(stats.aboveUsd)} · ${pct}` : '' }, { y: bottom, color: p.candleDown, label: wide ? `${usd(stats.belowUsd)} · ${pct}` : '' }, { y0: 0, y1: ph });
+    // The row under the pointer on the column's own rows (the step the column groups its levels in).
+    const step = niceStep(v.p1 - v.p0, ph / 3), lo = Math.floor(at / step) * step, hi = lo + step, side = at < price ? 'long' : 'short';
     const kind = set.levels?.kind ?? 'liq', parts = kind === 'both' ? set.partStandings() : null;
-    const empty = kind === 'liq' ? { none: t('No liquidation levels in this range'), onlyThis: t('Only this side has liquidation levels'), onlyOpposite: t('Only the opposite side has liquidation levels') }
-      : { none: t('No levels in this range'), onlyThis: t('Only this side has levels'), onlyOpposite: t('Only the opposite side has levels') };
-    const lines = mirrorLines(stats, { above: sideTitle(kind, 'short'), below: sideTitle(kind, 'long') }, undefined, empty);
-    if (parts) {
-      // Liq + stops: under each side's total, its two parts (the longs from the price down as far, the shorts up as far), adding up to it.
-      const splits = mirrorSplits(parts, price, d, below, above);
-      const of = (side: 'long' | 'short'): MirrorLine => ({ text: side === 'long' ? splits.long : splits.short, color: 'muted' });
-      const here = stats.hoveredSide === 'above' ? 'short' : 'long', there = here === 'short' ? 'long' : 'short';
-      const at = lines.findIndex(l => l.color === stats.hoveredSide);
-      if (at >= 0) { lines.splice(at + 2, 0, of(there)); lines.splice(at + 1, 0, of(here)); }
-    }
+    const level = Math.max(0, standingBelow(s, side, hi) - standingBelow(s, side, lo)), bins = set.levels ? binsIn(set.levels, side, lo, hi) : { positions: 0, top: 0 };
+    const ry0 = v.yOf(hi, ph), ry1 = v.yOf(lo, ph);
+    ctx.save(); ctx.globalAlpha = 0.9; ctx.strokeStyle = p.text; ctx.lineWidth = 1; ctx.strokeRect(x0 + 1.5, Math.round(ry0) - 0.5, W - 3, Math.max(2, Math.round(ry1 - ry0) + 1)); ctx.restore();
+    const lines = liqCardLines({ kind, side, lo, hi, step, level, split: parts ? partsBetween(parts, side, lo, hi) : null, positions: bins.positions, top: bins.top,
+      below, above, pct, totals: !wide || top < 0 || bottom > ph });
     this.#profileBox = { lines, y: hv.y, placement: stats.hoveredSide === 'above' ? 'down' : 'up' };
   }
 

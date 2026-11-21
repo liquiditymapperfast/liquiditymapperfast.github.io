@@ -22,8 +22,16 @@ export interface InfoLine {
   rule?: boolean;
   /** An exchange (an instrument id or a venue) whose mark goes first on the line: before the label, or before the text of a plain line. Not on a wrapped line. */
   mark?: string;
+  /**
+   * The line as pieces drawn one after another, each with its own colour, face and mark (two venues with their marks on one line). `text`
+   * still says the whole line, for what cannot draw pieces (the page-element card). With `wrap`, the line breaks at a `gap` piece where the
+   * next piece would run past the wrap width, and a gap at the start of a row is left out.
+   */
+  runs?: readonly InfoRun[];
 }
-export interface InfoRow { label?: string; text: string; color: InfoColor; bold: boolean; rule: boolean; mark?: string }
+/** A piece of a line drawn in pieces: its words, colour (the line's by default), weight, face (`value`: the monospace one) and mark. */
+export interface InfoRun { text: string; color?: InfoColor; bold?: boolean; value?: boolean; mark?: string; gap?: boolean }
+export interface InfoRow { label?: string; text: string; color: InfoColor; bold: boolean; rule: boolean; mark?: string; runs?: InfoRun[] }
 
 /** The side of a mark in the box, and the space it takes before its text. */
 export const MARK = Object.freeze({ size: 12, room: 16 });
@@ -36,8 +44,26 @@ export type InfoKind = 'label' | 'value' | 'plain';
 /** Wrap, measure and size `lines`; `measure(text, bold, kind)` is the text's width in px. */
 export function layoutInfo(measure: (text: string, bold: boolean, kind: InfoKind) => number, lines: readonly InfoLine[], wrapAt: number = INFO.wrapAt): { rows: InfoRow[]; labelW: number; width: number; height: number } {
   const rows: InfoRow[] = [];
+  const runW = (run: InfoRun, bold: boolean): number => measure(run.text, run.bold ?? bold, run.value ? 'value' : 'plain') + (run.mark ? MARK.room : 0);
   for (const line of lines) {
     const base = { color: line.color ?? 'text', bold: line.bold === true, rule: line.rule === true };
+    if (line.runs) {
+      // Pieces: one row, or, with wrap, rows broken at the gaps (the chunk from a gap to the next one moves down whole).
+      let row: InfoRun[] = [], w = 0, first = true;
+      const flush = (): void => { if (row.length) rows.push({ ...base, rule: base.rule && first, text: row.map(r => r.text).join(''), runs: row }); first = false; row = []; w = 0; };
+      for (let i = 0; i < line.runs.length; i++) {
+        const run = line.runs[i]!;
+        if (run.gap && line.wrap === true && row.length) {
+          let chunk = runW(run, base.bold);
+          for (let j = i + 1; j < line.runs.length && !line.runs[j]!.gap; j++) chunk += runW(line.runs[j]!, base.bold);
+          if (w + chunk > wrapAt) { flush(); continue; }
+        }
+        if (run.gap && !row.length) continue;
+        row.push(run); w += runW(run, base.bold);
+      }
+      flush();
+      continue;
+    }
     const apart = line.wrap === true && (line.label === undefined ? measure(line.text, base.bold, 'plain') > wrapAt
       : measure(line.label, false, 'label') + (line.mark ? MARK.room : 0) + INFO.gap + measure(line.text, base.bold, 'value') > wrapAt);
     if (!apart) { rows.push({ ...base, text: line.text, ...(line.label !== undefined ? { label: line.label } : {}), ...(line.mark ? { mark: line.mark } : {}) }); continue; }
@@ -54,7 +80,8 @@ export function layoutInfo(measure: (text: string, bold: boolean, kind: InfoKind
   let labelW = 0, valueW = 0, plainW = 0;
   for (const row of rows) {
     const mark = row.mark ? MARK.room : 0;
-    if (row.label !== undefined) { labelW = Math.max(labelW, measure(row.label, false, 'label') + mark); valueW = Math.max(valueW, measure(row.text, row.bold, 'value')); }
+    if (row.runs) plainW = Math.max(plainW, row.runs.reduce((sum, run) => sum + runW(run, row.bold), 0));
+    else if (row.label !== undefined) { labelW = Math.max(labelW, measure(row.label, false, 'label') + mark); valueW = Math.max(valueW, measure(row.text, row.bold, 'value')); }
     else plainW = Math.max(plainW, measure(row.text, row.bold, 'plain') + mark);
   }
   const labeled = labelW > 0 || valueW > 0 ? labelW + INFO.gap + valueW : 0;
@@ -120,7 +147,14 @@ export function paintInfoBox(ctx: CanvasRenderingContext2D, lines: readonly Info
     // A mark goes first on its line, and the line's first text after it.
     const indent = row.mark ? MARK.room : 0;
     if (row.mark) drawVenueMark(ctx, row.mark, bx + pad + MARK.size / 2, mid, MARK.size);
-    if (row.label !== undefined) {
+    if (row.runs) {
+      let x = bx + pad; ctx.textAlign = 'left';
+      for (const run of row.runs) {
+        if (run.mark) { drawVenueMark(ctx, run.mark, x + MARK.size / 2, mid, MARK.size); x += MARK.room; }
+        ctx.font = fontOf(run.bold ?? row.bold, run.value ? 'value' : 'plain'); ctx.fillStyle = pick(run.color ?? row.color); ctx.fillText(run.text, x, mid);
+        x += ctx.measureText(run.text).width;
+      }
+    } else if (row.label !== undefined) {
       ctx.font = fontOf(false, 'label'); ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(row.label, bx + pad + indent, mid);
       ctx.font = fontOf(row.bold, 'value'); ctx.fillStyle = pick(row.color); ctx.textAlign = 'right'; ctx.fillText(row.text, bx + w - pad, mid);
     } else {
