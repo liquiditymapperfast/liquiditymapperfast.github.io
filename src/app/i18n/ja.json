@@ -3274,6 +3274,6 @@
  "Depth coverage: bids {bids}/{n} · asks {asks}/{n}": "板の到達：買い板 {bids}/{n} · 売り板 {asks}/{n}",
  "Within ≈±{pct}: longs / shorts {ratio}": "≈±{pct} 以内：ロング / ショート {ratio}",
  "Positions: {minutes} min ago · book: now": "ポジション：{minutes} 分前 · ブック：現在",
- "Positions and orders: {minutes} min ago · book: now": "ポジションと注文：{minutes} 分前 · ブック：現在",
- "Orders: {minutes} min ago · book: now": "注文：{minutes} 分前 · ブック：現在"
+ "Orders: {minutes} min ago · book: now": "注文：{minutes} 分前 · ブック：現在",
+ "Positions: {positions} min ago · orders: {orders} min ago · book: now": "ポジション：{positions} 分前 · 注文：{orders} 分前 · ブック：現在"
 }

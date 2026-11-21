@@ -7,7 +7,7 @@
 import type { InfoLine, InfoRun } from './infobox.ts';
 import { t } from './i18n.ts';
 import { price as fmtPrice, usd } from './format.ts';
-import { coverage, pastReach, type Grouped } from './panes/levels-data.ts';
+import { coverage, cumulative, pastReach, type Grouped } from './panes/levels-data.ts';
 import type { LevelsFrame } from './wire.ts';
 import { venueLabel } from './venues.ts';
 import type { LevelsKind } from './liq-levels.ts';
@@ -94,6 +94,29 @@ export function depthRowLines(row: DepthRow, step: number, name: (id: string) =>
   return lines;
 }
 
+/**
+ * The profile column's Mirror band: from the price to the pointer's row `hb` (a bin of the view's grouping `g`) and as far the other way, its
+ * running totals from the price and its two far rows (`loBin`, `hiBin`, bins of `grid`). Where the price's row or the mirror's lies outside
+ * the view's grouping (the price scrolled away), from `spanned()`, a grouping that holds both (`groupSpan`), so the totals count from the
+ * price, not from the view's edge; where that is refused (too many rows for one grouping), from the view's, clamped and `clipped`. Null on
+ * the price's own row, which has no band.
+ */
+export interface DepthBandGrid { grid: Grouped; above: number; below: number; markBin: number; hoverBin: number; loBin: number; hiBin: number; clipped: boolean }
+
+export function depthBand(g: Grouped, mark: number, hb: number, spanned: () => Grouped | null): DepthBandGrid | null {
+  const step = g.step, markBin = Math.floor(mark / step) - g.bin0;
+  if (hb === markBin) return null;
+  const outside = (n: number, i: number): boolean => i < 0 || i >= n;
+  let G = g, hB = hb, mB = markBin;
+  if (outside(g.nBins, markBin) || outside(g.nBins, 2 * markBin - hb)) {
+    const s = spanned();
+    if (s) { G = s; hB = hb + g.bin0 - s.bin0; mB = Math.floor(mark / step) - s.bin0; }
+  }
+  const mb = 2 * mB - hB, cum = cumulative(G, mark), clamp = (i: number): number => Math.max(0, Math.min(G.nBins - 1, i));
+  return { grid: G, above: cum.ask[clamp(hB > mB ? hB : mb)] ?? 0, below: cum.bid[clamp(hB > mB ? mb : hB)] ?? 0, markBin: mB, hoverBin: hB,
+    loBin: Math.min(hB, mb), hiBin: Math.max(hB, mb), clipped: outside(G.nBins, mb) || outside(G.nBins, mB) };
+}
+
 /** How many books send data as far as the row under the pointer (Mirror off, or the price's own row, which has no band). */
 export function depthHereLine(count: number, of: number): InfoLine {
   return { text: t('Depth coverage here: {count}/{n} books', { count: String(count), n: String(of) }), color: 'muted' };
@@ -119,18 +142,32 @@ export function depthBandLines(b: DepthBand): InfoLine[] {
  * there (and for Liq + stops its two parts), how many positions or orders the snapshot puts there and the largest, then the band from the
  * price to the pointer and its mirror as longs over shorts, with their totals where no pill shows them (a phone's strip).
  */
-export interface LiqCard { kind: LevelsKind; side: 'long' | 'short'; lo: number; hi: number; step: number; level: number; split: { liq: number; stops: number } | null; positions: number; top: number; below: number; above: number; pct: string; totals: boolean }
+export interface LiqCard {
+  kind: LevelsKind; side: 'long' | 'short'; lo: number; hi: number; step: number;
+  /** What still stands in the row, and what the snapshot put there (`total`): the count and the largest are the snapshot's. */
+  level: number; total: number; split: { liq: number; stops: number } | null; positions: number; top: number;
+  below: number; above: number; pct: string; totals: boolean;
+  /** Liq + stops: each side's band total in its two parts (`mirrorSplits`), as the box said them before the card. */
+  bandSplit: { long: string; short: string } | null;
+}
 
 export function liqCardLines(f: LiqCard): InfoLine[] {
   // In the side's colour as the column draws it: `below` for the levels under the price, `above` for those over it (the box's colours follow
   // the column's, take profits on their own included).
   const color = f.side === 'long' ? 'below' : 'above', title = sideTitle(f.kind, f.side), span = ` ${fmtPrice(f.lo, f.step)}–${fmtPrice(f.hi, f.step)}`;
-  const lines: InfoLine[] = [{ text: title + span, runs: [{ text: title, color, bold: true }, { text: span, bold: true }] }, { label: t('At this level'), text: dollars(f.level), bold: true }];
+  // Where price has taken part of the row, what stands of what the snapshot put there (the count and the largest below are the snapshot's,
+  // so "$0" beside "Positions 14" would contradict them), as the stripe's box says it.
+  const taken = usd(f.level) !== usd(f.total);
+  const lines: InfoLine[] = [{ text: title + span, runs: [{ text: title, color, bold: true }, { text: span, bold: true }] },
+    { label: t('At this level'), text: taken ? t('{left} of {total}', { left: dollars(f.level), total: dollars(f.total) }) : dollars(f.level), bold: true }];
   if (f.split && f.level > 0) lines.push({ text: splitText(f.split, f.level), color: 'muted', wrap: true });
   if (f.positions > 0) lines.push({ label: countLabel(f.kind), text: String(f.positions) });
-  if (f.top > 0 && f.level > 0) lines.push({ label: topLabel(f.kind), text: dollars(f.top) });
+  if (f.top > 0 && f.total > 0) lines.push({ label: topLabel(f.kind), text: dollars(f.top) });
   lines.push({ text: t('Within ≈±{pct}: longs / shorts {ratio}', { pct: f.pct, ratio: ratioWords(f.below, f.above) }), rule: true });
-  if (f.totals) {
+  if (f.bandSplit) {
+    // Each side's total in its two parts: the total is in it, so it serves where no pill shows one too.
+    lines.push({ label: t('Longs'), text: f.bandSplit.long, color: 'muted', wrap: true }, { label: t('Shorts'), text: f.bandSplit.short, color: 'muted', wrap: true });
+  } else if (f.totals) {
     const runs: InfoRun[] = [{ text: `${t('Longs')} `, color: 'below' }, { text: dollars(f.below), color: 'below', value: true }, { text: '  ·  ', color: 'muted' },
       { text: `${t('Shorts')} `, color: 'above' }, { text: dollars(f.above), color: 'above', value: true }];
     lines.push({ text: runs.map(r => r.text).join(''), runs });
@@ -143,7 +180,8 @@ export function liqCardLines(f: LiqCard): InfoLine[] {
  * would close shorts above, the bids against what would close longs below), how far the book's feeds reach, and how old the levels are next to
  * a book that is now. No verdict: a book now and an older snapshot of positions are two different things, and their ratio is not protection.
  */
-export interface SeamCard { kind: LevelsKind; pct: string; above: { book: number; liq: number }; below: { book: number; liq: number }; reach: { bid: number; ask: number; of: number }; minutes: number | null }
+/** `minutes`: how old the positions and the orders are (`LiqSet.asOfs`), each null where it is not shown or not known. */
+export interface SeamCard { kind: LevelsKind; pct: string; above: { book: number; liq: number }; below: { book: number; liq: number }; reach: { bid: number; ask: number; of: number }; minutes: { positions: number | null; orders: number | null } }
 
 export function seamCardLines(f: SeamCard): InfoLine[] {
   const title = f.kind === 'stops' ? t('Book against stops') : f.kind === 'both' ? t('Book against liquidations and stops') : t('Book against liquidations');
@@ -157,10 +195,12 @@ export function seamCardLines(f: SeamCard): InfoLine[] {
     { label: sideTitle(f.kind, 'long'), text: dollars(f.below.liq), color: 'sell' },
     { text: t('Depth coverage: bids {bids}/{n} · asks {asks}/{n}', { bids: String(f.reach.bid), asks: String(f.reach.ask), n: String(f.reach.of) }), color: 'muted', rule: true },
   ];
-  if (f.minutes !== null && Number.isFinite(f.minutes)) {
-    const minutes = String(Math.max(0, Math.round(f.minutes)));
-    lines.push({ text: f.kind === 'liq' ? t('Positions: {minutes} min ago · book: now', { minutes }) : f.kind === 'both' ? t('Positions and orders: {minutes} min ago · book: now', { minutes })
-      : t('Orders: {minutes} min ago · book: now', { minutes }), color: 'muted' });
-  }
+  // How old the levels are, next to a book that is now: the positions and the orders each by their own snapshot (Liq + stops has both, and
+  // the order files come less often than the positions).
+  const ago = (m: number | null): string | null => m !== null && Number.isFinite(m) ? String(Math.max(0, Math.round(m))) : null;
+  const positions = f.kind === 'stops' ? null : ago(f.minutes.positions), orders = f.kind === 'liq' ? null : ago(f.minutes.orders);
+  const age = positions !== null && orders !== null ? t('Positions: {positions} min ago · orders: {orders} min ago · book: now', { positions, orders })
+    : positions !== null ? t('Positions: {minutes} min ago · book: now', { minutes: positions }) : orders !== null ? t('Orders: {minutes} min ago · book: now', { minutes: orders }) : null;
+  if (age) lines.push({ text: age, color: 'muted' });
   return lines;
 }

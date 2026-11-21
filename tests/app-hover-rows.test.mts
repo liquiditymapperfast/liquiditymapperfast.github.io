@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { Held, ROW_HOLD_MS, booksReaching, depthBandLines, depthHereLine, depthRow, depthRowLines, liqCardLines, ratioWords, seamCardLines, wholeShares } from '../src/app/hover-rows.ts';
+import { Held, ROW_HOLD_MS, booksReaching, depthBand, depthBandLines, depthHereLine, depthRow, depthRowLines, liqCardLines, ratioWords, seamCardLines, wholeShares } from '../src/app/hover-rows.ts';
 import type { Grouped } from '../src/app/panes/levels-data.ts';
 import type { LevelsFrame, LiveBook } from '../src/app/wire.ts';
 import { INFO, MARK, layoutInfo, type InfoLine } from '../src/app/infobox.ts';
@@ -85,25 +85,56 @@ test('the band says bids over asks in one line, its totals only where no pill sh
 });
 
 test('the liquidation card: the row\'s levels, what still stands there, the snapshot\'s count and largest, then longs over shorts', () => {
-  const f = { kind: 'liq' as const, side: 'long' as const, lo: 51_850, hi: 51_900, step: 50, level: 53_944_068, split: null, positions: 30, top: 51_861_076, below: 277e6, above: 173e6, pct: '12.1%', totals: false };
+  const f = { kind: 'liq' as const, side: 'long' as const, lo: 51_850, hi: 51_900, step: 50, level: 53_944_068, total: 53_944_068, split: null, positions: 30, top: 51_861_076,
+    below: 277e6, above: 173e6, pct: '12.1%', totals: false, bandSplit: null };
   assert.deepEqual(text(liqCardLines(f)), ['Long liquidations 51,850–51,900', 'At this level: $53.9M', 'Positions: 30', 'Largest position: $51.9M', 'Within ≈±12.1%: longs / shorts 1.60×']);
   assert.equal(liqCardLines(f)[0]!.runs![0]!.color, 'below', 'the side in the colour the column draws it');
-  // Liq + stops: the row's two parts under it; a strip or sub-column: the band's totals too; an empty row: no count or largest.
-  const both = liqCardLines({ ...f, kind: 'both', split: { liq: 50e6, stops: 3_944_068 }, totals: true });
+  // A row price has taken (a wick through it): what stands of what the snapshot put there, so the snapshot's count and largest still agree.
+  assert.deepEqual(text(liqCardLines({ ...f, level: 0, total: 5_200_000, positions: 14, top: 2_000_000 })).slice(1, 4), ['At this level: $0 of $5.2M', 'Positions: 14', 'Largest position: $2M']);
+  // Liq + stops: the row's two parts under it, and each side's band total in its two parts (it says the totals, so no totals line).
+  const both = liqCardLines({ ...f, kind: 'both', split: { liq: 50e6, stops: 3_944_068 }, totals: true, bandSplit: { long: 'Total $277M = liquidations $250M + stops $27M', short: 'Total $173M = liquidations $160M + stops $13M' } });
   assert.ok(text(both).includes('Total $53.9M = liquidations $50M + stops $3.9M'), text(both).join(' | '));
-  assert.equal(both.at(-1)!.text, 'Longs $277M  ·  Shorts $173M');
-  assert.deepEqual(text(liqCardLines({ ...f, side: 'short', level: 0, positions: 0, top: 0 })), ['Short liquidations 51,850–51,900', 'At this level: $0', 'Within ≈±12.1%: longs / shorts 1.60×']);
+  assert.deepEqual(text(both).slice(-2), ['Longs: Total $277M = liquidations $250M + stops $27M', 'Shorts: Total $173M = liquidations $160M + stops $13M']);
+  // A strip or sub-column: the band's totals; an empty row of an empty snapshot: no count or largest.
+  assert.equal(liqCardLines({ ...f, totals: true }).at(-1)!.text, 'Longs $277M  ·  Shorts $173M');
+  assert.deepEqual(text(liqCardLines({ ...f, side: 'short', level: 0, total: 0, positions: 0, top: 0 })), ['Short liquidations 51,850–51,900', 'At this level: $0', 'Within ≈±12.1%: longs / shorts 1.60×']);
+});
+
+test('the band counts from the price: from a grouping that holds the price and the mirror where the view\'s does not, clipped only where none can', () => {
+  // A view grouping of 40 rows from 58,000 and a wider one from 54,000 to 66,000, each row holding $1M of bids and of asks.
+  const flat = (bin0: number, n: number): Grouped => { const a = new Float32Array(n).fill(1e6); return { ids: ['x:BTC'], step: 50, bin0, nBins: n, bid: [a], ask: [a], totalBid: a, totalAsk: a }; };
+  const view = flat(1160, 40), wide = flat(1080, 240);
+  const near = depthBand(view, 59_025, 1170 - 1160, () => wide)!;
+  assert.equal(near.grid, view, 'price and mirror inside the view: the view\'s grouping');
+  assert.deepEqual([near.below, near.above, near.clipped], [11e6, 11e6, false], 'the price\'s row and ten more each way');
+  // The price above the view (61,025): the hovered row 58,500 is 50 rows below it; the bids count from the price, not from the view's top.
+  const above = depthBand(view, 61_025, 1170 - 1160, () => wide)!;
+  assert.equal(above.grid, wide);
+  assert.deepEqual([above.below, above.above, above.clipped], [51e6, 51e6, false]);
+  assert.equal(above.grid.bin0 + above.loBin, 1170); assert.equal(above.grid.bin0 + above.hiBin, 1270, 'the far rows: the hovered one and its mirror');
+  // The price below the view (57,025): every visible row is an ask row.
+  const below = depthBand(view, 57_025, 1190 - 1160, () => wide)!;
+  assert.deepEqual([below.below, below.above, below.clipped], [51e6, 51e6, false]);
+  // The price on screen but the mirror row off it (price 59,925, row 58,250: mirror 61,600).
+  const mirror = depthBand(view, 59_925, 1165 - 1160, () => wide)!;
+  assert.equal(mirror.grid, wide); assert.deepEqual([mirror.below, mirror.above], [34e6, 34e6]);
+  // No grouping can hold it: the view's, clamped, and said to be clipped (the old behaviour).
+  const refused = depthBand(view, 61_025, 1170 - 1160, () => null)!;
+  assert.equal(refused.grid, view); assert.equal(refused.clipped, true); assert.ok(refused.below < 51e6, String(refused.below));
+  // The price's own row has no band.
+  assert.equal(depthBand(view, 59_025, 1180 - 1160, () => wide), null);
 });
 
 test('the seam weighs the book against the levels per side, says how far the feeds reach and how old the levels are, and gives no verdict', () => {
-  const f = { kind: 'liq' as const, pct: '0.95%', above: { book: 699.5e6, liq: 5.5e6 }, below: { book: 706.7e6, liq: 1.9e6 }, reach: { bid: 15, ask: 15, of: 24 }, minutes: 74.6 };
+  const f = { kind: 'liq' as const, pct: '0.95%', above: { book: 699.5e6, liq: 5.5e6 }, below: { book: 706.7e6, liq: 1.9e6 }, reach: { bid: 15, ask: 15, of: 24 }, minutes: { positions: 74.6, orders: 31.2 } };
   const lines = text(seamCardLines(f));
   assert.deepEqual(lines, ['Book against liquidations, ±0.95%', 'Above the price', 'Asks: $699.5M', 'Short liquidations: $5.5M', 'Below the price', 'Bids: $706.7M', 'Long liquidations: $1.9M',
     'Depth coverage: bids 15/24 · asks 15/24', 'Positions: 75 min ago · book: now']);
   assert.ok(!lines.some(l => /cover the|exceed|rank|neighbour|on screen/i.test(l)), 'no cover verdicts, correlations, neighbour ratios or whole-screen lines');
-  assert.equal(text(seamCardLines({ ...f, kind: 'stops' })).at(-1), 'Orders: 75 min ago · book: now');
-  assert.equal(text(seamCardLines({ ...f, kind: 'both' })).at(-1), 'Positions and orders: 75 min ago · book: now');
-  assert.equal(text(seamCardLines({ ...f, minutes: null })).at(-1), 'Depth coverage: bids 15/24 · asks 15/24');
+  assert.equal(text(seamCardLines({ ...f, kind: 'stops' })).at(-1), 'Orders: 31 min ago · book: now', 'stops: the orders\' own snapshot');
+  assert.equal(text(seamCardLines({ ...f, kind: 'both' })).at(-1), 'Positions: 75 min ago · orders: 31 min ago · book: now', 'Liq + stops: each snapshot its own age');
+  assert.equal(text(seamCardLines({ ...f, kind: 'both', minutes: { positions: 74.6, orders: null } })).at(-1), 'Positions: 75 min ago · book: now');
+  assert.equal(text(seamCardLines({ ...f, minutes: { positions: null, orders: null } })).at(-1), 'Depth coverage: bids 15/24 · asks 15/24');
 });
 
 test('a reading is kept for a second on the same row, and read again at once for another row or after the second', () => {

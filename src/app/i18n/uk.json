@@ -3557,6 +3557,6 @@
  "Depth coverage: bids {bids}/{n} · asks {asks}/{n}": "Охоплення глибини: біди {bids}/{n} · аски {asks}/{n}",
  "Within ≈±{pct}: longs / shorts {ratio}": "У межах ≈±{pct}: лонги / шорти {ratio}",
  "Positions: {minutes} min ago · book: now": "Позиції: {minutes} хв тому · стакан: зараз",
- "Positions and orders: {minutes} min ago · book: now": "Позиції та ордери: {minutes} хв тому · стакан: зараз",
- "Orders: {minutes} min ago · book: now": "Ордери: {minutes} хв тому · стакан: зараз"
+ "Orders: {minutes} min ago · book: now": "Ордери: {minutes} хв тому · стакан: зараз",
+ "Positions: {positions} min ago · orders: {orders} min ago · book: now": "Позиції: {positions} хв тому · ордери: {orders} хв тому · стакан: зараз"
 }

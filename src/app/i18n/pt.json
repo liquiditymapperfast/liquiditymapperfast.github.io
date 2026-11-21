@@ -3504,6 +3504,6 @@
  "Depth coverage: bids {bids}/{n} · asks {asks}/{n}": "Cobertura de profundidade: bids {bids}/{n} · asks {asks}/{n}",
  "Within ≈±{pct}: longs / shorts {ratio}": "Dentro de ≈±{pct}: longs / shorts {ratio}",
  "Positions: {minutes} min ago · book: now": "Posições: há {minutes} min · livro: agora",
- "Positions and orders: {minutes} min ago · book: now": "Posições e ordens: há {minutes} min · livro: agora",
- "Orders: {minutes} min ago · book: now": "Ordens: há {minutes} min · livro: agora"
+ "Orders: {minutes} min ago · book: now": "Ordens: há {minutes} min · livro: agora",
+ "Positions: {positions} min ago · orders: {orders} min ago · book: now": "Posições: há {positions} min · ordens: há {orders} min · livro: agora"
 }

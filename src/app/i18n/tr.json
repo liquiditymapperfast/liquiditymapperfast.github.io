@@ -3440,6 +3440,6 @@
  "Depth coverage: bids {bids}/{n} · asks {asks}/{n}": "Derinlik kapsamı: bids {bids}/{n} · asks {asks}/{n}",
  "Within ≈±{pct}: longs / shorts {ratio}": "≈±{pct} içinde: long'lar / short'lar {ratio}",
  "Positions: {minutes} min ago · book: now": "Pozisyonlar: {minutes} dk önce · defter: şimdi",
- "Positions and orders: {minutes} min ago · book: now": "Pozisyonlar ve emirler: {minutes} dk önce · defter: şimdi",
- "Orders: {minutes} min ago · book: now": "Emirler: {minutes} dk önce · defter: şimdi"
+ "Orders: {minutes} min ago · book: now": "Emirler: {minutes} dk önce · defter: şimdi",
+ "Positions: {positions} min ago · orders: {orders} min ago · book: now": "Pozisyonlar: {positions} dk önce · emirler: {orders} dk önce · defter: şimdi"
 }

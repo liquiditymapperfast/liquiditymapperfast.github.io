@@ -3274,6 +3274,6 @@
  "Depth coverage: bids {bids}/{n} · asks {asks}/{n}": "深度覆盖：买盘 {bids}/{n} · 卖盘 {asks}/{n}",
  "Within ≈±{pct}: longs / shorts {ratio}": "≈±{pct} 以内：多头 / 空头 {ratio}",
  "Positions: {minutes} min ago · book: now": "仓位：{minutes} 分钟前 · 订单簿：现在",
- "Positions and orders: {minutes} min ago · book: now": "仓位与订单：{minutes} 分钟前 · 订单簿：现在",
- "Orders: {minutes} min ago · book: now": "订单：{minutes} 分钟前 · 订单簿：现在"
+ "Orders: {minutes} min ago · book: now": "订单：{minutes} 分钟前 · 订单簿：现在",
+ "Positions: {positions} min ago · orders: {orders} min ago · book: now": "仓位：{positions} 分钟前 · 订单：{orders} 分钟前 · 订单簿：现在"
 }

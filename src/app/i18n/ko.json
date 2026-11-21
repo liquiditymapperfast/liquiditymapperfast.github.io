@@ -3274,6 +3274,6 @@
  "Depth coverage: bids {bids}/{n} · asks {asks}/{n}": "호가 범위: 매수 {bids}/{n} · 매도 {asks}/{n}",
  "Within ≈±{pct}: longs / shorts {ratio}": "≈±{pct} 이내: 롱 / 숏 {ratio}",
  "Positions: {minutes} min ago · book: now": "포지션: {minutes}분 전 · 호가창: 지금",
- "Positions and orders: {minutes} min ago · book: now": "포지션과 주문: {minutes}분 전 · 호가창: 지금",
- "Orders: {minutes} min ago · book: now": "주문: {minutes}분 전 · 호가창: 지금"
+ "Orders: {minutes} min ago · book: now": "주문: {minutes}분 전 · 호가창: 지금",
+ "Positions: {positions} min ago · orders: {orders} min ago · book: now": "포지션: {positions}분 전 · 주문: {orders}분 전 · 호가창: 지금"
 }
