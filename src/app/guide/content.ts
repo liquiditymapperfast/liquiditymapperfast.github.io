@@ -238,7 +238,7 @@ export const SECTIONS: readonly Section[] = [
   {
     id: 'bar-stats', title: 'Bar stats: a number per candle',
     blocks: [
-      { t: 'p', text: 'The **Bar stats** table under the chart (the **Stats** button in the Panels deck) has one row for each statistic and one cell for each candle, shaded by size. It starts with volume, delta and cumulative delta (cvd). **Stats** in its header opens a list of dozens more, in groups: volume, footprint rows, trades, and candle, open interest and liquidations. Choose the ones you want, drag them into order, or pick a preset (Default, Order flow, All, None).' },
+      { t: 'p', text: 'The **Bar stats** table under the chart (the **Stats** button in the Panels deck) has one row for each statistic and one cell for each candle, shaded by size. It starts with volume, delta and cumulative delta (cvd). The **settings key** at the end of its header (the sliders) opens a list of dozens more, in groups: volume, footprint rows, trades, and candle, open interest and liquidations. Choose the ones you want, drag them into order, or pick a preset (Default, Order flow, All, None).' },
       { t: 'p', text: 'Rows read from the candles and open interest fill candles from before the recording too. Rows read from executions are drawn faint where the recording holds only part of a candle, and the **rec %** row says how much.' },
       { t: 'list', items: [
         '**Click a candle** to pin a card with every statistic for it. [[Shift]] + click pins up to five to read side by side, and [[Esc]] lets go.',

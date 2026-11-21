@@ -234,7 +234,7 @@ export class BarsRangeSummary {
   #lines(sel: RangeSelection, held: BarsPaneHeld | null, shown: boolean, current: string, now: number, noStats: boolean): RangeLine[] {
     const title = (text: string): RangeLine => ({ key: 'bs-title', kind: 'title', cells: [text] });
     const note = (key: string, text: string): RangeLine => ({ key, kind: 'note', tone: 'muted', cells: [text] });
-    if (noStats) return [title(spanText(sel.t0, sel.t1)), note('bs-none', t('No statistics selected: use Stats to add some.'))];
+    if (noStats) return [title(spanText(sel.t0, sel.t1)), note('bs-none', t('No statistics selected: use the settings key to add some.'))];
     if (held && held.key !== current) return [title(spanText(sel.t0, sel.t1)), note('bs-stale', t('The Bar stats pane last drew another market, timeframe or choice of stats: show it to sum up this selection.'))];
     // A complete result of a closed selection is kept, and shown again for the same selection and what it was worked out for while the pane
     // holds fewer of its candles (the view moved away, or holds none at all), or, spanning them, fewer of their executions (the footprint

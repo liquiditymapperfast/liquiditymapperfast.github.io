@@ -261,9 +261,9 @@ export const HELP: Readonly<Record<HelpId, HelpTopic>> = {
   },
   stats: {
     title: t('Bar stats'), guide: 'bar-stats',
-    tip: t('A table under the chart: one row per statistic, one cell per candle (volume, delta, cumulative delta and more). Press Stats in its header to choose the rows.'),
+    tip: t('A table under the chart: one row per statistic, one cell per candle (volume, delta, cumulative delta and more). Press the settings key in its header to choose the rows.'),
     body: [t('Each row is one statistic, one cell per candle, shaded by size. The defaults are volume, delta (buy volume minus sell volume) and cvd (the running sum of delta).'),
-      t('Press Stats to add statistics such as the point of control, stacked imbalances or market orders by size. These come from the executions recorded while the page was open, so they start empty and fill with time.'),
+      t('Press the settings key to add statistics such as the point of control, stacked imbalances or market orders by size. These come from the executions recorded while the page was open, so they start empty and fill with time.'),
       t("It has its own switch and counts the markets the footprint counts (set in either panel). Its point of control and imbalances are read on rows of the size its header shows: the footprint's at this zoom, whether the footprint shows or not."),
       t('The View column, right of the table under the price axis, gives each row over the candles in view: a sum, the newest value of a running sum, or a figure worked out from those candles added together. Point at it to see which.'),
       t('Rows read from the candles and open interest (range, close in range, vol / bp, oi chg, candle delta) fill the candles before the recording too. Rows read from executions are drawn faint where the recording holds only part of a candle (rec % says how much). Order flow picks the rows an order-flow reading starts from; Export CSV saves the candles in view.'),

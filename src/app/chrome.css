@@ -531,13 +531,17 @@ input[type="number"], input[type="text"] { border: 1px solid var(--edge); border
 :root[data-frame="bevel"]:not([data-bar="compact"]) .pane-range::before { width: 10px; height: 9px; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) .pane-max::before { width: 10px; height: 10px; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) .pane-more::before { width: 8px; height: 2px; -webkit-mask: var(--bv-more) 0 0 / 8px 2px no-repeat; mask: var(--bv-more) 0 0 / 8px 2px no-repeat; }
-/* The flow column's settings key is one of the header's keys, square, its sliders drawn (the split buttons' too). */
-:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.cvd .pane-head > .cvd-gear { position: relative; width: var(--head-key); height: var(--head-key); padding: 0; }
-:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.cvd .pane-head > .cvd-gear > svg { display: none; }
+/* The flow column's settings key is one of the header's keys, square, its sliders drawn (the split buttons' too); Bar stats' is the same key. */
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.cvd .pane-head > .cvd-gear,
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.bars .pane-head > .stats-gear { position: relative; width: var(--head-key); height: var(--head-key); padding: 0; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.cvd .pane-head > .cvd-gear > svg,
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.bars .pane-head > .stats-gear > svg { display: none; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) .pane.cvd .pane-head > .cvd-gear::before,
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.bars .pane-head > .stats-gear::before,
 :root[data-frame="bevel"]:not([data-bar="compact"]) .split > .split-cfg::before { content: ""; position: absolute; width: 11px; height: 9px; margin: 0; transform: none; background: currentColor; -webkit-mask: var(--bv-sliders) 0 0 / 11px 9px no-repeat; mask: var(--bv-sliders) 0 0 / 11px 9px no-repeat; }
 /* Where the desktop put a mark that cannot sit in the middle: a pixel up and to the left of it (whole pixels from the key's inner edge). */
-:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.cvd .pane-head > .cvd-gear::before { left: 3px; top: 4px; }
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.cvd .pane-head > .cvd-gear::before,
+:root[data-frame="bevel"]:not([data-bar="compact"]) .pane.bars .pane-head > .stats-gear::before { left: 3px; top: 4px; }
 :root[data-frame="bevel"]:not([data-bar="compact"]) .split > .split-cfg::before { left: 2px; top: 5px; }
 /* A phone's split buttons keep their drawn sliders in the middle of a wider key. */
 :root[data-frame="bevel"][data-bar="compact"] .split > .split-cfg::before { width: 11px; height: 11px; }

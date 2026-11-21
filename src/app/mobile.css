@@ -464,6 +464,8 @@ html[data-layout^="phone"] .pane.cvd .pane-head strong, html[data-layout^="phone
 html[data-layout^="phone"] .pane.cvd .cvd-seg { display: flex; order: 0; flex: 1 1 0; min-width: 0; }
 html[data-layout^="phone"] .pane.cvd .cvd-seg button { flex: 1 1 0; min-width: 0; min-height: var(--ph-ctl-h); padding: 0 2px; font-size: 14px; }
 html[data-layout^="phone"] .pane.cvd .pane-head .cvd-gear { order: 1; margin-left: 0; width: var(--ph-key-w); min-height: var(--ph-ctl-h); padding: 0; display: inline-grid; place-items: center; }
+/* Bar stats' settings key: a key of a finger's size, as the flow column's. */
+html[data-layout^="phone"] .pane.bars .pane-head .stats-gear { flex: none; width: var(--ph-key-w); min-height: var(--ph-ctl-h); padding: 0; display: inline-grid; place-items: center; }
 html[data-layout^="phone"] .pane.cvd .pane-head button.help { order: 2; }
 html[data-layout^="phone"] .pane.cvd .pane-head .readout { display: block; order: 9; flex: 1 0 100%; font-size: 13px; padding: 2px 2px 5px; font-variant-numeric: tabular-nums; }
 /* One view to a tab on a phone (2026-11-14): the Flow tab shows the lines and the Tape tab the list (`CvdPane.phoneView`), so the column's

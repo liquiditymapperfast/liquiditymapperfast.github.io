@@ -1655,7 +1655,7 @@ export function bookNames(ids: readonly string[], markets: AppState['markets']):
   return names.map((name, i) => (count.get(name)! > 1 && kindOf(markets, ids[i]!) === 'spot' && !/spot/i.test(name) ? `${name} ${t('Spot')}` : name));
 }
 
-/** Strip under the chart with the enabled per-candle statistics, aligned to the candle slots (footprint on); the Stats button chooses, orders and configures them. */
+/** Strip under the chart with the enabled per-candle statistics, aligned to the candle slots (footprint on); its settings key chooses, orders and configures them. */
 export class BarStatsPane extends TimePane {
   /** A table: the pointer's height is a row, not a value, so it takes no horizontal line. */
   protected override crossY = false;
@@ -1702,7 +1702,11 @@ export class BarStatsPane extends TimePane {
     super(host, store, view, 'bars');
     this.head.innerHTML = `<strong>${t('Bar stats')}</strong><span class="readout"></span>`;
     this.head.querySelector('strong')!.after(helpButton('stats'));
-    this.#button.textContent = t('Stats'); setTip(this.#button, t('Choose, order and configure the statistics shown for each candle'));
+    // The settings key, drawn as the sliders every settings key in the page wears (the flow column's, a pane's, the top bar's split keys), at
+    // the end of the header: a button reading "Stats" beside the name "Bar stats" read as part of the name (Karl, 2026-11-20).
+    this.#button.type = 'button'; this.#button.className = 'icon-btn stats-gear'; this.#button.setAttribute('aria-label', t('Settings'));
+    this.#button.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>';
+    setTip(this.#button, t('Choose, order and configure the statistics shown for each candle'));
     this.#button.onclick = () => { this.#panel = togglePanel(this.#button, { title: t('Bar stats'), width: 440, align: 'right', onClose: () => { this.#panel = null; } }, (tools, body) => this.#build(tools, body)); };
     this.head.append(this.#button);
     this.canvas.addEventListener('click', e => this.#click(e));
@@ -1866,7 +1870,7 @@ export class BarStatsPane extends TimePane {
     const rowSize = data.step > 0 ? ` · ${t('rows of {step}', { step: `$${fmtPrice(data.step, data.step)}` })}` : '';
     setText(readout, (markets.length > 1 ? `${t('{n} markets', { n: markets.length })} · ${stats}` : stats) + rowSize);
     this.#viewSpan = null; this.#layout = [];
-    if (!defs.length) { ctx.fillStyle = p.muted; ctx.fillText(t('No statistics selected: use Stats to add some.'), 12, ph / 2); this.#table = null; this.#held = null; return []; }
+    if (!defs.length) { ctx.fillStyle = p.muted; ctx.fillText(t('No statistics selected: use the settings key to add some.'), 12, ph / 2); this.#table = null; this.#held = null; return []; }
     // Replay: only the candles that ended by its moment (a candle under way would carry its future executions).
     // The candles of the view and one each side (what the footprint asks for), not every bar it still holds: the running sums (cvd) start at the
     // view, whatever was looked at before; from each day's start, at the start of the day the left edge falls in (loaded whole for it).
