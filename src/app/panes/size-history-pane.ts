@@ -1,5 +1,5 @@
 import { TIMEFRAMES, type Hub } from '../hub.ts';
-import type { AppState, CandleRow, Store } from '../store.ts';
+import type { AppState, Store } from '../store.ts';
 import type { View } from '../view.ts';
 import { helpButton } from '../help.ts';
 import { setTip } from '../tip.ts';
@@ -8,7 +8,9 @@ import { clock } from '../format.ts';
 import { HoverCard } from '../hovercard.ts';
 import type { InfoLine } from '../infobox.ts';
 import { kindOf } from '../scope.ts';
-import { oiPartsUntil, oiUsdChangeByTime, type OiPart } from '../oi-change.ts';
+import { oiChangeByTime, oiPartsUntil, oiUsdChangeByTime, type OiPart } from '../oi-change.ts';
+import { wrapText } from '../text-fit.ts';
+import { addTune } from '../pane-tune.ts';
 import { LIQUIDATION_RETENTION_MS } from '../../shared/liquidations.ts';
 import { BROWSER_RETENTION_MS } from '../../shared/recorder.ts';
 import { BAR_CUT_H, BAR_CUT_PX, cutGap } from '../bar-scale.ts';
@@ -40,7 +42,7 @@ export class SizeHistoryPane extends TimePane {
   /** What the rows were worked out from last, and the result: a pointer move draws them again without working them out. */
   #held: { key: unknown[]; times: number[]; model: HistoryModel } | null = null;
   #liqBuckets: { key: string; value: StatInput['liquidations'] } | null = null;
-  #usd: { oi: unknown; parts: unknown; candles: unknown; price: number; tfMs: number; map: Map<number, number> } | null = null;
+  #usd: { oi: unknown; parts: unknown; starts: string; price: number; tfMs: number; value: { usd: Map<number, number>; coins: Map<number, number> } } | null = null;
   /** The rows as last drawn, top to bottom (where the pointer's height falls). */
   #layout: { row: number; y: number; h: number }[] = [];
 
@@ -56,6 +58,8 @@ export class SizeHistoryPane extends TimePane {
     this.#bars.value = store.state.sizeBars;
     this.#bars.onchange = () => store.set({ sizeBars: this.#bars.value === 'split' ? 'split' : 'delta' });
     label.append(this.#bars); this.head.append(label);
+    // One slim row on a phone (and where the figures would get too little room): the choice waits behind the settings key (pane-tune.ts).
+    addTune(this.head, [label], t('Flow history'), { fold: true });
     liqDays.listen(() => this.invalidate());
   }
 
@@ -71,13 +75,18 @@ export class SizeHistoryPane extends TimePane {
     if (this.#lines && at) this.#card.show(this.#lines, at.x, at.y); else this.#card.hide();
   }
 
-  /** Open interest's change in USD by candle (the OI pane's markets and parts), worked out once per set of readings and candles. */
-  #oiUsd(state: AppState, parts: readonly OiPart[], tfMs: number, candles: ReadonlyMap<number, CandleRow>): Map<number, number> {
-    const held = this.#usd;
-    if (held && held.oi === state.oi && held.parts === parts && held.candles === state.candles && held.price === state.oiPrice && held.tfMs === tfMs) return held.map;
-    const map = oiUsdChangeByTime(state.oi, parts, tfMs, t => candles.get(t)?.[4], state.oiPrice);
-    this.#usd = { oi: state.oi, parts, candles: state.candles, price: state.oiPrice, tfMs, map };
-    return map;
+  /**
+   * Open interest's change in USD and in coins by candle (the OI pane's markets and parts), worked out once per set of readings, parts, price
+   * and candle starts. Keyed by the candles' starts, not by the list: the candle under way replaces the list on every update, and its close
+   * only turns its own change into dollars, which the next readings (every minute or so) bring again.
+   */
+  #oi(state: AppState, parts: readonly OiPart[], tfMs: number): { usd: Map<number, number>; coins: Map<number, number> } {
+    const held = this.#usd, c = state.candles, starts = `${c.length}|${c[0]?.[0]}|${c[c.length - 1]?.[0]}`;
+    if (held && held.oi === state.oi && held.parts === parts && held.starts === starts && held.price === state.oiPrice && held.tfMs === tfMs) return held.value;
+    const candles = new Map(c.map(row => [row[0], row] as const));
+    const value = { usd: oiUsdChangeByTime(state.oi, parts, tfMs, t => candles.get(t)?.[4], state.oiPrice), coins: oiChangeByTime(state.oi, parts, tfMs) };
+    this.#usd = { oi: state.oi, parts, starts, price: state.oiPrice, tfMs, value };
+    return value;
   }
 
   /** The liquidations by candle from the days the shared loader holds, kept while neither the days nor the candles change. */
@@ -91,7 +100,11 @@ export class SizeHistoryPane extends TimePane {
     return value;
   }
 
-  #message(text: string): void { const { ctx, palette: p } = this; ctx.fillStyle = p.muted; ctx.textAlign = 'left'; ctx.fillText(text, 12, this.h / 2); }
+  #message(text: string): void {
+    const { ctx } = this, measure = (line: string): number => ctx.measureText(line).width, lines = wrapText(measure, text, Math.max(40, this.plotW - 24), this.h >= 56 ? 3 : 2);
+    ctx.save(); ctx.fillStyle = this.palette.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    lines.forEach((line, i) => ctx.fillText(line, 12, this.h / 2 + (i - (lines.length - 1) / 2) * 14)); ctx.restore();
+  }
 
   #paint(): void {
     const { ctx, palette: p, view: v } = this, state = this.store.state, pw = this.plotW, ph = this.h;
@@ -100,6 +113,7 @@ export class SizeHistoryPane extends TimePane {
     setText(readout, `${markets.length > 1 ? `${t('{n} markets', { n: markets.length })} · ` : ''}${t('square-root heights, each row its own scale')}`);
     this.#layout = [];
     if (!markets.length) { this.#message(t('No markets are counted: switch some on.')); this.#held = null; return; }
+    if (!data.holds(markets, state.timeframe)) { this.#held = null; return; }
     // Replay: only the candles that ended by its moment. The candles of the view and one each side, and the baselines' history before it.
     const now = pageNow(), live = !replaying(), until = live ? Infinity : now, from = v.t0 - (state.highlight.on ? preRollMs(state.highlight.length, tfMs) : 0);
     const near = (start: number): boolean => start + tfMs <= until && start + tfMs > from && start < v.t1 + tfMs;
@@ -115,10 +129,10 @@ export class SizeHistoryPane extends TimePane {
     let liquidations: StatInput['liquidations'];
     if (this.hub.source.liquidations) { this.liqDays.ensure('sizes', markets.join(','), Math.max(times[0]!, liqCover), liqTo); liquidations = this.#liquidations(markets, times, tfMs, liqCover); }
     // Open interest is the perpetuals': with spot markets alone counted, the row has none (no perpetual's change beside spot flow).
-    const perps = markets.some(id => kindOf(state.markets, id) !== 'spot'), candles = new Map(state.candles.map(c => [c[0], c] as const));
+    const perps = markets.some(id => kindOf(state.markets, id) !== 'spot');
     const parts = oiPartsUntil(state.oiParts, tfMs, live ? Infinity : Math.floor(now / tfMs) * tfMs);
-    const oi = perps ? this.#oiUsd(state, parts, tfMs, candles) : undefined, oiJudged = tfMs > 60_000, mode = state.sizeBars, h = state.highlight;
-    const key = [data.version, state.candles, state.oi, parts, state.oiPrice, mode, h.on, h.mult, h.length, liquidations, oi, times[0], times.length, times[times.length - 1], tfMs, Math.floor(now / 60_000), perps];
+    const oiHeld = perps ? this.#oi(state, parts, tfMs) : undefined, oi = oiHeld?.usd, oiJudged = tfMs > 60_000, mode = state.sizeBars, h = state.highlight;
+    const key = [data.version, state.oi, parts, state.oiPrice, mode, h.on, h.mult, h.length, liquidations, oi, times[0], times.length, times[times.length - 1], tfMs, Math.floor(now / 60_000), perps];
     let held = this.#held;
     if (!held || held.key.length !== key.length || held.key.some((k, i) => k !== key[i])) {
       const model = buildHistory({ times, bars: times.map(s => data.bars.get(s) ?? null), tfMs, now, mode, ...(liquidations ? { liquidations } : {}), ...(oi ? { oi } : {}), oiJudged, highlight: h });
@@ -126,16 +140,17 @@ export class SizeHistoryPane extends TimePane {
     }
     const { model } = held, visible = times.map((_, i) => i).filter(i => times[i]! + tfMs > v.t0 && times[i]! < v.t1);
     if (!visible.length) { this.#message(t('Flow history appears once market orders are recorded for these candles.')); return; }
-    // The rows share the height: two of context, a gap, the six size rows.
-    const rows = model.rows, top = 3, rowH = Math.max(12, (ph - 2 * top - GROUP_GAP) / rows.length);
+    // The rows share the height: two of context, a gap, the six size rows; in a short pane the gap and the margins give way first.
+    const rows = model.rows, top = ph < 110 ? 1 : 3, gap = ph < 140 ? 2 : GROUP_GAP, rowH = Math.max(6, (ph - 2 * top - gap) / rows.length);
     let y = top;
-    this.#layout = rows.map((_, r) => { if (r === 2) y += GROUP_GAP; const at = { row: r, y, h: rowH }; y += rowH; return at; });
+    this.#layout = rows.map((_, r) => { if (r === 2) y += gap; const at = { row: r, y, h: rowH }; y += rowH; return at; });
     const slot = pw * tfMs / (v.t1 - v.t0), bw = Math.max(1, Math.min(12, 0.7 * slot)), on = h.on;
     // Under the pointer: the candle (any pane's pointer names it, the axis being shared) and, from this pane's own pointer, the row.
     const hv = state.hover, under = hv ? visible.find(i => hv.t >= times[i]! && hv.t < times[i]! + tfMs) ?? -1 : -1;
     const last = visible[visible.length - 1]!, hoverIdx = hv && this.pointer && hv.source === 'sizes' ? readAt(under, hv.t, last, times[last]!) : under;
     if (hoverIdx >= 0 && hoverIdx !== under) this.cursorT = times[hoverIdx]! + tfMs / 2;
     const hoverRow = hv && hv.source === 'sizes' ? this.#layout.find(b => hv.y >= b.y && hv.y < b.y + b.h)?.row ?? -1 : -1;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, ph); ctx.clip();
     // The column under the pointer, lightly, behind the bars.
     if (hoverIdx >= 0) { ctx.save(); ctx.fillStyle = p.text; ctx.globalAlpha = p.dark ? 0.08 : 0.06; ctx.fillRect(v.xOf(times[hoverIdx]!, pw), top, Math.max(1, slot - 1), y - top); ctx.restore(); }
     const ramps = { up: colourRamp(p, p.candleUp), down: colourRamp(p, p.candleDown), flat: colourRamp(p, p.muted) };
@@ -161,22 +176,26 @@ export class SizeHistoryPane extends TimePane {
         }
       }
     });
-    // The rows' names at the left, on the panel's colour so the bars under them stay readable; liquidations from a day the source cut say ≈.
-    ctx.save(); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
+    ctx.restore();
+    // The rows' names at the left, on the panel's colour so the bars under them stay readable (as tall as a row allows); liquidations from a
+    // day the source cut say ≈.
+    const fontPx = rowH < 12 ? 9 : 10, plate = Math.min(14, Math.max(8, rowH - 1));
+    ctx.save(); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = `${fontPx}px ui-sans-serif, system-ui, sans-serif`;
     for (const { row: r, y: ry, h: rh } of this.#layout) {
       const row = rows[r]!, label = row.kind === 'liq' && liqCutShown ? `≈${row.label}` : row.label, w = ctx.measureText(label).width + 10;
-      ctx.globalAlpha = 0.88; ctx.fillStyle = p.panel; ctx.fillRect(2, ry + rh / 2 - 7, w, 14); ctx.globalAlpha = 1; ctx.fillStyle = p.muted; ctx.fillText(label, 6, ry + rh / 2 + 0.5);
+      ctx.globalAlpha = 0.88; ctx.fillStyle = p.panel; ctx.fillRect(2, ry + rh / 2 - plate / 2, w, plate); ctx.globalAlpha = 1; ctx.fillStyle = p.muted; ctx.fillText(label, 6, ry + rh / 2 + 0.5);
     }
     ctx.restore();
     // The card of the row and candle under this pane's pointer (or a finger's pin).
-    if (hoverIdx >= 0 && hoverRow >= 0 && this.pointer) this.#lines = this.#cardFor(model, hoverRow, hoverIdx, times, tfMs, now, live, perps, state);
+    if (hoverIdx >= 0 && hoverRow >= 0 && this.pointer) this.#lines = this.#cardFor(model, hoverRow, hoverIdx, times, tfMs, now, live, perps, state, oiHeld?.coins);
   }
 
-  #cardFor(model: HistoryModel, r: number, i: number, times: readonly number[], tfMs: number, now: number, live: boolean, perps: boolean, state: AppState): InfoLine[] {
-    const row: HistoryRow = model.rows[r]!;
+  #cardFor(model: HistoryModel, r: number, i: number, times: readonly number[], tfMs: number, now: number, live: boolean, perps: boolean, state: AppState, coins?: ReadonlyMap<number, number>): InfoLine[] {
+    const row: HistoryRow = model.rows[r]!, coin = state.markets.find(m => (m.instrumentId ?? m.id) === state.marketId)?.base ?? '', inCoins = coins?.get(times[i]!);
     return cardLines(model, r, i, {
-      time: clock(times[i]!, true), live: live && times[i]! + tfMs > now, judging: state.highlight.on,
+      time: clock(times[i]!, true), live: live && times[i]! + tfMs > now, judging: state.highlight.on, mult: state.highlight.mult,
       oiSource: row.kind === 'oi' ? oiSourceText(state) : null, oiNote: row.kind !== 'oi' ? null : !perps ? 'spot' : tfMs <= 60_000 ? 'minute' : null,
+      oiCoins: row.kind === 'oi' && inCoins !== undefined ? { value: inCoins, coin } : null,
     });
   }
 }

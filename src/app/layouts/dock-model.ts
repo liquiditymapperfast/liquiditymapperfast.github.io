@@ -19,7 +19,7 @@ export const otherSide = (side: Side): Side => side === 'left' ? 'right' : 'left
 
 /** The panes under the map, in the order they stand by default: how tall each starts (px) and the least it is made. The page's panes and the ready-made layouts both read this. */
 export const STRIP_PANES = [
-  { id: 'bars', height: 84, min: 56 }, { id: 'sizes', height: 280, min: 120 }, { id: 'depth', height: 132, min: 70 }, { id: 'oi', height: 150, min: 60 }, { id: 'delta', height: 150, min: 60 },
+  { id: 'bars', height: 84, min: 56 }, { id: 'sizes', height: 280, min: 150 }, { id: 'depth', height: 132, min: 70 }, { id: 'oi', height: 150, min: 60 }, { id: 'delta', height: 150, min: 60 },
   { id: 'ls', height: 120, min: 60 }, { id: 'funding', height: 140, min: 70 }, { id: 'lt', height: 128, min: 70 }, { id: 'script', height: 220, min: 60 },
 ] as const;
 export type StripId = (typeof STRIP_PANES)[number]['id'];

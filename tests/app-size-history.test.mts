@@ -125,23 +125,46 @@ test('the card says the amounts, how unusual, what it is judged against, and the
   const bars = Array.from({ length: 40 }, (_, i) => bar(i, boxes({ 3: i === 39 ? 5e6 : 1e5 + i * 100 }), boxes({ 3: 4e4 })));
   const liq = { buy: new Map(bars.map(b => [b.t, 2000] as const)), sell: new Map(bars.map(b => [b.t, 0] as const)), cut: true, cutStarts: new Set([bars[39]!.t]) };
   const m = buildHistory(input(bars, { liquidations: liq }));
-  const ctx = { time: '20 Nov 09:45', live: true, judging: true, oiSource: null, oiNote: null } as const;
+  const ctx = { time: '20 Nov 09:45', live: true, judging: true, oiSource: null, oiNote: null, mult: 2 } as const;
   const size = cardLines(m, 4, 39, ctx).map(l => `${l.label ?? ''}|${l.text}`);
   assert.equal(size[0], '|Market orders $100K–500K');
   assert.ok(size.includes('Candle|20 Nov 09:45 · in progress: amounts so far'));
   assert.ok(size.some(l => l.startsWith('Buys / sells|$5') && l.includes('$40')));
   assert.ok(size.some(l => /^Unusual\|\d+\.\dσ above its baseline$/.test(l)), size.join('\n'));
   assert.ok(size.includes('|Its baseline: the 39 earlier candles with orders of this size'));
-  assert.ok(size.some(l => l.startsWith('This candle|1 of 1 size rows unusual')));
+  assert.ok(size.includes('Unusual size rows|1 of 1'), size.join('\n'));
   const liqCard = cardLines(m, 0, 39, { ...ctx, live: false }).map(l => `${l.label ?? ''}|${l.text}`);
-  assert.ok(liqCard.includes('Shorts liquidated|≥ $2.0K') || liqCard.some(l => l.startsWith('Shorts liquidated|≥ $')), liqCard.join('\n'));
+  assert.ok(liqCard.some(l => l.startsWith('Shorts liquidated|≥ $')), liqCard.join('\n'));
   assert.ok(liqCard.some(l => l.includes('only its largest 5,000 are counted')));
+  assert.equal(liqCard.filter(l => l.startsWith('Shorts liquidated|')).length, 1, 'the judgement is named apart from the amount');
   const spot = cardLines(m, 1, 39, { ...ctx, oiNote: 'spot' }).map(l => l.text);
   assert.ok(spot.includes('Only spot markets are counted: they have no open interest.'));
   const partialBars = bars.map((b, i) => i === 20 ? { ...b, minutes: 5 } : b);
-  const p = buildHistory(input(partialBars)), lines = cardLines(p, 4, 20, ctx).map(l => `${l.label ?? ''}|${l.text}`);
+  const p = buildHistory(input(partialBars, { liquidations: liq })), lines = cardLines(p, 4, 20, ctx).map(l => `${l.label ?? ''}|${l.text}`);
   assert.ok(lines.includes('Unusual|Not judged: part of the candle was not recorded'), lines.join('\n'));
   assert.ok(lines.some(l => l.startsWith('Recorded|33 %')));
+  // Liquidations are not the recording's: their card says nothing of what the recording holds.
+  assert.equal(cardLines(p, 0, 20, ctx).some(l => l.label === 'Recorded'), false);
+});
+
+test('the words follow the brightness: Not unusual, Close to unusual from half the multiple, Unusual where the rule flags', () => {
+  const values = Array.from({ length: 60 }, (_, i) => 100 + (i % 5) * 10);
+  const bars = values.map((v, i) => bar(i, boxes({ 0: v }), boxes({ 0: 0 })));
+  const base = buildHistory(input(bars)), part = base.rows[2]!.parts[0]!;
+  const z = Array.from(part.sigma).findIndex(s => s >= 1 && s < 2 && Number.isFinite(s));
+  const quiet = Array.from(part.sigma).findIndex(s => s < 1 && Number.isFinite(s));
+  const ctx = { time: 't', live: false, judging: true, oiSource: null, oiNote: null, mult: 2 } as const;
+  if (z >= 0) assert.ok(cardLines(base, 2, z, ctx).some(l => l.label === 'Close to unusual'));
+  assert.ok(cardLines(base, 2, quiet, ctx).some(l => l.label === 'Not unusual'));
+});
+
+test('the candle under way is not hollow for the minute under way alone; a candle missing more than a minute is', () => {
+  const at = T0 + 30 * TF;
+  // Ten minutes into the candle: nine recorded (the tenth not counted yet) is whole; seven recorded is partial.
+  const one = buildHistory(input([bar(30, boxes({ 0: 1 }), boxes({ 0: 1 }), 9)], { times: [at], now: at + 9.5 * MIN }));
+  assert.equal(one.partial[0], 0);
+  const three = buildHistory(input([bar(30, boxes({ 0: 1 }), boxes({ 0: 1 }), 7)], { times: [at], now: at + 9.5 * MIN }));
+  assert.equal(three.partial[0], 1);
 });
 
 test('the history before the view: the Highlights length of candles, and at least six hours', () => {

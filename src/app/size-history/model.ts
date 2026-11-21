@@ -3,6 +3,7 @@ import { anomalies, type HighlightOptions } from '../anomaly.ts';
 import { barScale } from '../bar-scale.ts';
 import { scaledUsd } from '../coin.ts';
 import { plainUsd, signedUsd } from '../cvd/text.ts';
+import { coinText } from '../delta/nlns.ts';
 import { t, tn } from '../i18n.ts';
 import type { InfoLine } from '../infobox.ts';
 import { coverageOf } from '../panes/bar-stats.ts';
@@ -135,6 +136,14 @@ export function heightOf(value: number, cap: number): { share: number; cut: bool
 }
 
 const sum = (values: readonly number[], lo: number, hi: number): number => { let s = 0; for (let k = lo; k <= hi; k++) s += values[k]!; return s; };
+/**
+ * Whether a candle is recorded too little to judge: under `PARTIAL_SHARE` of its minutes (of those that have passed, for the candle under
+ * way) AND more than one minute short, so the minute under way, not counted yet, never makes a live candle hollow (the dot rows' rule).
+ */
+export function isPartial(bar: Pick<Bar, 'minutes'>, start: number, tfMs: number, now: number, share: number): boolean {
+  const minutes = Math.max(1, Math.ceil((Math.min(now, start + tfMs) - start) / 60_000));
+  return share < PARTIAL_SHARE && minutes - (bar.minutes ?? minutes) > 1;
+}
 const unjudged = (side: Part['side'], values: Float64Array): Part => ({ side, values, sigma: new Float64Array(values.length).fill(NaN), flag: new Uint8Array(values.length), seen: new Uint16Array(values.length), short: new Uint8Array(values.length) });
 const part = (side: Part['side'], values: Float64Array, judged: (i: number) => boolean, h: HistoryInput['highlight'], on: boolean): Part =>
   on ? { side, values, ...judge(values, judged, h) } : unjudged(side, values);
@@ -145,7 +154,7 @@ export function buildHistory(input: HistoryInput): HistoryModel {
   const buys = BANDS.map(() => new Float64Array(n).fill(NaN)), sells = BANDS.map(() => new Float64Array(n).fill(NaN));
   for (let i = 0; i < n; i++) {
     const bar = input.bars[i], stats = bar?.stats;
-    if (bar) { const share = coverageOf(bar, input.times[i]!, input.tfMs, input.now); if (share !== null) { cover[i] = share; partial[i] = share < PARTIAL_SHARE ? 1 : 0; } }
+    if (bar) { const share = coverageOf(bar, input.times[i]!, input.tfMs, input.now); if (share !== null) { cover[i] = share; partial[i] = isPartial(bar, input.times[i]!, input.tfMs, input.now, share) ? 1 : 0; } }
     if (!stats) continue;
     let all = 0;
     BANDS.forEach(([lo, hi], b) => { const buy = sum(stats.buy, lo, hi), sell = sum(stats.sell, lo, hi); buys[b]![i] = buy; sells[b]![i] = sell; all += buy + sell; });
@@ -185,18 +194,18 @@ export function unusualRows(model: Pick<HistoryModel, 'rows'>, i: number): { fla
 
 /**
  * What a part's judgement says at slot `i`, as one card line (null: nothing to say: a zero, a value not known, or nothing judged). `label`
- * names the line, or, for a row of one series, is null: the line is then called Unusual where the rule flags it and Not unusual elsewhere.
+ * names the line, or, for a row of one series, is null: the line is then called Unusual where the rule flags it, Close to unusual where its
+ * bar is lit (from half the multiple) without being flagged, and Not unusual below that, so the words match how bright the bar is.
  */
-function judgement(p: Part, i: number, label: string | null, partial: boolean): InfoLine | null {
-  const name = (flagged: boolean): string => label ?? (flagged ? t('Unusual') : t('Not unusual'));
+function judgement(p: Part, i: number, label: string | null, partial: boolean, mult: number): InfoLine | null {
   const v = p.values[i]!;
   if (!Number.isFinite(v) || v === 0) return null;
   if (partial) return { label: label ?? t('Unusual'), text: t('Not judged: part of the candle was not recorded'), color: 'muted' };
-  if (p.short[i]) return { label: label ?? t('Unusual'), text: t('Not judged yet: too few earlier candles with any'), color: 'muted' };
+  if (p.short[i]) return { label: label ?? t('Unusual'), text: t('Not judged yet: too few earlier candles to compare with'), color: 'muted' };
   const z = p.sigma[i]!;
-  if (p.flag[i]) return { label: name(true), text: z > 0 ? t('{z}σ above its baseline', { z: z.toFixed(1) }) : t('Above a flat baseline'), bold: true };
+  if (p.flag[i]) return { label: label ?? t('Unusual'), text: z > 0 ? t('{z}σ above its baseline', { z: z.toFixed(1) }) : t('Above a flat baseline'), bold: true };
   if (!Number.isFinite(z)) return null;
-  return { label: name(false), text: t('{z}σ from its baseline', { z: `${z < 0 ? '−' : ''}${Math.abs(z).toFixed(1)}` }), color: 'muted' };
+  return { label: label ?? (z >= mult / 2 ? t('Close to unusual') : t('Not unusual')), text: t('{z}σ from its baseline', { z: `${z < 0 ? '−' : ''}${Math.abs(z).toFixed(1)}` }), color: 'muted' };
 }
 
 /** What a row's bars are judged against, said once under its judgements. */
@@ -217,6 +226,10 @@ export interface CardContext {
   /** Whose open interest the row shows (oiSourceText), and why there is none or it is not judged. */
   oiSource: string | null;
   oiNote: 'spot' | 'minute' | null;
+  /** The Highlights' multiple (where the rule flags; a bar is lit from half of it). */
+  mult: number;
+  /** Open interest's change at this candle in the coin itself, and the coin's name, beside the dollars; absent where not known. */
+  oiCoins?: { value: number; coin: string } | null;
 }
 
 /** The card of row `r` at slot `i`: its amounts, how unusual each side is, and how the candle's size rows stand together. Pure, so a test reads the words. */
@@ -227,7 +240,7 @@ export function cardLines(model: HistoryModel, r: number, i: number, ctx: CardCo
   const judgedParts: Part[] = [];
   const judged = (p: Part, label: string | null, isPartial: boolean): void => {
     if (!ctx.judging) return;
-    const line = judgement(p, i, label, isPartial);
+    const line = judgement(p, i, label, isPartial, ctx.mult);
     if (!line) return;
     out.push(line);
     if (!isPartial && !p.short[i]) judgedParts.push(p);
@@ -249,13 +262,13 @@ export function cardLines(model: HistoryModel, r: number, i: number, ctx: CardCo
     const at = (v: number): string => cut ? `≥ ${plainUsd(v)}` : plainUsd(v);
     out.push({ label: t('Shorts liquidated'), text: at(s), color: 'buy', rule: true });
     out.push({ label: t('Longs liquidated'), text: at(l), color: 'sell' });
-    judged(shorts, t('Shorts liquidated'), false); judged(longs, t('Longs liquidated'), false);
+    judged(shorts, t('Shorts'), false); judged(longs, t('Longs'), false);
     if (cut) out.push({ text: t('≈ A day of these candles held more than 5,000 liquidations: only its largest 5,000 are counted.'), color: 'muted', wrap: true });
   } else {
     const [oi] = row.parts as [Part], v = oi.values[i]!;
     if (ctx.oiNote === 'spot') { out.push({ text: t('Only spot markets are counted: they have no open interest.'), color: 'muted', wrap: true, rule: true }); return out; }
     if (!Number.isFinite(v)) { out.push({ text: t('Not known for this candle.'), color: 'muted', rule: true }); return out; }
-    out.push({ label: t('Change'), text: signedUsd(v), color: v > 0 ? 'buy' : v < 0 ? 'sell' : 'text', rule: true });
+    out.push({ label: t('Change'), text: ctx.oiCoins ? `${signedUsd(v)} · ${coinText(ctx.oiCoins.value, ctx.oiCoins.coin)}` : signedUsd(v), color: v > 0 ? 'buy' : v < 0 ? 'sell' : 'text', rule: true });
     if (ctx.oiSource) out.push({ label: t('Markets'), text: ctx.oiSource });
     if (ctx.oiNote === 'minute') out.push({ text: t('Not judged on a one-minute chart: some venues report open interest every few minutes, which puts several minutes of change into one.'), color: 'muted', wrap: true });
     else judged(oi, null, false);
@@ -263,8 +276,8 @@ export function cardLines(model: HistoryModel, r: number, i: number, ctx: CardCo
   if (judgedParts.length) out.push(baselineLine(row.kind, Math.max(...judgedParts.map(p => p.seen[i]!))));
   if (row.kind === 'size' && ctx.judging) {
     const k = unusualRows(model, i);
-    if (k.judged > 0) out.push({ label: t('This candle'), text: t('{k} of {n} size rows unusual', { k: k.flagged, n: k.judged }), rule: true });
+    if (k.judged > 0) out.push({ label: t('Unusual size rows'), text: t('{rank} of {total}', { rank: k.flagged, total: k.judged }), rule: true });
   }
-  if (partial && model.cover[i]! > 0) out.push({ label: t('Recorded'), text: t('{share} % of the candle: the figure counts only that part', { share: Math.round(model.cover[i]! * 100) }), color: 'sell', wrap: true });
+  if (partial && row.kind === 'size' && model.cover[i]! > 0) out.push({ label: t('Recorded'), text: t('{share} % of the candle: the figure counts only that part', { share: Math.round(model.cover[i]! * 100) }), color: 'sell', wrap: true });
   return out;
 }

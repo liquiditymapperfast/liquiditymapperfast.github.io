@@ -3281,7 +3281,7 @@
  "The rows: liquidations (shorts liquidated up, longs liquidated down), the change of open interest (up where it rose), then market orders in six size bands from under $25K to $5M and over (smaller sizes for smaller coins). Bars shows each size row as its buys less its sells (Delta) or as its buys up and its sells down.": "各行依次是：强平（空头强平向上，多头强平向下）、持仓量的变化（上升处向上），然后是六个大小区间的市价单，从低于 $25K 到 $5M 及以上（小币种用更小的区间）。“柱条”设置把每个大小行显示为买入减卖出（Delta），或买入向上、卖出向下。",
  "Every row has its own scale, and a bar's height grows with the square root of its amount, so small candles stay visible next to large ones. A bar too tall for its row is drawn to the edge with a gap near its end. Point at a bar for its amounts.": "每一行都有自己的刻度，柱的高度随金额的平方根增长，因此小的 K 线在大的旁边也看得见。对该行来说过高的柱会画到边缘，并在接近末端处留一个缺口。指向某根柱可看到它的金额。",
  "How bright a bar is says how unusual its amount is for its own row: it is compared with the earlier candles of that row that had any such amount, with the Highlights' sensitivity and baseline (Settings). Faint is ordinary; full brightness is where the Highlights would mark it. Candles with nothing in a row (often the largest orders) are left out of its baseline, so one large order is not called unusual only because most candles have none.": "柱有多亮，说明它的金额在自己这一行里有多异常：它会与该行此前出现过此类金额的 K 线比较，使用“高亮”的灵敏度和基线（设置）。暗淡表示普通；全亮表示“高亮”会标出它的位置。该行中没有任何金额的 K 线（最大的订单常常如此）不计入它的基线，所以不会仅仅因为大多数 K 线没有大单，就把一笔大单称为异常。",
- "A candle the recording holds only in part is drawn as an outline and not judged. Liquidations come from the venues that publish them; on a day with more than 5,000 the record keeps its 5,000 largest, so the row says ≈ and a figure is at least that. Open interest is the OI pane's markets; it has no row values when only spot markets are counted, and is not judged on a one-minute chart.": "记录里只有一部分的 K 线会画成轮廓，不作判断。强平来自公布它们的交易所；某一天超过 5,000 笔时，记录只保留最大的 5,000 笔，所以该行会显示 ≈，数字至少是这么多。持仓量取自持仓量面板的市场；只统计现货市场时该行没有数值，在 1 分钟图表上也不作判断。",
+ "Where the recording holds only part of a candle, its size bars are outlines and not judged. Liquidations come from the venues that publish them; on a day with more than 5,000 the record keeps its 5,000 largest, so the row says ≈ and a figure is at least that. Open interest is the OI pane's markets; it has no row values when only spot markets are counted, and is not judged on a one-minute chart.": "记录里只有某根 K 线的一部分时，它的大小柱会画成轮廓，不作判断。强平来自公布它们的交易所；某一天超过 5,000 笔时，记录只保留最大的 5,000 笔，所以该行会显示 ≈，数字至少是这么多。持仓量取自持仓量面板的市场；只统计现货市场时该行没有数值，在 1 分钟图表上也不作判断。",
  "It counts the markets the footprint and the Bar stats count (set in either panel). Switch it on in the flow column's settings, in the Bar stats' settings or, on a phone, in Settings. It reads the history before the view that its comparisons need, so a bar's brightness can change a little once older candles have loaded.": "它统计的市场与 footprint 和柱统计相同（在任一面板中设置）。可在资金流栏的设置、柱统计的设置中打开，在手机上则在“设置”中打开。它会读取比较所需的、当前视图之前的历史，因此更早的 K 线加载完成后，柱的亮度可能会略有变化。",
  "Liquidations, open interest's change and market orders by size, candle by candle; the most unusual amounts stand out.": "按 K 线逐根显示强平、持仓量的变化和按大小划分的市价单；最异常的金额会突出显示。",
  "Each size row as its buys less its sells (Delta), or its buys up and its sells down.": "每个大小行显示为买入减卖出（Delta），或买入向上、卖出向下。",
@@ -3289,7 +3289,6 @@
  "No markets are counted: switch some on.": "没有统计任何市场：请打开一些。",
  "Flow history appears once market orders are recorded for these candles.": "这些 K 线的市价单被记录后，资金流历史才会出现。",
  "Not judged: part of the candle was not recorded": "不作判断：该 K 线有一部分未被记录",
- "Not judged yet: too few earlier candles with any": "暂不作判断：此前出现过此类金额的 K 线太少",
  "Above a flat baseline": "高于一条平坦的基线",
  "{z}σ from its baseline": "距基线 {z}σ",
  "Its baseline: the {n} earlier candles with orders of this size": "它的基线：此前有这一大小订单的 {n} 根 K 线",
@@ -3302,9 +3301,10 @@
  "Only spot markets are counted: they have no open interest.": "只统计了现货市场：现货没有持仓量。",
  "Not known for this candle.": "这根 K 线的情况未知。",
  "Not judged on a one-minute chart: some venues report open interest every few minutes, which puts several minutes of change into one.": "在 1 分钟图表上不作判断：有些交易所每隔几分钟才报告一次持仓量，这会把几分钟的变化合并到一根里。",
- "This candle": "这根 K 线",
- "{k} of {n} size rows unusual": "{n} 个大小行中有 {k} 个异常",
  "Show the Flow history": "显示资金流历史",
  "A pane under the chart: liquidations, open interest's change and market orders in six size bands, candle by candle, the most unusual amounts the brightest.": "图表下方的面板：按 K 线逐根显示强平、持仓量的变化和六个大小区间的市价单，最异常的金额最亮。",
- "Not unusual": "正常"
+ "Not unusual": "正常",
+ "Close to unusual": "接近异常",
+ "Unusual size rows": "异常的大小行",
+ "Not judged yet: too few earlier candles to compare with": "暂不作判断：可供比较的此前 K 线太少"
 }

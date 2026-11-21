@@ -3281,7 +3281,7 @@
  "The rows: liquidations (shorts liquidated up, longs liquidated down), the change of open interest (up where it rose), then market orders in six size bands from under $25K to $5M and over (smaller sizes for smaller coins). Bars shows each size row as its buys less its sells (Delta) or as its buys up and its sells down.": "行は、清算（ショート清算が上、ロング清算が下）、建玉の変化（増えたところが上）、続いて $25K 未満から $5M 以上までの6つのサイズ帯の成行注文（小さい通貨ではより小さいサイズ）です。「バー」では、各サイズ行を、買いから売りを引いた値（デルタ）として、または買いを上、売りを下として表示します。",
  "Every row has its own scale, and a bar's height grows with the square root of its amount, so small candles stay visible next to large ones. A bar too tall for its row is drawn to the edge with a gap near its end. Point at a bar for its amounts.": "各行は独自のスケールを持ち、バーの高さは金額の平方根に応じて伸びるので、小さなローソク足も大きなものの隣で見えます。行に収まらないほど高いバーは、端まで描かれ、先端近くに切れ目が入ります。バーを指すと金額が分かります。",
  "How bright a bar is says how unusual its amount is for its own row: it is compared with the earlier candles of that row that had any such amount, with the Highlights' sensitivity and baseline (Settings). Faint is ordinary; full brightness is where the Highlights would mark it. Candles with nothing in a row (often the largest orders) are left out of its baseline, so one large order is not called unusual only because most candles have none.": "バーの明るさは、その金額が自分の行の中でどれだけ異常かを表します。同じ行で何らかの金額があった以前のローソク足と、ハイライトの感度と基準（設定）を使って比べます。薄いのは普通で、フルの明るさはハイライトが印を付けるところです。行に何もないローソク足（最も大きい注文の行によくあります）は基準線から除外されるので、大半のローソク足に注文がないというだけで、1件の大きな注文が異常と判定されることはありません。",
- "A candle the recording holds only in part is drawn as an outline and not judged. Liquidations come from the venues that publish them; on a day with more than 5,000 the record keeps its 5,000 largest, so the row says ≈ and a figure is at least that. Open interest is the OI pane's markets; it has no row values when only spot markets are counted, and is not judged on a one-minute chart.": "記録が一部しかないローソク足は、輪郭だけで描かれ、判定されません。清算は公表している取引所から取得します。1日に5,000件を超える場合、記録は大きい方から5,000件だけを保持するため、その行には ≈ が付き、数値は少なくともその値です。建玉は建玉パネルの市場のものです。現物市場だけを数える場合、この行に値はなく、1分足のチャートでは判定されません。",
+ "Where the recording holds only part of a candle, its size bars are outlines and not judged. Liquidations come from the venues that publish them; on a day with more than 5,000 the record keeps its 5,000 largest, so the row says ≈ and a figure is at least that. Open interest is the OI pane's markets; it has no row values when only spot markets are counted, and is not judged on a one-minute chart.": "記録にローソク足の一部しかない場合、そのサイズバーは輪郭だけで描かれ、判定されません。清算は公表している取引所から取得します。1日に5,000件を超える場合、記録は大きい方から5,000件だけを保持するため、その行には ≈ が付き、数値は少なくともその値です。建玉は建玉パネルの市場のものです。現物市場だけを数える場合、この行に値はなく、1分足のチャートでは判定されません。",
  "It counts the markets the footprint and the Bar stats count (set in either panel). Switch it on in the flow column's settings, in the Bar stats' settings or, on a phone, in Settings. It reads the history before the view that its comparisons need, so a bar's brightness can change a little once older candles have loaded.": "対象とする市場は、フットプリントとバー統計が数える市場と同じです（どちらのパネルでも設定）。フロー列の設定、バー統計の設定、スマートフォンでは「設定」でオンにします。比較に必要な、表示範囲より前の履歴を読み込むため、古いローソク足が読み込まれると、バーの明るさが少し変わることがあります。",
  "Liquidations, open interest's change and market orders by size, candle by candle; the most unusual amounts stand out.": "清算、建玉の変化、サイズ別の成行注文をローソク足ごとに表示し、最も異常な金額が目立ちます。",
  "Each size row as its buys less its sells (Delta), or its buys up and its sells down.": "各サイズ行を、買いから売りを引いた値（デルタ）で、または買いを上、売りを下にして表示します。",
@@ -3289,7 +3289,6 @@
  "No markets are counted: switch some on.": "対象の市場がありません：いくつかオンにしてください。",
  "Flow history appears once market orders are recorded for these candles.": "これらのローソク足の成行注文が記録されると、フロー履歴が表示されます。",
  "Not judged: part of the candle was not recorded": "判定なし：ローソク足の一部が記録されていません",
- "Not judged yet: too few earlier candles with any": "まだ判定なし：金額のあった以前のローソク足が少なすぎます",
  "Above a flat baseline": "平坦な基準線より上",
  "{z}σ from its baseline": "基準線から {z}σ",
  "Its baseline: the {n} earlier candles with orders of this size": "その基準線：この大きさの注文があった以前のローソク足 {n} 本",
@@ -3302,9 +3301,10 @@
  "Only spot markets are counted: they have no open interest.": "現物市場だけが対象です：現物には建玉がありません。",
  "Not known for this candle.": "このローソク足については不明です。",
  "Not judged on a one-minute chart: some venues report open interest every few minutes, which puts several minutes of change into one.": "1分足のチャートでは判定しません：取引所によっては建玉を数分ごとにしか報告せず、数分間の変化が1つにまとまってしまうためです。",
- "This candle": "このローソク足",
- "{k} of {n} size rows unusual": "{n} 個のサイズ行のうち {k} 個が異常",
  "Show the Flow history": "フロー履歴を表示",
  "A pane under the chart: liquidations, open interest's change and market orders in six size bands, candle by candle, the most unusual amounts the brightest.": "チャートの下のパネル：清算、建玉の変化、6つのサイズ帯の成行注文をローソク足ごとに表示し、最も異常な金額が最も明るくなります。",
- "Not unusual": "異常なし"
+ "Not unusual": "異常なし",
+ "Close to unusual": "異常に近い",
+ "Unusual size rows": "異常なサイズ行",
+ "Not judged yet: too few earlier candles to compare with": "まだ判定なし：比較できる以前のローソク足が少なすぎます"
 }

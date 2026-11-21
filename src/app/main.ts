@@ -225,7 +225,7 @@ async function main(): Promise<void> {
   const strip: LayoutPane[] = [
     { id: 'heat', root: heat.root, min: 240 },
     { id: 'bars', root: bars.root, height: 84, min: 56, head: bars.header },
-    { id: 'sizes', root: sizes.root, height: 280, min: 120, head: sizes.header },
+    { id: 'sizes', root: sizes.root, height: 280, min: 150, head: sizes.header },
     { id: 'depth', root: depth.root, height: 132, min: 70, head: depth.header },
     { id: 'oi', root: oi.root, height: 150, min: 60, head: oi.header },
     { id: 'delta', root: delta.root, height: 150, min: 60, head: delta.header },
@@ -629,7 +629,10 @@ async function main(): Promise<void> {
 
   /** The Bar stats rows the pane was last sized for: which, grouped or not, which kinds folded. */
   let tableShape = `${store.state.barStats.join(',')}|${store.state.barStatOptions.grouped}|${store.state.barStatOptions.folded.join(',')}`;
+  // The Flow history sits under the map on a phone's Map tab: switched on from any of its switches there, that tab opens so it is seen.
+  let sizesOn = store.state.show.sizes;
   store.subscribe((state, changed) => {
+    if (changed.has('show') && state.show.sizes !== sizesOn) { sizesOn = state.show.sizes; if (sizesOn && isPhone()) dock.select('map'); }
     if (changed.has('keepAwake')) wake.set(state.keepAwake);
     // Every time on the page is written from the one setting: say it changed, and have what shows times draw again.
     if (changed.has('timeZone')) { setTimeZone(state.timeZone); heat.invalidate(); lower(); cvd.invalidate(); showStatus(); }

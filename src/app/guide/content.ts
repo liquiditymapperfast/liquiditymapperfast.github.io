@@ -262,7 +262,7 @@ export const SECTIONS: readonly Section[] = [
       { t: 'p', text: '**Brightness says how unusual.** Each bar is compared with the earlier candles of its row that had any such amount, with the Highlights\' sensitivity and baseline. An ordinary bar is faint; it brightens as its amount climbs past what its row usually does, and is fully bright where the Highlights would mark it. Candles with nothing in a row are left out of its baseline: most candles have no order of $5M or more, and one would otherwise look unusual every time.' },
       { t: 'list', items: [
         'Point at a bar (tap it on a touch screen) for its buys and sells, its share of the candle\'s volume, how many standard deviations it stands from its baseline, and how many of the candle\'s size rows were unusual.',
-        'A candle the recording holds only in part is drawn as an outline and not judged. On a day with more than 5,000 liquidations the record keeps the 5,000 largest, so the row is marked ≈ and its figures are at least what they say.',
+        'Where the recording holds only part of a candle, its size bars are outlines and not judged. On a day with more than 5,000 liquidations the record keeps the 5,000 largest, so the row is marked ≈ and its figures are at least what they say.',
       ] },
       { t: 'note', kind: 'tip', text: 'Several rows lit in one candle usually means the whole market traded heavily, not that one kind of trader acted: an order\'s size is not who placed it.' },
     ],

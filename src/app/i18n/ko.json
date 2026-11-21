@@ -3281,7 +3281,7 @@
  "The rows: liquidations (shorts liquidated up, longs liquidated down), the change of open interest (up where it rose), then market orders in six size bands from under $25K to $5M and over (smaller sizes for smaller coins). Bars shows each size row as its buys less its sells (Delta) or as its buys up and its sells down.": "행은 청산(숏 청산은 위로, 롱 청산은 아래로), 미결제약정의 변화(늘어난 곳은 위로), 그리고 $25K 미만부터 $5M 이상까지 여섯 개 크기 구간의 시장가 주문(작은 코인은 더 작은 크기)입니다. '막대' 설정은 각 크기 행을 매수에서 매도를 뺀 값(델타)으로, 또는 매수는 위로 매도는 아래로 보여 줍니다.",
  "Every row has its own scale, and a bar's height grows with the square root of its amount, so small candles stay visible next to large ones. A bar too tall for its row is drawn to the edge with a gap near its end. Point at a bar for its amounts.": "행마다 자기만의 스케일이 있고, 막대의 높이는 금액의 제곱근에 따라 커지므로 작은 캔들도 큰 캔들 옆에서 보입니다. 행에 비해 너무 높은 막대는 가장자리까지 그려지고 끝 근처에 틈이 생깁니다. 막대를 가리키면 금액을 볼 수 있습니다.",
  "How bright a bar is says how unusual its amount is for its own row: it is compared with the earlier candles of that row that had any such amount, with the Highlights' sensitivity and baseline (Settings). Faint is ordinary; full brightness is where the Highlights would mark it. Candles with nothing in a row (often the largest orders) are left out of its baseline, so one large order is not called unusual only because most candles have none.": "막대가 얼마나 밝은지는 그 금액이 자기 행에서 얼마나 이례적인지를 나타냅니다. 같은 행에서 그런 금액이 조금이라도 있었던 이전 캔들과, 하이라이트의 민감도 및 기준선(설정)으로 비교합니다. 희미한 것은 평범한 것이고, 최대 밝기는 하이라이트가 표시했을 곳입니다. 행에 아무것도 없는 캔들(가장 큰 주문 행에서 흔합니다)은 기준선에서 제외되므로, 대부분의 캔들에 없다는 이유만으로 큰 주문 하나가 이례적이라고 판단되지 않습니다.",
- "A candle the recording holds only in part is drawn as an outline and not judged. Liquidations come from the venues that publish them; on a day with more than 5,000 the record keeps its 5,000 largest, so the row says ≈ and a figure is at least that. Open interest is the OI pane's markets; it has no row values when only spot markets are counted, and is not judged on a one-minute chart.": "기록에 일부만 있는 캔들은 윤곽선으로 그려지고 판단하지 않습니다. 청산은 이를 공개하는 거래소에서 가져옵니다. 하루에 5,000건이 넘으면 기록은 가장 큰 5,000건만 보관하므로, 그 행에 ≈가 표시되고 수치는 그 이상입니다. 미결제약정은 미결제약정 패널의 시장 기준이며, 현물 시장만 집계하면 행 값이 없고, 1분 차트에서는 판단하지 않습니다.",
+ "Where the recording holds only part of a candle, its size bars are outlines and not judged. Liquidations come from the venues that publish them; on a day with more than 5,000 the record keeps its 5,000 largest, so the row says ≈ and a figure is at least that. Open interest is the OI pane's markets; it has no row values when only spot markets are counted, and is not judged on a one-minute chart.": "기록에 캔들의 일부만 있는 경우 그 크기 막대는 윤곽선으로 그려지고 판단하지 않습니다. 청산은 이를 공개하는 거래소에서 가져옵니다. 하루에 5,000건이 넘으면 기록은 가장 큰 5,000건만 보관하므로, 그 행에 ≈가 표시되고 수치는 그 이상입니다. 미결제약정은 미결제약정 패널의 시장 기준이며, 현물 시장만 집계하면 행 값이 없고, 1분 차트에서는 판단하지 않습니다.",
  "It counts the markets the footprint and the Bar stats count (set in either panel). Switch it on in the flow column's settings, in the Bar stats' settings or, on a phone, in Settings. It reads the history before the view that its comparisons need, so a bar's brightness can change a little once older candles have loaded.": "풋프린트와 바 통계가 집계하는 시장과 같은 시장을 집계합니다(둘 중 어느 패널에서든 설정). 플로우 열의 설정, 바 통계의 설정, 스마트폰에서는 설정에서 켭니다. 비교에 필요한 화면 이전의 이력을 읽어 오기 때문에, 더 오래된 캔들이 로드되면 막대의 밝기가 조금 달라질 수 있습니다.",
  "Liquidations, open interest's change and market orders by size, candle by candle; the most unusual amounts stand out.": "청산, 미결제약정의 변화, 크기별 시장가 주문을 캔들마다 보여 주며, 가장 이례적인 금액이 눈에 띕니다.",
  "Each size row as its buys less its sells (Delta), or its buys up and its sells down.": "각 크기 행을 매수에서 매도를 뺀 값(델타)으로, 또는 매수는 위로 매도는 아래로 표시합니다.",
@@ -3289,7 +3289,6 @@
  "No markets are counted: switch some on.": "집계되는 시장이 없습니다: 몇 개를 켜세요.",
  "Flow history appears once market orders are recorded for these candles.": "이 캔들의 시장가 주문이 기록되면 플로우 이력이 나타납니다.",
  "Not judged: part of the candle was not recorded": "판단 안 함: 캔들의 일부가 기록되지 않았습니다",
- "Not judged yet: too few earlier candles with any": "아직 판단 안 함: 해당 금액이 있었던 이전 캔들이 너무 적습니다",
  "Above a flat baseline": "평탄한 기준선 위",
  "{z}σ from its baseline": "기준선에서 {z}σ",
  "Its baseline: the {n} earlier candles with orders of this size": "그 기준선: 이 크기의 주문이 있었던 이전 캔들 {n}개",
@@ -3302,9 +3301,10 @@
  "Only spot markets are counted: they have no open interest.": "현물 시장만 집계됩니다: 현물에는 미결제약정이 없습니다.",
  "Not known for this candle.": "이 캔들은 알 수 없습니다.",
  "Not judged on a one-minute chart: some venues report open interest every few minutes, which puts several minutes of change into one.": "1분 차트에서는 판단하지 않습니다: 일부 거래소는 미결제약정을 몇 분마다 보고하므로, 몇 분 동안의 변화가 한 번에 반영됩니다.",
- "This candle": "이 캔들",
- "{k} of {n} size rows unusual": "크기 행 {n}개 중 {k}개가 이례적",
  "Show the Flow history": "플로우 이력 표시",
  "A pane under the chart: liquidations, open interest's change and market orders in six size bands, candle by candle, the most unusual amounts the brightest.": "차트 아래의 패널: 청산, 미결제약정의 변화, 여섯 개 크기 구간의 시장가 주문을 캔들마다 보여 주며, 가장 이례적인 금액이 가장 밝습니다.",
- "Not unusual": "이례적 아님"
+ "Not unusual": "이례적 아님",
+ "Close to unusual": "거의 이례적",
+ "Unusual size rows": "이례적인 크기 행",
+ "Not judged yet: too few earlier candles to compare with": "아직 판단 안 함: 비교할 이전 캔들이 너무 적습니다"
 }
