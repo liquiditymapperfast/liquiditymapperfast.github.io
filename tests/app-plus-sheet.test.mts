@@ -33,6 +33,6 @@ test('buying and the pages a seller owes are on the site itself, from any copy o
   assert.equal(SITE_PLUS, 'https://liquiditymapper.com/plus/');
   assert.deepEqual(SITE_LEGAL, { terms: 'https://liquiditymapper.com/terms/', privacy: 'https://liquiditymapper.com/privacy/', refunds: 'https://liquiditymapper.com/refunds/' });
   if (!plusOnSale()) assert.equal(availability(), 'Gift keys only today');
-  // The profitable traders are described in the page's one wording, never by how membership is decided.
-  assert.match(src('present.ts'), /the wallets HyperTracker counts as profitable, its four cohorts with a positive all-time perp profit/);
+  // The +PnL traders are described in the page's one wording, never by how membership is decided.
+  assert.match(src('present.ts'), /the wallets in HyperTracker\\'s four cohorts with a positive all-time perp profit/);
 });
