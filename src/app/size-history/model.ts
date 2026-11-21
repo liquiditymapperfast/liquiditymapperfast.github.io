@@ -1,5 +1,5 @@
 import { SIZE_EDGES } from '../../shared/footprint.ts';
-import { anomalies, type HighlightOptions } from '../anomaly.ts';
+import { WARMUP, anomalies, type HighlightOptions } from '../anomaly.ts';
 import { barScale } from '../bar-scale.ts';
 import { scaledUsd } from '../coin.ts';
 import { plainUsd, signedUsd } from '../cvd/text.ts';
@@ -87,6 +87,12 @@ export interface HistoryModel {
   total: Float64Array;
   /** Per slot: 1 where its liquidations come from a day the source cut at its 5,000 largest. */
   liqCut: Uint8Array;
+  /**
+   * Per band: its share of the candle and whether that is unusual (`shareMarks`): of the six bands' |net| added up with Net bars (`net`),
+   * of their buys and sells with Buys and sells bars (`volume`). Null with Highlights off.
+   */
+  share: ShareMark[] | null;
+  shareKind: 'net' | 'volume';
 }
 
 /**
@@ -105,6 +111,56 @@ export function judge(values: ArrayLike<number>, judged: (i: number) => boolean,
     sigma[i] = found.sigma[k]!; flag[i] = found.flag[k]!;
   });
   return { sigma, flag, seen, short };
+}
+
+/** Per slot, for one size band: its share of the candle (NaN where not worked out), the mean of the shares it was judged against, and 1 where unusual. */
+export interface ShareMark { value: Float64Array; usual: Float64Array; flag: Uint8Array }
+
+/**
+ * Which size bands took an unusually large part of their candle (Karl, 2026-11-21: a cue between the rows; SHARE-1 in the design record).
+ * `parts` holds each band's part of the candle (with Net bars its |buys - sells|, the denominator the six of them added up; with Buys and
+ * sells bars its buys plus sells). A candle is judged only when it is admitted (`whole`: fully recorded) and its six parts add up to at least
+ * the median of the admitted candles among the `length` slots before it: judged on every candle, a band's share stood out mostly because the
+ * others had gone quiet (seven of ten such marks; all of them for the orders under $100K, which look large only when the large ones step
+ * away). Its share is unusual where it is above the mean plus `mult` standard deviations of the band's non-zero shares on the candles among
+ * those same `length` slots that reach the same floor, from the twelfth (`anomalies`' rule). Floor and baseline read those slots alone, so a
+ * candle has one verdict wherever the view starts, given the history before it the pane loads (`preRollMs`). Measured on seven days of the
+ * recording (SHARE-1f), a mark the bar's own brightness does not already give falls on about 7 to 9 % of candles at 1 to 15 minutes.
+ */
+export function shareMarks(parts: readonly ArrayLike<number>[], whole: (i: number) => boolean, h: Pick<HighlightOptions, 'mult' | 'length'>): ShareMark[] {
+  const n = parts[0]?.length ?? 0, length = h.length, sum = new Float64Array(n).fill(NaN), floor = new Float64Array(n).fill(NaN), window: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (!whole(i)) continue;
+    let s = 0;
+    for (const v of parts) s += v[i]!;
+    if (Number.isFinite(s) && s > 0) sum[i] = s;
+  }
+  // Each candle's floor: the median sum of the admitted candles among the `length` slots before it. The candle and its baseline are held to
+  // that one floor, so its verdict reads those slots alone (a floor of each baseline candle's own would reach twice as far back).
+  for (let i = 0; i < n; i++) {
+    if (!(sum[i]! > 0)) continue;
+    window.length = 0;
+    for (let j = Math.max(0, i - length); j < i; j++) if (sum[j]! > 0) window.push(sum[j]!);
+    if (window.length < WARMUP) continue;
+    window.sort((a, b) => a - b);
+    const m = window.length;
+    floor[i] = m % 2 ? window[m >> 1]! : (window[m / 2 - 1]! + window[m / 2]!) / 2;
+  }
+  return parts.map(v => {
+    const value = new Float64Array(n).fill(NaN), usual = new Float64Array(n).fill(NaN), flag = new Uint8Array(n);
+    for (let i = 0; i < n; i++) if (sum[i]! > 0) value[i] = v[i]! / sum[i]!;
+    for (let i = 0; i < n; i++) {
+      const f = floor[i]!;
+      if (!(sum[i]! >= f) || !(value[i]! > 0)) continue;
+      let count = 0, total = 0, square = 0;
+      for (let j = Math.max(0, i - length); j < i; j++) { const x = value[j]!; if (sum[j]! >= f && x > 0) { count++; total += x; square += x * x; } }
+      if (count < WARMUP) continue;
+      const mean = total / count, sd = Math.sqrt(Math.max(0, square / count - mean * mean));
+      usual[i] = mean;
+      if (value[i]! > mean + h.mult * sd) flag[i] = 1;
+    }
+    return { value, usual, flag };
+  });
 }
 
 /**
@@ -180,7 +236,9 @@ export function buildHistory(input: HistoryInput): HistoryModel {
     const parts = input.mode === 'split' ? [part(1, buy, whole, h, on), part(-1, sell, whole, h, on)] : [part(0, buy.map((v, i) => v - sell[i]!), whole, h, on)];
     rows.push({ key: `size${b}`, kind: 'size', label: bandLabel(b), parts, band: b });
   });
-  return { rows, sides: BANDS.map((_, b) => ({ buy: buys[b]!, sell: sells[b]! })), cover, partial, total, liqCut };
+  const shareKind = input.mode === 'split' ? 'volume' : 'net';
+  const share = on ? shareMarks(BANDS.map((_, b) => buys[b]!.map((v, i) => shareKind === 'net' ? Math.abs(v - sells[b]![i]!) : v + sells[b]![i]!)), whole, h) : null;
+  return { rows, sides: BANDS.map((_, b) => ({ buy: buys[b]!, sell: sells[b]! })), cover, partial, total, liqCut, share, shareKind };
 }
 
 /** Of the size rows at slot `i`: how many were judged (on any side), and how many the rule flags (a row once, whichever side). */
@@ -238,6 +296,8 @@ export interface CardContext {
 /** The card of row `r` at slot `i`: its amounts, how unusual each side is, and how the candle's size rows stand together. Pure, so a test reads the words. */
 export function cardLines(model: HistoryModel, r: number, i: number, ctx: CardContext): InfoLine[] {
   const row = model.rows[r]!, partial = model.partial[i] === 1, out: InfoLine[] = [];
+  // What the share dot says, under the judgement and what it is judged against (so the two stay together).
+  let dotNote: InfoLine | null = null;
   out.push({ text: row.kind === 'size' ? t('Market orders {band}', { band: row.label }) : row.kind === 'liq' ? t('Liquidations') : t('Open interest change'), bold: true });
   out.push({ label: t('Candle'), text: ctx.live ? `${ctx.time} · ${t('in progress: amounts so far')}` : ctx.time });
   const judgedParts: Part[] = [];
@@ -255,10 +315,20 @@ export function cardLines(model: HistoryModel, r: number, i: number, ctx: CardCo
     out.push({ label: t('Buys / sells'), text: `${plainUsd(b)} / ${plainUsd(s)}`, rule: true });
     out.push({ label: t('Net'), text: signedUsd(net), color: net > 0 ? 'buy' : net < 0 ? 'sell' : 'text' });
     if (b + s > 0) out.push({ label: t('Buy share'), text: `${Math.round(b / (b + s) * 100)}%` });
-    const all = model.total[i]!;
-    if (all > 0) out.push({ label: t('Share of volume'), text: `${Math.round((b + s) / all * 100)}%` });
+    // Its share of the candle, and where it was unusual, what it usually is (the dot, where the bar is not already lit): of the volume with Buys
+    // and sells bars, of the six sizes' nets added up with Net bars, said on a line of its own.
+    const all = model.total[i]!, mark = ctx.judging && !partial ? model.share?.[row.band!] ?? null : null, marked = mark?.flag[i] === 1;
+    // The share and what it usually is, to as many decimals as tell them apart (a tight baseline: 17.2 % against 16.7 %, not 17 % against 17 %).
+    const shareLine = (label: string, value: number): InfoLine => {
+      const usual = marked ? mark!.usual[i]! : NaN, digits = Number.isFinite(usual) ? [0, 1, 2].find(d => (value * 100).toFixed(d) !== (usual * 100).toFixed(d)) ?? 2 : 0;
+      const text = `${(value * 100).toFixed(digits)}%`;
+      return marked ? { label, text: `${text} · ${t('unusual: usually {share} %', { share: (usual * 100).toFixed(digits) })}`, bold: true } : { label, text };
+    };
+    if (all > 0) out.push(model.shareKind === 'volume' ? shareLine(t('Share of volume'), (b + s) / all) : { label: t('Share of volume'), text: `${Math.round((b + s) / all * 100)}%` });
+    if (model.shareKind === 'net' && mark && Number.isFinite(mark.value[i]!)) out.push(shareLine(t('Share of the net'), mark.value[i]!));
     if (row.parts.length === 1) judged(row.parts[0]!, null, partial);
     else { judged(row.parts[0]!, t('Buys'), partial); judged(row.parts[1]!, t('Sells'), partial); }
+    if (marked && !row.parts.some(p => p.flag[i] === 1)) dotNote = ({ text: model.shareKind === 'net' ? t('The dot: this size\'s net was an unusually large part of the six sizes\' nets added up, on a candle at least as busy as usual.') : t('The dot: this size\'s buys and sells were an unusually large part of the candle\'s market orders, on a candle at least as busy as usual.'), color: 'muted', wrap: true });
   } else if (row.kind === 'liq') {
     const [shorts, longs] = row.parts as [Part, Part], s = shorts.values[i]!, l = longs.values[i]!, cut = model.liqCut[i] === 1;
     if (!Number.isFinite(s) || !Number.isFinite(l)) { out.push({ text: t('Not known for this candle: the record does not reach it.'), color: 'muted', rule: true }); return out; }
@@ -277,6 +347,7 @@ export function cardLines(model: HistoryModel, r: number, i: number, ctx: CardCo
     else judged(oi, null, false);
   }
   if (judgedParts.length) out.push(baselineLine(row.kind, Math.max(...judgedParts.map(p => p.seen[i]!))));
+  if (dotNote) out.push(dotNote);
   if (row.kind === 'size' && ctx.judging) {
     const k = unusualRows(model, i);
     if (k.judged > 0) out.push({ label: t('Unusual size rows'), text: t('{rank} of {total}', { rank: k.flagged, total: k.judged }), rule: true });

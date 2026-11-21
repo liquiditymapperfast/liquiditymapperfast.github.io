@@ -25,6 +25,8 @@ import { alphaOf, buildHistory, cardLines, emphasis, heightOf, preRollMs, rowCap
 
 /** The gap between the two rows of context (liquidations, open interest) and the six size rows, in px. */
 const GROUP_GAP = 8;
+/** The share dot's radius, and the thinnest row that has room for it beside its bar (a phone held sideways has thinner ones, without dots). */
+const DOT_R = 1.75, DOT_ROW_MIN = 12;
 
 /**
  * The Flow history pane (Karl, 2026-11-20): per candle of the chart's timeframe, the liquidations, the change of open interest and the
@@ -161,6 +163,9 @@ export class SizeHistoryPane extends TimePane {
       const band = this.#layout[r]!, mid = Math.round(band.y + band.h / 2) + 0.5, half = Math.max(2, band.h / 2 - 2), cap = rowCap(row, visible);
       ctx.save(); ctx.globalAlpha = 0.6; ctx.strokeStyle = p.line; ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(pw, mid); ctx.stroke(); ctx.restore();
       if (r === hoverRow) { ctx.save(); ctx.fillStyle = p.text; ctx.globalAlpha = p.dark ? 0.05 : 0.04; ctx.fillRect(0, band.y, pw, band.h); ctx.restore(); }
+      // A size band that took an unusually large part of its candle (model.share) gets a dot past its bar's tip, the taller one's with Buys and
+      // sells: only where the bar is not already lit (brightness says its own amount), only on a whole candle, never on too thin a row.
+      const marks = row.kind === 'size' && model.share && band.h >= DOT_ROW_MIN ? model.share[row.band!]! : null, tips = new Map<number, { y: number; up: boolean; h: number }>();
       for (const part of row.parts) {
         for (const i of visible) {
           const value = part.values[i]!;
@@ -174,7 +179,19 @@ export class SizeHistoryPane extends TimePane {
           else { ctx.fillStyle = on ? ramp[Math.round(e * (RAMP_STEPS - 1))]! : ramp[0]!; ctx.fillRect(x, by, bw, barH); }
           ctx.globalAlpha = 1;
           if (cut && barH > BAR_CUT_PX + BAR_CUT_H + 1) cutGap(ctx, x, up ? by + BAR_CUT_PX : by + barH - BAR_CUT_PX - BAR_CUT_H, bw);
+          const taller = tips.get(i);
+          if (marks && marks.flag[i] === 1 && (!taller || taller.h < barH)) tips.set(i, { y: up ? by : by + barH, up, h: barH });
         }
+      }
+      if (marks) {
+        // In the text's ink, cased in the panel's colour so it reads over a bar the row's edge pushed it onto.
+        ctx.save(); ctx.fillStyle = p.text; ctx.strokeStyle = p.panel; ctx.lineWidth = 1;
+        for (const [i, tip] of tips) {
+          if (model.partial[i] === 1 || row.parts.some(q => q.flag[i] === 1)) continue;
+          const cx = v.xOf(times[i]!, pw) + slot / 2, cy = Math.min(band.y + band.h - DOT_R - 1, Math.max(band.y + DOT_R + 1, tip.up ? tip.y - DOT_R - 2 : tip.y + DOT_R + 2));
+          ctx.beginPath(); ctx.arc(cx, cy, DOT_R, 0, Math.PI * 2); ctx.stroke(); ctx.fill();
+        }
+        ctx.restore();
       }
     });
     ctx.restore();

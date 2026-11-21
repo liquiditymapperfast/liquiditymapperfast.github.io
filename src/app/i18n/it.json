@@ -3549,5 +3549,10 @@
  "Close to unusual": "Quasi insolito",
  "Unusual size rows": "Righe di dimensione insolite",
  "Not judged yet: too few earlier candles to compare with": "Non ancora giudicata: troppo poche candele precedenti con cui confrontare",
- "Both columns on one dollar scale": "Entrambe le colonne su un’unica scala in dollari"
+ "Both columns on one dollar scale": "Entrambe le colonne su un’unica scala in dollari",
+ "Share of the net": "Quota del netto",
+ "unusual: usually {share} %": "insolito: di solito {share} %",
+ "The dot: this size's net was an unusually large part of the six sizes' nets added up, on a candle at least as busy as usual.": "Il punto: il netto di questa dimensione è stato una parte insolitamente grande della somma dei netti delle sei dimensioni, in una candela attiva almeno quanto al solito.",
+ "The dot: this size's buys and sells were an unusually large part of the candle's market orders, on a candle at least as busy as usual.": "Il punto: acquisti e vendite di questa dimensione sono stati una parte insolitamente grande degli ordini a mercato della candela, in una candela attiva almeno quanto al solito.",
+ "A dot past a bar's tip marks a size that took an unusually large part of its candle while its own amount is not unusual: with Delta bars its net against the six sizes' nets added up, with Buys and sells its buys and sells against the candle's market orders. Only candles at least as busy as usual are judged, each against the same size's share in the candles before it.": "Un punto oltre la punta di una barra segna una dimensione che ha preso una parte insolitamente grande della sua candela mentre il suo importo non è insolito: con le barre Delta il suo netto rispetto alla somma dei netti delle sei dimensioni, con Acquisti e vendite i suoi acquisti e vendite rispetto agli ordini a mercato della candela. Si giudicano solo le candele attive almeno quanto al solito, ciascuna rispetto alla quota della stessa dimensione nelle candele precedenti."
 }

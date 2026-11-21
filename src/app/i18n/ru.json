@@ -3600,5 +3600,10 @@
  "Close to unusual": "Почти необычно",
  "Unusual size rows": "Необычные строки размера",
  "Not judged yet: too few earlier candles to compare with": "Пока не оценивается: слишком мало более ранних свечей для сравнения",
- "Both columns on one dollar scale": "Обе колонки на одной долларовой шкале"
+ "Both columns on one dollar scale": "Обе колонки на одной долларовой шкале",
+ "Share of the net": "Доля нетто",
+ "unusual: usually {share} %": "необычно: обычно {share} %",
+ "The dot: this size's net was an unusually large part of the six sizes' nets added up, on a candle at least as busy as usual.": "Точка: нетто этого размера составило необычно большую часть суммы нетто шести размеров, в свече не менее активной, чем обычно.",
+ "The dot: this size's buys and sells were an unusually large part of the candle's market orders, on a candle at least as busy as usual.": "Точка: покупки и продажи этого размера составили необычно большую часть рыночных ордеров свечи, в свече не менее активной, чем обычно.",
+ "A dot past a bar's tip marks a size that took an unusually large part of its candle while its own amount is not unusual: with Delta bars its net against the six sizes' nets added up, with Buys and sells its buys and sells against the candle's market orders. Only candles at least as busy as usual are judged, each against the same size's share in the candles before it.": "Точка сразу за концом полосы отмечает размер, который занял необычно большую часть своей свечи, хотя его собственная величина не необычна: при барах «Дельта» — его нетто относительно суммы нетто шести размеров, при «Покупки и продажи» — его покупки и продажи относительно рыночных ордеров свечи. Оцениваются только свечи не менее активные, чем обычно, каждая относительно доли того же размера в предыдущих свечах."
 }
