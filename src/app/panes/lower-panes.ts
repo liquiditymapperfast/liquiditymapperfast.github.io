@@ -1858,9 +1858,9 @@ export class BarStatsPane extends TimePane {
     return value;
   }
 
-  /** A message in place of the table, on up to two lines of the plot's width (a phone's is narrower than most languages' sentences), about its middle. */
+  /** A message in place of the table, on up to three lines of the plot's width (two in a pane of the least height), about its middle: a phone's is narrower than most languages' sentences. */
   #say(text: string): void {
-    const { ctx } = this, measure = (line: string): number => ctx.measureText(line).width, lines = wrapText(measure, text, Math.max(40, this.plotW - 24), 2);
+    const { ctx } = this, measure = (line: string): number => ctx.measureText(line).width, lines = wrapText(measure, text, Math.max(40, this.plotW - 24), this.h >= 56 ? 3 : 2);
     ctx.save(); ctx.fillStyle = this.palette.muted; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     lines.forEach((line, i) => ctx.fillText(line, 12, this.h / 2 + (i - (lines.length - 1) / 2) * 14)); ctx.restore();
   }
