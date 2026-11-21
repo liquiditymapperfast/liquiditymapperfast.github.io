@@ -31,9 +31,9 @@ const DOT_R = 1.75, DOT_R_MIN = 0.9, DOT_ROW_MIN = 12;
 /**
  * The Flow history pane (Karl, 2026-11-20): per candle of the chart's timeframe, the liquidations, the change of open interest and the
  * market orders in six size bands, one row each on the map's time axis, with the most unusual amounts standing out (size-history/model.ts).
- * It counts the markets the footprint and the Bar stats count, and reads the footprint's bars (one load for the three, from the Highlights'
- * length before the view, at least 36 candles and six hours, while this pane shows), the liquidations the Bar stats read (one loader, liq-days.ts) and the OI pane's open
- * interest. Switched on from the flow column's settings, the Bar stats' settings and, on a phone, Settings; never from the top bar.
+ * Its size rows count the markets the footprint and the Bar stats count, and read the footprint's bars (one load for the three, from the Highlights'
+ * length before the view, at least 36 candles and six hours, while this pane shows); its liquidations are the Bar stats' (one loader, liq-days.ts:
+ * the perpetuals whatever the Spot / Perp filter) and its open interest the OI pane's. Switched on from the flow column's settings, the Bar stats' settings and, on a phone, Settings; never from the top bar.
  */
 export class SizeHistoryPane extends TimePane {
   /** Rows, not values: the pointer's height says which row, so it takes no horizontal line. */
@@ -129,8 +129,8 @@ export class SizeHistoryPane extends TimePane {
     const times = [...starts].sort((a, b) => a - b);
     if (!times.length || !times.some(s => data.bars.has(s))) { this.#message(t('Flow history appears once market orders are recorded for these candles.')); this.#held = null; return; }
     // Liquidations and open interest are the perpetuals': they count with the Spot filter on too, the size rows counting only its spot markets
-    // (`liquidationMarkets`; Karl, 2026-11-21: they "don't show up"). Only a chart market or chosen markets that are all spot leave the two
-    // rows without values, and their cards say why. Liquidations a UTC day per answer (the shared loader), over the candles held; a candle
+    // (`liquidationMarkets`; Karl, 2026-11-21: they "don't show up"). Only a list without a perpetual (the chart market or chosen markets all
+    // spot, or every perpetual venue switched off) leaves the two rows without values, and their cards say why. Liquidations a UTC day per answer (the shared loader), over the candles held; a candle
     // before the record reaches (a week on a server, a day in a page's own engine, and only since the recording started) is not known.
     const liqMarkets = this.heat.liquidationMarkets(state), perps = liqMarkets.some(id => kindOf(state.markets, id) !== 'spot');
     const retention = this.hub.source.kind === 'browser' ? BROWSER_RETENTION_MS : LIQUIDATION_RETENTION_MS;

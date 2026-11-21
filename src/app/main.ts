@@ -163,7 +163,7 @@ async function main(): Promise<void> {
   toolbar.placeRecenter(heat.root);
   // The tour's moving picture of the right-button drag moves this chart (tour/demo.ts), and puts its view back when its step is left.
   setTourDemo({ plotRect: () => heat.plotRect(), zoom: (press, at) => heat.demoZoom(press, at), end: () => heat.endDemo() });
-  // Liquidations by UTC day of the markets the footprint counts: one loader for the Bar stats and the Flow history (liq-days.ts).
+  // Liquidations by UTC day of the perpetuals the Bar stats and the Flow history count (`liquidationMarkets`): one loader for both (liq-days.ts).
   const liqDays = new LiquidationDays(hub);
   const bars = new BarStatsPane(chart, store, heat.view, heat, hub, liqDays);
   // Flow history: liquidations, open interest's change and market orders by size per candle, the unusual ones standing out (Karl, 2026-11-20).

@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { BOOK_HOLD_MS, flowIds, instrumentShown, liquidationIds, mapVenues, nextBookGone, oiFlowIds, pinChoices, shownKey } from '../src/app/cvd/ids.ts';
+import { BOOK_HOLD_MS, flowIds, instrumentShown, liquidationIds, mapVenues, nextBookGone, oiFlowIds, perpetualMeasure, pinChoices, shownKey } from '../src/app/cvd/ids.ts';
 import type { LevelsFrame } from '../src/app/wire.ts';
 import { FlowBook } from '../src/app/flow-book.ts';
+import { aggregateIds } from '../src/app/cvd/model.ts';
 import { kindOf } from '../src/app/scope.ts';
 
 const book = (id: string) => ({ id, venue: id.split(':')[0]!, timestamp: 0, coarse: false, bids: { lo: new Float64Array(), hi: new Float64Array(), usd: new Float64Array() }, asks: { lo: new Float64Array(), hi: new Float64Array(), usd: new Float64Array() } });
@@ -36,7 +37,36 @@ test('liquidations count the perpetuals of the ALL VENUES lines whatever the Spo
   assert.deepEqual(liquidationIds({ ...state, scope: 'all' }, flow, kind), ['a:BTC'], 'the same list under Both: one list for the shared loader');
   assert.deepEqual(liquidationIds({ ...state, scope: 'perp' }, flow, kind), ['a:BTC']);
   assert.deepEqual(liquidationIds({ ...state, disabledVenues: ['a'] }, flow, kind), [], 'a chip switched off');
-  assert.deepEqual(liquidationIds({ ...state, levels: null }, flow, kind), ['a:BTC', 'b:BTC', 'c:BTC'], 'before the first frame every perpetual counts, c of unknown kind too');
+  assert.deepEqual(liquidationIds({ ...state, levels: null }, flow, kind), ['a:BTC', 'b:BTC'], 'before the first frame every perpetual counts; c, which the market list does not classify, does not');
+  // Under Both it is what the footprint's Aggregated markets held of the perpetuals, as before.
+  const both = { ...state, scope: 'all' as const, levels: null };
+  assert.deepEqual(liquidationIds(both, flow, kind), aggregateIds(flow, flowIds(both, flow.ids), kind).filter(id => kind(id) === 'perp').sort());
+  // A venue whose book left the map moments ago still counts (BOOK_HOLD_MS), not past the hold.
+  const at = (asOf: number, ...ids: string[]): LevelsFrame => ({ asOf, books: ids.map(book) });
+  assert.deepEqual(liquidationIds({ ...state, levels: at(10_000, 'aspot:BTC'), bookGone: { a: 10_000 - 1_000 } }, flow, kind), ['a:BTC'], 'held');
+  assert.deepEqual(liquidationIds({ ...state, levels: at(10_000 + BOOK_HOLD_MS + 1, 'aspot:BTC'), bookGone: { a: 10_000 } }, flow, kind), [], 'past the hold');
+  // One perpetual a venue, as the ALL VENUES lines add them: the first with flow; an unclassified one never takes its place.
+  const two = [...markets, { instrumentId: 'a:BTC-2', venue: 'a', marketType: 'perpetual' }], kind2 = (id: string) => kindOf(two, id);
+  const flow2 = new FlowBook();
+  flow2.apply(['a:ETH', 'a:BTC', 'a:BTC-2'].map(id => [id, t, 1_000, 900] as [string, number, number, number]));
+  assert.deepEqual(liquidationIds({ ...state, markets: two, levels: at(0, 'a:BTC') }, flow2, kind2), ['a:BTC'], 'a:ETH, another coin\'s left in the flow book, does not take a\'s lane; a:BTC-2 is a second perpetual');
+  assert.deepEqual(aggregateIds(flow2, flowIds({ ...state, markets: two, scope: 'all', levels: at(0, 'a:BTC') }, flow2.ids), kind2).filter(id => kind2(id) !== 'spot'), ['a:ETH'], 'what an unclassified id did to the lane before');
+});
+
+test('the Flow history and the Bar stats ask the one liquidation loader with one list, whatever the filter; the perpetual measures count oiFlowIds', () => {
+  const read = (...p: string[]) => fs.readFileSync(path.join(process.cwd(), 'src', 'app', ...p), 'utf8');
+  const sizes = read('panes', 'size-history-pane.ts'), bars = read('panes', 'lower-panes.ts'), heat = read('panes', 'heat-pane.ts'), strip = read('measures', 'strip.ts');
+  for (const [name, source, caller] of [['Flow history', sizes, 'sizes'], ['Bar stats', bars, 'bars']] as const) {
+    assert.match(source, /liqMarkets = this\.heat\.liquidationMarkets\(state\)/, name);
+    assert.match(source, new RegExp(`liqDays\\.ensure\\('${caller}', liqMarkets\\.join\\(','\\)`), name);
+    assert.doesNotMatch(source, /liqDays\.ensure\([^)]*\bmarkets\.join/, `${name}: never the footprint's markets`);
+  }
+  assert.match(bars, /liqPerps = liqMarkets\.some\(id => kindOf\(state\.markets, id\) !== 'spot'\)/, 'Bar stats: no perpetual, no liquidations (empty cells, not 0)');
+  const start = heat.indexOf('liquidationMarkets(state: AppState)'), body = heat.slice(start, heat.indexOf('\n  }\n', start));
+  assert.ok(start > 0 && body.includes('liquidationIds(') && !/state\.scope/.test(body), 'the list does not depend on the filter');
+  assert.match(heat, /\(perpetualMeasure\(metric\) \? oiFlowIds : flowIds\)/, 'the columns beside the map');
+  assert.match(strip, /\(perpetualMeasure\(this\.metric\) \? oiFlowIds : flowIds\)/, 'the bands along the top');
+  assert.deepEqual(['oi', 'liquidations', 'volume', 'delta'].map(perpetualMeasure), [true, true, false, false]);
 });
 
 test('a venue whose book leaves the map for a reconnect keeps counting for BOOK_HOLD_MS, then drops; back on the map it is no longer held', () => {

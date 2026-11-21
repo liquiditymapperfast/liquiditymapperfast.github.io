@@ -8,9 +8,9 @@ const WANT_MS = 120_000;
 /**
  * Liquidations of the markets counted, every size the record keeps, by UTC day: each day asked on its own, so an answer holds a whole day
  * (BTC: 900 to 3,500) rather than the largest 5,000 of a week; the day under way asked again every half minute; two at a time, the newest
- * first; a day whose question failed asked again after its own pause, the others meanwhile. One loader for the panes that count the
- * footprint's markets (Bar stats, Flow history), so a day is asked once however many of them show: each says the stretch it needs
- * (`ensure`), and a day is kept while any of them needs it.
+ * first; a day whose question failed asked again after its own pause, the others meanwhile. One loader for the Bar stats and the Flow
+ * history, which count the same markets (`HeatPane.liquidationMarkets`: the perpetuals whatever the Spot / Perp filter), so a day is asked
+ * once however many of them show: each says the stretch it needs (`ensure`), and a day is kept while any of them needs it.
  */
 export class LiquidationDays {
   #days = new Map<number, LiquidationDay & { at: number }>();

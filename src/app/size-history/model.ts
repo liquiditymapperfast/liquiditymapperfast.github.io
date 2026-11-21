@@ -308,7 +308,7 @@ export interface CardContext {
   /** Whose open interest the row shows (oiSourceText), and why there is none or it is not judged. */
   oiSource: string | null;
   oiNote: 'spot' | 'minute' | null;
-  /** Why the liquidations row has no values: only spot markets are counted (the chart market, or chosen markets). Absent: it has. */
+  /** Why the liquidations row has no values: no perpetual is counted (the chart market or chosen markets all spot, or every perpetual venue switched off). Absent: it has. */
   liqNote?: 'spot' | null;
   /** The Highlights' multiple (where the rule flags; a bar is lit from half of it). */
   mult: number;

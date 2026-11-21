@@ -88,10 +88,17 @@ export const oiFlowIds = (state: Pick<AppState, 'markets' | 'disabledVenues' | '
  * the perpetuals of the ALL VENUES lines whatever the Spot / Perp filter says, as open interest counts them (`oiFlowIds`). Spot markets have
  * no liquidations, and a Spot filter left on emptied both panes' liquidations and the Flow history's open interest (Karl, 2026-11-21: "OI
  * and liquidations don't show up"). One list for both panes: they share one liquidation loader, which starts again whenever its markets
- * change. A market of unknown kind may be a perpetual and counts (the Bar stats' rule for open interest).
+ * change. Only markets the market list calls perpetual count, as under the Perp filter: one it does not classify (before the list loads, or
+ * another coin's still in the flow book) would take its exchange's lane ahead of the real perpetual.
  */
 export const liquidationIds = (state: Pick<AppState, 'markets' | 'disabledVenues' | 'scope'> & MapState, flow: FlowBook, kindOf: (id: string) => Kind | null): string[] =>
-  aggregateIds(flow, oiFlowIds(state, flow.ids), kindOf).filter(id => kindOf(id) !== 'spot').sort().slice(0, MAX_PROFILE_INSTRUMENTS);
+  aggregateIds(flow, oiFlowIds(state, flow.ids).filter(id => kindOf(id) === 'perp'), kindOf).sort().slice(0, MAX_PROFILE_INSTRUMENTS);
+
+/**
+ * The measures only perpetuals have (open interest, liquidations): their columns beside the map and bands along its top count the markets
+ * `oiFlowIds` counts, whatever the Spot / Perp filter says, so a Spot filter left on does not empty them.
+ */
+export const perpetualMeasure = (metric: string): boolean => metric === 'oi' || metric === 'liquidations';
 
 /**
  * Every instrument whose flow the page asks the server for: all the markets it knows, not only the ones the filter and the chips let
